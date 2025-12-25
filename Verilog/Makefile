@@ -1,39 +1,23 @@
 
-PROJ = iCE40
+PROJ = tangnano9k
+BOARD = tangnano9k
+FAMILY = GW1N-9C
+DEVICE = GW1NR-LV9QN88PC6/I5
 
-# iCEBlink40
-# PIN_DEF =  iceblink40_vq100.pcf
-# DEVICE = hx1k
-# PACKAGE = vq100
+all: $(PROJ).fs
 
-# Alchitry Cu
-PIN_DEF = ice40_alchitry_cu.pcf
-DEVICE = hx8k
-PACKAGE = cb132
+$(PROJ).json: $(PROJ).v roms/CodeROM.txt Makefile *.v
+	yosys -p 'read_verilog $(PROJ).v; synth_gowin -top $(PROJ) -json $(PROJ).json'
 
-# Comment QUIET for detailed output
-#QUIET = -q
+$(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
+	nextpnr-himbaechel --json $(PROJ).json --write $(PROJ)_pnr.json --freq 27 --device ${DEVICE} --vopt family=${FAMILY} --vopt cst=$(BOARD).cst
 
-all: $(PROJ).rpt $(PROJ).bin
+$(PROJ).fs: $(PROJ)_pnr.json
+	gowin_pack -d ${FAMILY} -o $(PROJ).fs $(PROJ)_pnr.json
 
-%.json: %.v roms/CodeROM.txt Makefile *.v
-	yosys $(QUIET) -p 'synth_ice40 -top $(PROJ) -json $@' $<
-
-%.asc: $(PIN_DEF) %.json
-	nextpnr-ice40 $(QUIET) --$(DEVICE) --package $(PACKAGE) --json $(word 2,$^) --pcf $(PIN_DEF) --asc $@
-
-%.bin: %.asc
-	icepack $< $@
-
-%.rpt: %.asc
-	icetime -d $(DEVICE) -mtr $@ $<
-
-prog: $(PROJ).bin
-	sudo iceprog $<
-
-sudo-prog: $(PROJ).bin
-	@echo 'Executing prog as root!!!'
-	sudo iceprog $<
+# Program Board
+load: $(PROJ).fs
+	openFPGALoader -b ${BOARD} $(PROJ).fs -f
 
 test: CPU6TestBench
 	vvp CPU6TestBench

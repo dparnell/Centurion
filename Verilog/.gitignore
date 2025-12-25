@@ -8,3 +8,5 @@ vcd/
 CPU6TestBench
 *.bin
 *.rpt
+*.fs
+*.json
