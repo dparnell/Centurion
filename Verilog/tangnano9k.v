@@ -40,6 +40,8 @@ module tangnano9k(input in_clk, output LED1, output LED2, output LED3, output LE
     wire [7:0] leds;
     wire clock20MHz, locked, clock;
 
+
+    // See: https://juj.github.io/gowin_fpga_code_generators/pll_calculator.html
     rPLL #( // For GW1NR-9C C6/I5 (Tang Nano 9K proto dev board)
     .FCLKIN("27"),
     .IDIV_SEL(3), // -> PFD = 6.75 MHz (range: 3-400 MHz)
