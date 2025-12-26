@@ -9,7 +9,7 @@ module BlockRAM(input wire clock, input wire [18:0] address, input wire write_en
     output wire [7:0] data_out);
 
     initial begin
-        $readmemh("programs/cylon.txt", ram_cells);
+        $readmemh("programs/blink.txt", ram_cells);
     end
 
     reg [7:0] ram_cells[0:255];
@@ -46,16 +46,16 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
 
 	always @ (posedge clock) begin
 		if (reset_btn == 1) begin
-			reset <= 1;
+			reset <= 0;
         end else begin
-            reset <= 0;
+            reset <= 1;
         end 
     end
 endmodule
 
 module Divide4(input wire clock_in, output wire clock_out);
-    reg [1:0] counter;
-    assign clock_out = counter[1];
+    reg [2:0] counter;
+    assign clock_out = counter[2];
     always @(posedge clock_in) begin
         counter <= counter + 1;
     end
