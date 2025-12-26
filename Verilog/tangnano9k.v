@@ -53,10 +53,12 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     end
 endmodule
 
-module Divide4(input wire clock_in, output wire clock_out);
-    reg [2:0] counter;
-    assign clock_out = counter[2];
+module Divide4(input wire clock_in, output reg clock_out);
+    reg [1:0] counter;
+    
     always @(posedge clock_in) begin
         counter <= counter + 1;
+        if (counter == 2'b11)
+            clock_out <= ~clock_out;
     end
 endmodule
