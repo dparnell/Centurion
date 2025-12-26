@@ -209,8 +209,8 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     assign alu1_q3_in = alu0_ram0_out;
     assign alu0_ram0_in = alu1_q3_out;
 
-    // Page table B9/B10 93L422
-    reg [7:0] page_table[0:255];
+    // Page table B9/B10 93L422 - 256 x 4 RAM
+    reg [3:0] page_table[0:255];
 
     // Decoders
     // d2d3 is decoded before pipeline, but outputs are registered.
