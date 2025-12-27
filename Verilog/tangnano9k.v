@@ -96,7 +96,7 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
         reset = 0;
     end
 
-    assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = leds;
+    assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~leds;
     
     reg reset;
 
