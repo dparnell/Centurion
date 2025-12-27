@@ -73,25 +73,29 @@ module CPU6TestBench;
     CPU6 cpu(reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
+    reg int_reqestn;
+    assign int_reqn = int_reqestn;
 
     initial begin
         $dumpfile("vcd/CPUTestBench.vcd");
         $dumpvars(0, CPU6TestBench);
 
-        $write("hellorld: ");
-        $readmemh("programs/hellorld.txt", ram.rom_cells);
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
-        wait(sim_end == 1);
+        int_reqestn = 1;
 
-        $write("bnz_test: ");
-        $readmemh("programs/bnz_test.txt", ram.rom_cells);
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
-        wait(sim_end == 1);
+        //$write("hellorld: ");
+        //$readmemh("programs/hellorld.txt", ram.rom_cells);
+        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        //wait(sim_end == 1);
 
-        $write("alu_test: ");
-        $readmemh("programs/alu_test.txt", ram.rom_cells);
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
-        wait(sim_end == 1);
+        //$write("bnz_test: ");
+        //$readmemh("programs/bnz_test.txt", ram.rom_cells);
+        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        //wait(sim_end == 1);
+
+        //$write("alu_test: ");
+        //$readmemh("programs/alu_test.txt", ram.rom_cells);
+        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        //wait(sim_end == 1);
 
         // $readmemh("programs/diag.txt", ram.rom_cells);
         // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
@@ -104,8 +108,9 @@ module CPU6TestBench;
         // $readmemh("programs/cylon.txt", ram.rom_cells);
         // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
 
-        // $readmemh("programs/blink.txt", ram.rom_cells);
-        // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        $readmemh("programs/blink.txt", ram.rom_cells);
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #2000000; sim_end = 1;
+        wait(sim_end == 1);
 
         $display("All done!");
         $finish;

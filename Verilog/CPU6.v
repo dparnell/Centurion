@@ -108,7 +108,6 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
 
     assign dataOutBus = bus_write;
 
-
     // 6309 ROM
     wire [7:0] map_rom_address = DPBus;
     wire [7:0] map_rom_data;
