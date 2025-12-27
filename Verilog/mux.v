@@ -14,7 +14,7 @@ module MUX(
 
 // common stuff - default to 9600 7E1
 
-reg [15:0] divider = 2812; // 9600
+reg [15:0] divider = 27_000_000 / 9600;
 reg parity = 1;
 reg parity_enabled = 1;
 reg [3:0] data_bits = 7;
@@ -57,7 +57,7 @@ always @(posedge cpu_clock) begin
                 13: interrupts_enabled = 0;
                 14: interrupts_enabled = 1;
                 15: begin
-                    divider = 2812;
+                    divider = 27_000_000 / 9600;
                     parity = 1;
                     parity_enabled = 1;
                     data_bits = 7;
@@ -88,6 +88,8 @@ localparam RX_STATE_READ = 3;
 localparam RX_STATE_STOP_BIT = 5;
 
 always @(posedge clk) begin
+    int_reqn = 1;
+
     case (rxState)
         RX_STATE_IDLE: begin
             if (uart_rx == 0) begin

@@ -134,16 +134,12 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     Divide4 div(in_clk, clock);
     BlockRAM ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
     LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, data_r2c, leds);
-    MUX mux0(in_clk, clock, uartTx, uartRx, addressBus & 19'hf200 == 19'hf200 ? 1 : 0, address[3:0], writeEnBus, data_c2r, data_r2c, int_reqn, irq_number);
+    MUX mux0(in_clk, clock, uartTx, uartRx, addressBus & 19'h0fff0 == 19'hf200 ? 1 : 0, address[3:0], writeEnBus, data_c2r, data_r2c, int_reqn, irq_number);
 
     CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
 
 	always @ (posedge clock) begin
-		if (reset_btn == 1) begin
-			reset <= 0;
-        end else begin
-            reset <= 1;
-        end 
+        reset <= ~reset_btn;
     end
 endmodule
 

@@ -136,7 +136,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     wire seq_zero = !reset;
 
     // interrupt support
-    reg int_enabled = 1;
+    reg int_enabled;
 
     /*
      * Am2909/2911 Microsequencers
@@ -294,7 +294,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
                 5: ; // DMA interrupt active
                 6: ; // Parity error
                 7: begin
-                    jsr_ = ~(int_enabled & ~int_reqn) ; // Interrupt
+                    //jsr_ = ~(int_enabled & ~int_reqn) ; // Interrupt
                    end
             endcase
         end

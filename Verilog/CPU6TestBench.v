@@ -7,6 +7,7 @@
 `timescale 1 ns/10 ps  // time-unit = 1 ns, precision = 10 ps
 `include "CPU6.v"
 `include "Clock.v"
+`include "LEDPanel.v"
 
 /**
  * This file contains a test bench for the CPU6.
@@ -34,6 +35,8 @@ module Memory(input wire clock, input wire [18:0] address, input wire write_en, 
 
     always @(*) begin
         data_out = 0;
+        //$display("address = %x", address);
+
         case (address)
             19'h3fd00: data_out = 8'h71; // Reset vector, JMP 8001
             19'h3fd01: data_out = 8'h80;
@@ -64,12 +67,18 @@ module CPU6TestBench;
     wire [7:0] data_c2r, data_r2c;
     wire [18:0] addressBus;
     wire clock;
-    wire int_reqn;
-    wire [3:0] irq_number;
+    reg int_reqn;
+    reg [3:0] irq_number;
+    reg [7:0] led_reg;
+    wire [7:0] leds;
+
+    assign leds = led_reg;
 
     Clock cg0(clock);
     Memory ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
     reg reset;
+    LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, data_r2c, leds);
+
     CPU6 cpu(reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
@@ -79,8 +88,10 @@ module CPU6TestBench;
         $dumpfile("vcd/CPUTestBench.vcd");
         $dumpvars(0, CPU6TestBench);
 
-        //$write("hellorld: ");
+        int_reqn = 1;
+
         //$readmemh("programs/hellorld.txt", ram.rom_cells);
+        //$write("hellorld: ");
         //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
         //wait(sim_end == 1);
 
@@ -106,7 +117,8 @@ module CPU6TestBench;
         // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
 
         $readmemh("programs/blink.txt", ram.rom_cells);
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #2000000; sim_end = 1;
+        $display("running blink...");
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #200000000; sim_end = 1;
         wait(sim_end == 1);
 
         $display("All done!");
@@ -123,6 +135,7 @@ module CPU6TestBench;
                     $write("%s", cc);
                 end
             end
+
             // A hack to stop simulation
             if (addressBus == 19'h3f900 && data_c2r == 8'h01) begin
                 sim_end <= 1;
