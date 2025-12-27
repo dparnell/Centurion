@@ -34,7 +34,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
 
     assign dataOutBus = bus_write;
     wire [7:0] page_address = { memory_address[15:11], page_table_base };
-    wire [7:0] page_table_out = (page_address & 1) == 0 ? { page_table_hi_even[page_address[7:1]], page_table_lo_even[page_address[7:1]] } : { page_table_hi_odd[page_address[7:1]], page_table_lo_odd[page_address[7:1]] };
+    wire [7:0] page_table_out = page_address & 1 == 0 ? { page_table_hi_even[page_address[7:1]], page_table_lo_even[page_address[7:1]] } : { page_table_hi_odd[page_address[7:1]], page_table_lo_odd[page_address[7:1]] };
     wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
     assign addressBus = virtual_address;
     // Register space read mux
@@ -523,7 +523,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
                 3: ; // enable F11 addressable latch, machine state, bus state, A0-2 on F11 are B1-3 and D input is B0
                 4: ;
                 5: begin
-                    if ((page_address & 1) == 0) begin
+                    if (page_address & 1 == 0) begin
                        page_table_lo_even[page_address[7:1]] <= result_register[3:0];
                        page_table_hi_even[page_address[7:1]] <= result_register[7:4];
                     end else begin
