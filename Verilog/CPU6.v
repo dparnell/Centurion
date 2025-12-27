@@ -24,12 +24,17 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     integer i;
     initial begin
         cycle_counter = 0;
-        for (i=0; i<256; i=i+1) page_table[i] = 0;
+        for (i=0; i<127; i=i+1) begin
+            page_table_lo_even[i] = 0;
+            page_table_hi_even[i] = 0;
+            page_table_lo_odd[i] = 0;
+            page_table_hi_odd[i] = 0;
+        end
     end
 
     assign dataOutBus = bus_write;
     wire [7:0] page_address = { memory_address[15:11], page_table_base };
-    wire [7:0] page_table_out = page_table[page_address];
+    wire [7:0] page_table_out = page_address & 1 == 0 ? { page_table_hi_even[page_address >> 1], page_table_lo_even[page_address >> 1] } : { page_table_hi_odd[page_address >> 1], page_table_lo_odd[page_address >> 1] };
     wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
     assign addressBus = virtual_address;
     // Register space read mux
@@ -40,7 +45,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
      */
 
     wire instruction_start = uc_rom_address_pipe == 11'h101;
-    reg [31:0] cycle_counter;
+    reg [15:0] cycle_counter;
     assign pc_increment = h11 == 5 ? 1 : 0;
     reg [10:0] uc_rom_address_pipe;
 
@@ -75,6 +80,13 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     reg [2:0] page_table_base;
     // write delay
     reg writEnDelayed;
+
+    // Page table B9/B10 93L422 - 2 x 256 x 4bit RAM
+    // NOTE: The page table has been broken up into smaller chunks to get it to fit in the Tang Nano 9K
+    reg [3:0] page_table_lo_even[0:127];
+    reg [3:0] page_table_hi_even[0:127];
+    reg [3:0] page_table_lo_odd[0:127];
+    reg [3:0] page_table_hi_odd[0:127];
 
     // 6309 ROM
     wire [7:0] map_rom_address = DPBus;
@@ -208,9 +220,6 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
 
     assign alu1_q3_in = alu0_ram0_out;
     assign alu0_ram0_in = alu1_q3_out;
-
-    // Page table B9/B10 93L422 - 256 x 4 RAM
-    reg [3:0] page_table[0:255];
 
     // Decoders
     // d2d3 is decoded before pipeline, but outputs are registered.
@@ -513,7 +522,15 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
                 2: ;
                 3: ; // enable F11 addressable latch, machine state, bus state, A0-2 on F11 are B1-3 and D input is B0
                 4: ;
-                5: page_table[page_address] <= result_register;
+                5: begin
+                    if (page_address & 1 == 0) begin
+                       page_table_lo_even[page_address >> 1] <= result_register[3:0];
+                       page_table_hi_even[page_address >> 1] <= result_register[7:4];
+                    end else begin
+                       page_table_lo_odd[page_address >> 1] <= result_register[3:0];
+                       page_table_hi_odd[page_address >> 1] <= result_register[7:4];
+                    end
+                   end
                 6: // Load work_address low byte
                     begin
                         work_address[7:0] <= result_register;
