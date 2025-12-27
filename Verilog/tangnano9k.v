@@ -95,8 +95,6 @@ endmodule
 module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, input uartTx, output uartRx);
     initial begin
         reset = 0;
-        int_reqest = 1;
-        int_req_num = 0;
     end
 
     assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~leds;
@@ -105,12 +103,6 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
 
     wire int_reqn;
     wire [3:0] irq_number;
-
-    reg int_request;
-    reg [3:0] int_req_num;
-
-    assign int_reqest = int_reqn;
-    assign irq_number = int_req_num;
 
     wire writeEnBus;
     wire [7:0] data_c2r, data_r2c;

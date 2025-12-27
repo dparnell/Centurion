@@ -73,14 +73,11 @@ module CPU6TestBench;
     CPU6 cpu(reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
-    reg int_reqestn;
-    assign int_reqn = int_reqestn;
+
 
     initial begin
         $dumpfile("vcd/CPUTestBench.vcd");
         $dumpvars(0, CPU6TestBench);
-
-        int_reqestn = 1;
 
         //$write("hellorld: ");
         //$readmemh("programs/hellorld.txt", ram.rom_cells);
