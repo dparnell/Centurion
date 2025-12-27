@@ -100,10 +100,12 @@ module CPU6TestBench;
     wire [7:0] data_c2r, data_r2c;
     wire [18:0] addressBus;
     wire clock;
+    wire int_reqn;
+    wire [3:0] irq_number;
     Clock cg0(clock);
     Memory ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
     reg reset;
-    CPU6 cpu(reset, clock, data_r2c, writeEnBus, addressBus, data_c2r);
+    CPU6 cpu(reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
 
