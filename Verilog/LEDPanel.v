@@ -9,7 +9,7 @@ module LEDPanel(input wire clock, input wire [18:0] address, input wire write_en
     always @(posedge clock) begin
         if (write_en == 1) begin
             if (address == 19'h5c00) begin
-                //$display("leds set: %x", data_in);
+                $display("leds set: %x", data_in);
                 leds <= data_in;
             end
         end

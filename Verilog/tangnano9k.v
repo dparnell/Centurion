@@ -110,8 +110,8 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire [7:0] leds;
 
     Gowin_rPLL pll(
-        .clkout(clk),        // 81MHZ psram clock
-        .clkoutp(clk_p),     // 81MHZ psram clock phase shifted (90 degrees)
+        .clkout(ram_clk),        // 81MHZ psram clock
+        .clkoutp(ram_clk_p),     // 81MHZ psram clock phase shifted (90 degrees)
         .clkin(in_clk)      // 27Mhz system clock
     );
 
@@ -125,7 +125,7 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     PsramController #(
         .LATENCY(LATENCY)
     ) mem_ctrl (
-        .clk(clk), .clk_p(clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
+        .clk(ram_clk), .clk_p(ram_clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
         .addr(address), .din(din), .dout(dout), .busy(busy),
         .O_psram_ck(O_psram_ck), .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
         .O_psram_cs_n(O_psram_cs_n)
@@ -134,7 +134,7 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     Divide4 div(in_clk, clock);
     BlockRAM ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
     LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, data_r2c, leds);
-    MUX mux0(in_clk, clock, uartTx, uartRx, addressBus & 19'h0fff0 == 19'hf200 ? 1 : 0, address[3:0], writeEnBus, data_c2r, data_r2c, int_reqn, irq_number);
+    MUX mux0(in_clk, clock, uartTx, uartRx, addressBus & 19'hffff0 == 19'h0f200 ? 1 : 0, address[3:0], writeEnBus, data_c2r, data_r2c, int_reqn, irq_number);
 
     CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
 

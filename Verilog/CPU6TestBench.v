@@ -85,7 +85,7 @@ module CPU6TestBench;
 
 
     initial begin
-        $dumpfile("vcd/CPUTestBench.vcd");
+        $dumpfile("CPUTestBench.vcd");
         $dumpvars(0, CPU6TestBench);
 
         int_reqn = 1;
@@ -118,7 +118,7 @@ module CPU6TestBench;
 
         //$readmemh("programs/blink.txt", ram.rom_cells);
         //$display("running blink...");
-        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #20000000; sim_end = 1;
+        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #200000000; sim_end = 1;
         //wait(sim_end == 1);
 
         $display("All done!");
