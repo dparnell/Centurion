@@ -28,7 +28,7 @@ IO_LOC  "reset_btn" 3;
 IO_LOC  "btn2" 4;
 
 IO_LOC  "uartTx" 17;
-IO_PORT "uartTx" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+IO_PORT "uartTx" PULL_MODE=UP;
 
 IO_LOC  "uartRx" 18;
-IO_PORT "uartRx" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+IO_PORT "uartRx" PULL_MODE=UP;
