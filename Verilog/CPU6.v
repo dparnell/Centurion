@@ -75,7 +75,6 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
 
     reg [15:0] cycle_counter;
 
-
     integer i;
     initial begin
         cycle_counter = 0;
@@ -294,7 +293,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
                 5: ; // DMA interrupt active
                 6: ; // Parity error
                 7: begin
-                    //jsr_ = ~(int_enabled & ~int_reqn) ; // Interrupt
+                    jsr_ = ~(int_enabled & ~int_reqn) ; // Interrupt
                    end
             endcase
         end
@@ -407,7 +406,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
             8: ; // DPBus = translated address hi, 17:11 (17 down), and top 3 bits together
             9: DPBus = { ~condition_codes[0], ~condition_codes[1], ~condition_codes[2], ~condition_codes[3], 4'b0000 }; // low nibble is sense switches
             10: DPBus = bus_read;
-            11: DPBus = { irq_number, 4'hf}; // read ILR (interrupt level register?) { A8 4 bits, H14 4 bits }
+            11: DPBus = { interrupt_level, 4'hf}; // read ILR (interrupt level register?) { A8 4 bits, H14 4 bits }
             12: ; // read switch 2 other half of dip switches and condition codes?
             13: DPBus = constant;
             14: ;

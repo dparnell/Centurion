@@ -90,20 +90,20 @@ module CPU6TestBench;
 
         int_reqn = 1;
 
-        //$readmemh("programs/hellorld.txt", ram.rom_cells);
-        //$write("hellorld: ");
-        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
-        //wait(sim_end == 1);
+        $readmemh("programs/hellorld.txt", ram.rom_cells);
+        $write("hellorld: ");
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        wait(sim_end == 1);
 
-        //$write("bnz_test: ");
-        //$readmemh("programs/bnz_test.txt", ram.rom_cells);
-        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
-        //wait(sim_end == 1);
+        $readmemh("programs/bnz_test.txt", ram.rom_cells);
+        $write("bnz_test: ");
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        wait(sim_end == 1);
 
-        //$write("alu_test: ");
-        //$readmemh("programs/alu_test.txt", ram.rom_cells);
-        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
-        //wait(sim_end == 1);
+        $readmemh("programs/alu_test.txt", ram.rom_cells);
+        $write("alu_test: ");
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        wait(sim_end == 1);
 
         // $readmemh("programs/diag.txt", ram.rom_cells);
         // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
@@ -116,10 +116,10 @@ module CPU6TestBench;
         // $readmemh("programs/cylon.txt", ram.rom_cells);
         // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
 
-        $readmemh("programs/blink.txt", ram.rom_cells);
-        $display("running blink...");
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #200000000; sim_end = 1;
-        wait(sim_end == 1);
+        //$readmemh("programs/blink.txt", ram.rom_cells);
+        //$display("running blink...");
+        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #20000000; sim_end = 1;
+        //wait(sim_end == 1);
 
         $display("All done!");
         $finish;
