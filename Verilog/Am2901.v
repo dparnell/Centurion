@@ -16,12 +16,6 @@ module Am2901(input wire clock, input wire [3:0] din, input wire [3:0] aSel,
     input wire q0_in, input wire ram0_in, input wire q3_in, input wire ram3_in,
     output reg q0_out, output reg ram0_out, output reg q3_out, output reg ram3_out);
 
-    integer i;
-    initial begin
-        for (i=0;i<16;i=i+1) regs[i] = 0;
-        q = 0;
-    end
-
     reg [3:0] regs[0:15];
     reg [3:0] q;
     reg [4:0] f;
@@ -37,6 +31,12 @@ module Am2901(input wire clock, input wire [3:0] din, input wire [3:0] aSel,
     reg [3:0] fvalue;
     reg [3:0] p, g;
     reg c3, c4;
+
+    integer i;
+    initial begin
+        for (i=0;i<16;i=i+1) regs[i] = 0;
+        q = 0;
+    end
 
     always @(*) begin
         a = regs[aSel];

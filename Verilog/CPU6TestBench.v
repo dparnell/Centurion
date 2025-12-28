@@ -58,6 +58,20 @@ module Memory(input wire clock, input wire [18:0] address, input wire write_en, 
 endmodule
 
 module CPU6TestBench;
+
+
+    reg [8*64:1] ramfile;
+    wire writeEnBus;
+    wire [7:0] data_c2r, data_r2c;
+    wire [18:0] addressBus;
+    wire clock;
+    Clock cg0(clock);
+    Memory ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
+    reg reset;
+    CPU6 cpu(reset, clock, data_r2c, writeEnBus, addressBus, data_c2r);
+    reg sim_end;
+    wire [7:0] cc = data_c2r & 8'h7f;
+
     initial begin
         $dumpfile("vcd/CPUTestBench.vcd");
         $dumpvars(0, CPU6TestBench);
@@ -95,17 +109,6 @@ module CPU6TestBench;
         $finish;
     end
 
-    reg [8*64:1] ramfile;
-    wire writeEnBus;
-    wire [7:0] data_c2r, data_r2c;
-    wire [18:0] addressBus;
-    wire clock;
-    Clock cg0(clock);
-    Memory ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
-    reg reset;
-    CPU6 cpu(reset, clock, data_r2c, writeEnBus, addressBus, data_c2r);
-    reg sim_end;
-    wire [7:0] cc = data_c2r & 8'h7f;
 
     always @(posedge clock) begin
         if (writeEnBus == 1) begin

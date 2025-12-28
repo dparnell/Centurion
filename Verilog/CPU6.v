@@ -21,34 +21,7 @@
 module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus);
 
-    integer i;
-    initial begin
-        cycle_counter = 0;
-        for (i=0; i<256; i=i+1) page_table[i] = 0;
-    end
-
-    assign dataOutBus = bus_write;
-    wire [7:0] page_address = { memory_address[15:11], page_table_base };
-    wire [7:0] page_table_out = page_table[page_address];
-    wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
-    assign addressBus = virtual_address;
-    // Register space read mux
-    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus : dataInBus;
-
-    /*
-     * Instrumentation
-     */
-
-    wire instruction_start = uc_rom_address_pipe == 11'h101;
-    reg [31:0] cycle_counter;
-    assign pc_increment = h11 == 5 ? 1 : 0;
-    reg [10:0] uc_rom_address_pipe;
-
-    `ifdef TRACE_I
-        Instructions inst_map();
-    `endif
-
-    /*
+ /*
      * Rising edge triggered registers
      */
     // Microcode pipeline F5/H5/J5/K5/L5/M5 74LS377, E5/D5 74LS174
@@ -75,6 +48,47 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     reg [2:0] page_table_base;
     // write delay
     reg writEnDelayed;
+    // Page table B9/B10 93L422
+    reg [7:0] page_table[0:255];
+
+    assign dataOutBus = bus_write;
+    wire [7:0] page_address = { memory_address[15:11], page_table_base };
+    wire [7:0] page_table_out = page_table[page_address];
+    wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
+    assign addressBus = virtual_address;
+    // Register space read mux
+    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus : dataInBus;
+
+    // Decoders
+    // d2d3 is decoded before pipeline, but outputs are registered.
+    wire [3:0] d2d3 = pipeline[3:0];
+    wire [1:0] e7 = pipeline[14:13];
+    wire [2:0] h11 = pipeline[12:10];
+    wire [2:0] k11 = pipeline[9:7];
+    wire [2:0] e6 = pipeline[6:4];
+
+    /*
+     * Instrumentation
+     */
+
+    reg [10:0] uc_rom_address_pipe;
+    wire instruction_start = uc_rom_address_pipe == 11'h101;
+    reg [31:0] cycle_counter;
+    assign pc_increment = h11 == 5 ? 1 : 0;
+
+    `ifdef TRACE_I
+        Instructions inst_map();
+    `endif
+
+    integer i;
+    initial begin
+        cycle_counter = 0;
+        for (i=0; i<256; i=i+1) page_table[i] = 0;
+    end
+
+    // Internal Busses
+    reg [7:0] DPBus;
+    reg [7:0] FBus;   
 
     // 6309 ROM
     wire [7:0] map_rom_address = DPBus;
@@ -96,6 +110,12 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     wire [7:0] reg_ram_data_in = result_register;
     wire [7:0] reg_ram_data_out;
     RegisterRAM reg_ram(clock, rr_write_en, reg_ram_addr, reg_ram_data_in, reg_ram_data_out);
+
+    // Case control
+    wire case_ = pipeline[33];
+
+    // Microcode conditional subroutine calls
+    reg jsr_;
 
     // Sequencer shared nets
 
@@ -121,11 +141,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     Am2909 seq0(clock, seq0_din, seq0_rin, seq0_orin, seq0_s0, seq0_s1, seq_zero, seq0_cin,
         seq0_re, seq_fe, seq_pup, seq0_yout, seq0_cout);
 
-    // Case control
-    wire case_ = pipeline[33];
 
-    // Microcode conditional subroutine calls
-    reg jsr_;
 
     // Sequencer 1 (microcode address bits 7:4)
     wire [3:0] seq1_din = pipeline[23:20];
@@ -209,17 +225,6 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     assign alu1_q3_in = alu0_ram0_out;
     assign alu0_ram0_in = alu1_q3_out;
 
-    // Page table B9/B10 93L422
-    reg [7:0] page_table[0:255];
-
-    // Decoders
-    // d2d3 is decoded before pipeline, but outputs are registered.
-    wire [3:0] d2d3 = pipeline[3:0];
-    wire [1:0] e7 = pipeline[14:13];
-    wire [2:0] h11 = pipeline[12:10];
-    wire [2:0] k11 = pipeline[9:7];
-    wire [2:0] e6 = pipeline[6:4];
-
     // Muxes
 
     // J10 Link/carry mux 74LS151
@@ -252,10 +257,6 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
 
     // Constant (immediate data)
     wire [7:0] constant = ~pipeline[16+7:16];
-
-    // Internal Busses
-    reg [7:0] DPBus;
-    reg [7:0] FBus;
 
     wire bad_page_n = ~(virtual_address[18:13] == 6'h3f && virtual_address[11] == 1);
     wire reg_n = ~(~virtual_address[12] & ~(memory_address[9] | memory_address[10]) &
