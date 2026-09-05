@@ -154,19 +154,21 @@ module AddressDecode(input wire [18:0] address,
     assign ram_select = ~mux_select;
 endmodule
 
-module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, input uartTx, output uartRx);
+module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, input uartTx, output uartRx);
     // Power on reset. The board's reset button only asserts reset while it is held,
     // so without this the core never runs its own reset sequence and depends entirely
     // on the global set/reset leaving every flip flop at zero.
     initial begin
         reset = 1;
         por_counter = 0;
+        full_speed_d = 0;
     end
     reg [7:0] por_counter;
     // por_done is the most trustworthy "is the CPU clock running" indicator available:
     // it is an ordinary fabric counter on the CPU clock, so it can only have expired if
     // that clock actually ticked 255 times.
     wire por_done = por_counter == 8'hff;
+    reg full_speed_d;
 
     assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
     
@@ -228,8 +230,16 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     assign data_r2c = mux_select ? mux_data : ram_data;
 
     // The core is enabled 5 clocks in every 27, giving the original CPU6's 5MHz.
-    wire cpu_en;
-    ClockEnable cpu_clock_enable(clock, cpu_en);
+    //
+    // Holding btn2 runs it at the full 27MHz board clock instead. That is a bring-up
+    // aid: one bitstream can then say whether a fault depends on the clock enable,
+    // without reflashing to find out. Changing modes restarts the power on reset so
+    // the core always begins from a clean state.
+    wire cpu_en_slow;
+    ClockEnable cpu_clock_enable(clock, cpu_en_slow);
+
+    wire full_speed = ~btn2;            // buttons are active low
+    wire cpu_en = full_speed | cpu_en_slow;
 
     BlockRAM ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
@@ -240,7 +250,12 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
-        if (!por_done) begin
+        full_speed_d <= full_speed;
+        if (full_speed != full_speed_d) begin
+            // Speed changed, so run the core through reset again
+            por_counter <= 0;
+            reset <= 1;
+        end else if (!por_done) begin
             por_counter <= por_counter + 1;
             reset <= 1;
         end else begin
