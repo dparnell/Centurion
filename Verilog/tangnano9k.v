@@ -114,30 +114,6 @@ module ClockEnable #(
 endmodule
 
 
-/**
- * The original 256 byte memory, aliased across the whole address space, kept so the
- * board can be put back to a configuration that is known to have worked. It reads
- * asynchronously, so it becomes LUTRAM rather than block RAM. Only the small demo
- * programs fit; diag needs BoardMemory.
- */
-module BlockRAM(input wire clock, input wire enable, input wire [18:0] address, input wire write_en, input wire [7:0] data_in,
-    output wire [7:0] data_out);
-
-    reg [7:0] ram_cells[0:255];
-
-    initial begin
-        $readmemh("programs/serial.txt", ram_cells);
-    end
-
-    wire [7:0] mapped_address = address[7:0];
-    assign data_out = ram_cells[mapped_address];
-
-    always @(posedge clock) begin
-        if (enable && write_en == 1 && address[15:8] == 8'hff) begin
-            ram_cells[mapped_address] <= data_in;
-        end
-    end
-endmodule
 
 
 /**
@@ -305,12 +281,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire mux_uart_tx;
     assign uart_tx = btn2 ? mux_uart_tx : test_pattern_tx;   // buttons are active low
 
-    // Bisecting a board fault: the UART stopped working when the memory changed, and
-    // nothing in the RTL, the netlist or the pin placement explains it. BlockRAM is the
-    // 256 byte memory serial.txt printed correctly from; BoardMemory is the real map
-    // diag needs. Swap these two lines to move between them.
-    BlockRAM ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
-    // BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
+    BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
     MUX mux0(in_clk, clock, cpu_en, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
