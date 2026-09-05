@@ -114,9 +114,18 @@ module AddressDecode(input wire [18:0] address,
 endmodule
 
 module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, input uartTx, output uartRx);
+    // Power on reset. The board's reset button only asserts reset while it is held,
+    // so without this the core never runs its own reset sequence and depends entirely
+    // on the global set/reset leaving every flip flop at zero.
     initial begin
-        reset = 0;
+        reset = 1;
+        por_counter = 0;
     end
+    reg [7:0] por_counter;
+    // por_done is the most trustworthy "is the CPU clock running" indicator available:
+    // it is an ordinary fabric counter on the CPU clock, so it can only have expired if
+    // that clock actually ticked 255 times.
+    wire por_done = por_counter == 8'hff;
 
     assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
     
@@ -155,13 +164,16 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
         .O_psram_cs_n(O_psram_cs_n)
     );
 
-    // The divided CPU clock must be driven onto a global clock network. Left on general
-    // routing it picks up ~2.4ns of skew across the die, which shows up as hold time
-    // violations at the register file block RAM (cpu.reg_ram.memory.*.CLK).
-    wire clock_div;
-    wire clock;
-    Divide4 div(in_clk, clock_div);
-    BUFG clock_bufg(.I(clock_div), .O(clock));
+    // The CPU runs directly from the 27MHz input pin, which arrives on a real global
+    // clock network. It used to run from Divide4 through a BUFG, but a fabric driven
+    // global is exactly what went wrong on hardware: the watchdog reported the divided
+    // clock dead and reset stuck asserted, because the reset flop is clocked by it.
+    // Timing closes at about 44MHz for this domain, so 27MHz has plenty of margin.
+    //
+    // This runs the machine at 27MHz rather than the 3.375MHz the divider gave. To go
+    // back to a slower CPU, add a clock enable off this clock rather than a second
+    // clock domain, or take a divided output from the PLL.
+    wire clock = in_clk;
     // Peripheral read bus ---------------------------
     // Every readable peripheral drives its own data_out, and this module picks one.
     // Previously BlockRAM, LEDPanel and MUX were all wired straight onto data_r2c.
@@ -184,7 +196,12 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     Watchdog watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
-        reset <= ~reset_btn;
+        if (!por_done) begin
+            por_counter <= por_counter + 1;
+            reset <= 1;
+        end else begin
+            reset <= ~reset_btn;
+        end
     end
 endmodule
 
