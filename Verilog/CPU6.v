@@ -134,8 +134,13 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     wire seq_pup = pipeline[28];
     wire seq_zero = !reset;
 
-    // interrupt support
-    reg int_enabled;
+    // F11 addressable latch (machine state / bus state)
+    reg [7:0] f11;
+
+    // Interrupt support. Bit 0 of the F11 latch is the interrupt enable: the microcode
+    // for EI writes a 1 to it and DI writes a 0, which is how the bit was identified.
+    // It used to be an unassigned register, so interrupts could never fire at all.
+    wire int_enabled = f11[0];
 
     /*
      * Am2909/2911 Microsequencers
@@ -438,6 +443,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             bus_read <= 0;
             bus_write <= 0;
             page_table_base <= 0;
+            f11 <= 0;
         end else if (enable) begin
             pipeline <= uc_rom_data;
             uc_rom_address_pipe <= uc_rom_address;
@@ -529,7 +535,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                 0: ;
                 1: ;
                 2: ;
-                3: ; // enable F11 addressable latch, machine state, bus state, A0-2 on F11 are B1-3 and D input is B0
+                3: // F11 addressable latch: machine state and bus state. The address is
+                   // alu_b[3:1] and the data is alu_b[0], as the microcode trace above
+                   // already documented.
+                    f11[alu_b[3:1]] <= alu_b[0];
                 4: ;
                 5: ; // Page table write, see the dedicated block below
                 6: // Load work_address low byte
