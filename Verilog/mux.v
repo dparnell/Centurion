@@ -21,11 +21,7 @@ module MUX(
     input wire [7:0] data_in,
     output reg [7:0] data_out,
     output wire int_reqn,
-    output wire [3:0] irq_number,
-    // Reported for bring-up: which of the eight rates the control register selected,
-    // and whether parity is on. 0=75 1=300 2=1200 3=2400 4=4800 5=9600 6=19200 7=38400
-    output reg [2:0] baud_sel,
-    output wire cfg_parity_enabled
+    output wire [3:0] irq_number
 );
 
 // common stuff - default to 9600 7E1
@@ -35,7 +31,6 @@ module MUX(
 reg [19:0] divider = 27_000_000 / 9600;
 reg parity = 1;                 // 1 = even, 0 = odd
 reg parity_enabled = 1;
-initial baud_sel = 5;          // matches the 9600 power on default
 reg [3:0] data_bits = 7;
 reg stop_bits = 0;
 
@@ -70,7 +65,6 @@ always @(posedge cpu_clock) begin
                     parity_enabled <= data_in[4];
                     stop_bits <= data_in[5];
 
-                    baud_sel <= data_in[7:5];
                     case (data_in[7:5])
                         0: divider <= 27_000_000 / 75;
                         1: divider <= 27_000_000 / 300;
@@ -95,7 +89,6 @@ always @(posedge cpu_clock) begin
                 13: interrupts_enabled <= 0;
                 14: interrupts_enabled <= 1;
                 15: begin
-                    baud_sel <= 5;
                     divider <= 27_000_000 / 9600;
                     parity <= 1;
                     parity_enabled <= 1;
@@ -271,7 +264,6 @@ end
 // It clears when the CPU reads the byte out of the data register.
 assign int_reqn = ~(interrupts_enabled & byteReady);
 assign irq_number = interrupt_level;
-assign cfg_parity_enabled = parity_enabled;
 
 // CPU read port. The CPU samples the data bus in the same cycle that it drives the
 // address, so the read has to be combinational.

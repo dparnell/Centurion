@@ -116,51 +116,6 @@ endmodule
 
 
 
-/**
- * A standalone UART transmitter that sends one byte over and over, straight from a
- * counter, with no CPU and no MUX involved.
- *
- * This exists to separate a fault in the design from a fault in the wire. If holding
- * btn2 puts characters on a terminal then the pin, the board's USB serial adapter and
- * the host are all fine, and whatever is wrong is in the CPU or the MUX. If it puts
- * nothing on a terminal, nothing in the RTL can be at fault and the problem is physical.
- *
- * 8N1 rather than 7E1, because a terminal set for either will show something.
- */
-module UartTestPattern #(
-    parameter DIVIDER = 27_000_000 / 9600,
-    parameter [7:0] BYTE = 8'h55            // 0101_0101, an obvious pattern on a scope
-) (
-    input wire clock,
-    output reg tx
-);
-    reg [19:0] counter;
-    reg [9:0] shifter;
-    reg [3:0] bits_left;
-
-    initial begin
-        tx = 1;
-        counter = 0;
-        shifter = 10'h3ff;
-        bits_left = 0;
-    end
-
-    always @(posedge clock) begin
-        if (counter == DIVIDER) begin
-            counter <= 0;
-            tx <= shifter[0];
-            if (bits_left == 0) begin
-                shifter   <= { 1'b1, BYTE, 1'b0 };   // stop bit, data, start bit
-                bits_left <= 10;
-            end else begin
-                shifter   <= { 1'b1, shifter[9:1] };
-                bits_left <= bits_left - 1;
-            end
-        end else begin
-            counter <= counter + 1;
-        end
-    end
-endmodule
 
 /**
  * Peripheral decode for the CPU's 19 bit physical address bus.
@@ -182,7 +137,7 @@ module AddressDecode(input wire [18:0] address,
     assign ram_select = ~mux_select;
 endmodule
 
-module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx);
+module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx);
     // Change the PLL and these together to choose another PSRAM speed. These used to
     // sit at file scope, which is not legal Verilog and meant iverilog could not
     // elaborate this file, so the top level had never been simulated as a whole.
@@ -213,13 +168,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire [18:0] addressBus;
     wire [7:0] leds;
     wire [7:0] display_leds;
-    wire [2:0] baud_sel;
-    wire cfg_parity_enabled;
 
     // The LEDs are active low
     assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
     wire instruction_start;
-    wire [10:0] uc_address;
     wire cpu_alive;
 
     Gowin_rPLL pll(
@@ -266,81 +218,21 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     assign data_r2c = mux_select ? mux_data : ram_data;
 
     // The core is enabled 5 clocks in every 27, giving the original CPU6's 5MHz.
-    //
-    // Holding btn2 runs it at the full 27MHz board clock instead. That is a bring-up
-    // aid: one bitstream can then say whether a fault depends on the clock enable,
-    // without reflashing to find out. Changing modes restarts the power on reset so
-    // the core always begins from a clean state.
-    wire cpu_en_slow;
-    ClockEnable cpu_clock_enable(clock, cpu_en_slow);
-
-    wire cpu_en = cpu_en_slow;
-
-    // Holding btn2 drives the UART pin from the pattern generator instead of the MUX,
-    // which separates a fault in the design from a fault in the wire.
-    wire test_pattern_tx;
-    UartTestPattern pattern(clock, test_pattern_tx);
-    wire mux_uart_tx;
-    assign uart_tx = btn2 ? mux_uart_tx : test_pattern_tx;   // buttons are active low
+    wire cpu_en;
+    ClockEnable cpu_clock_enable(clock, cpu_en);
 
     BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
-    MUX mux0(in_clk, clock, cpu_en, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number, baud_sel, cfg_parity_enabled);
+    MUX mux0(in_clk, clock, cpu_en, uart_rx, uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
-    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start, uc_address);
+    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start);
 
     // Bring-up aid. diag never writes the LED panel, so while the core is alive the
     // LEDs would sit dark and tell us nothing. Until something does write the panel,
     // show a count of the bytes handed to the MUX data register instead: that says
     // whether the core is getting as far as talking to the serial channel, without
     // needing a terminal to be connected and correctly configured.
-    // The count of bytes written to the MUX said writes happen but nothing about what
-    // is in them, so latch the first byte instead and hold it. LED6 lights once a byte
-    // has been captured, and LED1..LED5 are bits 7..3 of it. serial.txt sends 'H'
-    // (0x48) first, which reads as LED2, LED5 and LED6 lit. Everything dark except
-    // LED6 means the core wrote a zero, which points at the memory rather than at the
-    // serial channel.
-    reg uart_used;
-    reg led_panel_used;
-    initial begin
-        uart_used = 0;
-        led_panel_used = 0;
-    end
-    always @(posedge clock) begin
-        if (cpu_en && writeEnBus && mux_select && addressBus[3:0] == 4'd1)
-            uart_used <= 1;
-        if (cpu_en && writeEnBus && addressBus == 19'h05c00)
-            led_panel_used <= 1;
-    end
-    // Bring-up display, so the board can be read without trusting a terminal:
-    //   LED1  a 0.5Hz reference, one second lit and one second dark IF the clock really
-    //         is 27MHz. Timing it says whether the whole design is clocked as assumed.
-    //   LED2-4  which rate the MUX control register selected, as a 3 bit number:
-    //         0=75 1=300 2=1200 3=2400 4=4800 5=9600 6=19200 7=38400
-    //   LED5  parity is enabled
-    //   LED6  a byte has been written to the data register
-    reg [24:0] second_counter;
-    reg second_tick;
-    initial begin
-        second_counter = 0;
-        second_tick = 0;
-    end
-    always @(posedge clock) begin
-        if (second_counter == 27_000_000 - 1) begin
-            second_counter <= 0;
-            second_tick <= ~second_tick;
-        end else begin
-            second_counter <= second_counter + 1;
-        end
-    end
-
-    // A program that uses the LED panel gets the LEDs; anything else, diag included,
-    // gets the bring-up display instead of six dark LEDs that say nothing.
-    wire [7:0] alive_leds = led_panel_used
-                          ? leds
-                          : { second_tick, baud_sel, cfg_parity_enabled, uart_used, 2'b00 };
-
-    Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, alive_leds, display_leds, cpu_alive);
+    Watchdog watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
         if (!por_done) begin
@@ -356,48 +248,20 @@ endmodule
 
 
 /**
- * CPU liveness watchdog and bring-up display.
+ * CPU liveness watchdog.
  *
- * Runs entirely in the free running 27MHz input clock domain so that it keeps working
- * even when the core is wedged. The CPU pulses heartbeat once per instruction
- * (microcode address 0x101). If no heartbeat arrives for TIMEOUT input clocks the core
- * is considered dead and the LEDs are taken over by a diagnostic display instead of
- * the LED panel register.
- *
- * Every diagnostic input is an ordinary fabric signal. An earlier version sampled the
- * CPU clock net itself, which nextpnr could not route to a LUT data input
- * ("Failed to route net 'clock' ... to X1Y16/D2 using dedicated routing"), so that bit
- * could not be trusted. por_done replaces it: it is a plain counter clocked by the CPU
- * clock, so it can only be set if that clock is really running.
- *
- * The Tang Nano 9K has six LEDs and the top level maps display_leds[7] to LED1 down to
- * display_leds[2] to LED6:
- *
- *   LED1  slow blink   the watchdog has taken over, the core is not executing
- *   LED2  lit          reset is asserted right now
- *   LED3-6             uc_max[10:7], the highest microcode address reached since reset,
- *                      as a 4 bit number, so the address is roughly that times 128
- *
- * The board is currently in a state where the clock runs, reset is released and the
- * microcode address keeps changing, but the instruction fetch at 0x101 is never
- * reached. LED3-6 say how far it gets. 0000 means it never leaves the first 128 words,
- * so it is stuck at the very start of the reset sequence. 0010 is the 0x100 region,
- * where the instruction fetch entry lives, so it gets all the way there and turns back.
- * A large or drifting value means the control word is being corrupted and the
- * sequencer is wandering the ROM, which points at the clock enable rather than at the
- * microcode.
+ * Runs in the free running 27MHz input clock domain so that it keeps working even when
+ * the core is wedged. CPU6 pulses heartbeat once per instruction, at microcode address
+ * 0x101. If none arrives for TIMEOUT clocks the core is considered dead and all eight
+ * LEDs blink together at 1Hz instead of showing the LED panel, so a stopped machine is
+ * obvious at a glance.
  */
 module Watchdog #(
     parameter TIMEOUT = 13_500_000,     // 0.5s at 27MHz with no instruction executed
-    parameter BLINK   = 13_500_000,     // 0.5s half period, so a 1Hz blink
-    parameter UC_DEAD = 6_750_000       // 0.25s without the microcode address moving
+    parameter BLINK   = 13_500_000      // 0.5s half period, so a 1Hz blink
 ) (
     input wire clock_in,                // 27MHz, always running
-    input wire reset_btn,               // raw button pin, active low
-    input wire cpu_reset,               // reset as presented to CPU6
-    input wire por_done,                // the power on reset counter has expired
     input wire heartbeat,               // pulses once per instruction
-    input wire [10:0] uc_address,       // microcode ROM address
     input wire [7:0] leds_in,           // normal LED panel value
     output wire [7:0] leds_out,
     output wire alive
@@ -412,29 +276,12 @@ module Watchdog #(
     reg blink;
     reg stalled;
 
-    reg [10:0] uc_address_d;
-    reg [23:0] uc_timer;
-    reg uc_moving;
-    reg beat_seen;
-
-    // Highest microcode address reached since the last reset. The core is known to be
-    // sequencing microcode without ever reaching the instruction fetch at 0x101, and
-    // this says where it actually gets to, which tells a core stuck waiting on
-    // something early apart from one whose control word is being corrupted and is
-    // wandering all over the ROM.
-    reg [10:0] uc_max;
-
     initial begin
         heartbeat_d = 0;
         stall_counter = 0;
         blink_counter = 0;
         blink = 0;
         stalled = 0;
-        uc_address_d = 0;
-        uc_timer = 0;
-        uc_moving = 0;
-        beat_seen = 0;
-        uc_max = 0;
     end
 
     always @(posedge clock_in) begin
@@ -443,7 +290,6 @@ module Watchdog #(
         if (heartbeat_edge) begin
             stall_counter <= 0;
             stalled <= 0;
-            beat_seen <= 1;
         end else if (stall_counter == TIMEOUT) begin
             stalled <= 1;
         end else begin
@@ -456,25 +302,10 @@ module Watchdog #(
         end else begin
             blink_counter <= blink_counter + 1;
         end
-
-        if (cpu_reset) uc_max <= 0;
-        else if (uc_address > uc_max) uc_max <= uc_address;
-
-        // Is the microsequencer still moving?
-        uc_address_d <= uc_address;
-        if (uc_address_d != uc_address) begin
-            uc_timer <= 0;
-            uc_moving <= 1;
-        end else if (uc_timer == UC_DEAD) begin
-            uc_moving <= 0;
-        end else begin
-            uc_timer <= uc_timer + 1;
-        end
     end
 
     assign alive = ~stalled;
-    assign leds_out = stalled ? { blink, cpu_reset, uc_max[10:7], 2'b00 }
-                              : leds_in;
+    assign leds_out = stalled ? {8{blink}} : leds_in;
 endmodule
 
 module Divide4(input wire clock_in, output reg clock_out);

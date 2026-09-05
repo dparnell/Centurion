@@ -36,44 +36,15 @@ module BUFG(input I, output O); assign O = I; endmodule
 module TopTB;
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;      // 27MHz
-    reg reset_btn = 1, btn2 = 1;           // pulled up, not pressed
+    reg reset_btn = 1;                     // pulled up, not pressed
     wire L1,L2,L3,L4,L5,L6,L7,L8;
     wire uart_tx;
     reg  uart_rx = 1;
 
-    tangnano9k dut(in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
+    tangnano9k dut(in_clk, reset_btn, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
 
     integer edges = 0;
     always @(uart_tx) edges = edges + 1;
-
-    // Decode the pin at 9600 8N1, which is what the test pattern generator sends
-    localparam BITP = 27_000_000/9600 + 1;
-    integer i;
-    reg [7:0] ch;
-    integer pattern_ok = 0, pattern_bad = 0;
-    integer high;
-    task decode_pattern;
-    begin
-        repeat (4) begin
-            // 0x55 alternates, so a bare negedge lands mid character. Wait for the line
-            // to sit idle high for more than a bit time first, then the next falling
-            // edge really is a start bit.
-            high = 0;
-            while (high < (3*BITP)/2) begin
-                @(posedge in_clk);
-                high = uart_tx ? high + 1 : 0;
-            end
-            @(negedge uart_tx);
-            repeat (BITP + BITP/2) @(posedge in_clk);
-            for (i = 0; i < 8; i = i + 1) begin
-                ch[i] = uart_tx;
-                repeat (BITP) @(posedge in_clk);
-            end
-            if (ch == 8'h55) pattern_ok = pattern_ok + 1;
-            else pattern_bad = pattern_bad + 1;
-        end
-    end
-    endtask
 
     initial begin
         #40000000;                          // 40ms of the CPU driving the pin
@@ -82,14 +53,6 @@ module TopTB;
         if (edges == 0) $display("FAIL: the top level never drives the UART pin");
         else $display("ok: the top level drives the UART pin from the MUX");
 
-        // Now hold btn2 and check the standalone pattern generator takes over
-        btn2 = 0;
-        decode_pattern;
-        $display("btn2 held: %0d bytes decoded as 0x55, %0d wrong", pattern_ok, pattern_bad);
-        if (pattern_ok == 4 && pattern_bad == 0)
-            $display("ok: the test pattern generator sends 0x55 at 9600 8N1");
-        else
-            $display("FAIL: the test pattern is wrong");
         $finish;
     end
 endmodule

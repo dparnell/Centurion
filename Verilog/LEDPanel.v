@@ -11,6 +11,10 @@
 module LEDPanel(input wire clock, input wire enable, input wire [18:0] address, input wire write_en, input wire [7:0] data_in,
     output reg [7:0] leds);
 
+    initial begin
+        leds = 0;
+    end
+
     always @(posedge clock) begin
         if (enable && write_en == 1) begin
             if (address == 19'h5c00) begin
