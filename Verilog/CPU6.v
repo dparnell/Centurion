@@ -403,7 +403,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             5: DPBus = reg_ram_data_out;
             6: DPBus = { ~memory_address[15:12], memory_address[11:8] };
             7: DPBus = memory_address[7:0];
-            8: ; // DPBus = translated address hi, 17:11 (17 down), and top 3 bits together
+            8: DPBus = page_table_out; // read the mapping RAM back, translated address hi
             9: DPBus = { ~condition_codes[0], ~condition_codes[1], ~condition_codes[2], ~condition_codes[3], 4'b0000 }; // low nibble is sense switches
             10: DPBus = bus_read;
             11: DPBus = 8'h0f; // read ILR (interrupt level register?) { A8 4 bits, H14 4 bits }
