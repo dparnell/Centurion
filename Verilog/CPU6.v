@@ -115,7 +115,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // Microcode ROM(s)
     wire [10:0] uc_rom_address;
     wire [55:0] uc_rom_data;
-    CodeROM uc_rom(uc_rom_address, uc_rom_data);
+    CodeROM uc_rom(clock, uc_rom_address, uc_rom_data);
 
     // Synchronous Register RAM
     wire bit53 = pipeline[53];

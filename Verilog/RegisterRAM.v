@@ -15,6 +15,10 @@ module RegisterRAM(input wire clock, input wire enable, input wire write_en, inp
     wire [7:0] register0 = memory[0];
     wire [7:0] register1 = memory[1];
 
+    // Both the read and the write are gated. Making the read free running is NOT
+    // equivalent: a write lands in the array on an enabled edge, and a free running
+    // read would then expose the new value part way through the same CPU cycle, where
+    // the gated read holds the value from the start of the cycle for all of it.
     always @(posedge clock) begin
         if (enable) begin
             data_out <= memory[address];
