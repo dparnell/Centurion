@@ -19,13 +19,19 @@ $(PROJ).fs: $(PROJ)_pnr.json
 load: $(PROJ).fs
 	openFPGALoader -b ${BOARD} $(PROJ).fs -f
 
-test: CPU6TestBench
+test: CPU6TestBench TopTestBench
 	vvp CPU6TestBench
+	vvp TopTestBench
+
+# Simulates the real top level, including the LEDs and the UART pin, with stubs for
+# the Gowin hard blocks. The other testbenches build their own replica of the board.
+TopTestBench: *.v
+	iverilog -o TopTestBench TopTestBench.v
 
 CPU6TestBench: *.v
 	iverilog -o CPU6TestBench CPU6TestBench.v
 
 clean:
-	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench
+	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench
 
 .PHONY: all prog clean

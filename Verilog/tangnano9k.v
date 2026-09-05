@@ -69,10 +69,6 @@ defparam rpll_inst.DEVICE = "GW1NR-9C";
 
 endmodule //Gowin_rPLL
 
-// Change PLL and here to choose another speed.
-localparam FREQ = 81_000_000;           
-localparam LATENCY = 3;
-
 
 
 
@@ -138,6 +134,21 @@ module AddressDecode(input wire [18:0] address,
 endmodule
 
 module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx);
+    // Change the PLL and these together to choose another PSRAM speed. These used to
+    // sit at file scope, which is not legal Verilog and meant iverilog could not
+    // elaborate this file, so the top level had never been simulated as a whole.
+    localparam FREQ = 81_000_000;
+    localparam LATENCY = 3;
+
+    reg reset;
+    reg [7:0] por_counter;
+    reg full_speed_d;
+
+    // por_done is the most trustworthy "is the CPU clock running" indicator available:
+    // it is an ordinary fabric counter on the CPU clock, so it can only have expired if
+    // that clock actually ticked 255 times.
+    wire por_done = por_counter == 8'hff;
+
     // Power on reset. The board's reset button only asserts reset while it is held,
     // so without this the core never runs its own reset sequence and depends entirely
     // on the global set/reset leaving every flip flop at zero.
@@ -146,16 +157,6 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         por_counter = 0;
         full_speed_d = 0;
     end
-    reg [7:0] por_counter;
-    // por_done is the most trustworthy "is the CPU clock running" indicator available:
-    // it is an ordinary fabric counter on the CPU clock, so it can only have expired if
-    // that clock actually ticked 255 times.
-    wire por_done = por_counter == 8'hff;
-    reg full_speed_d;
-
-    assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
-    
-    reg reset;
 
     wire int_reqn;
     wire [3:0] irq_number;
@@ -165,6 +166,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire [18:0] addressBus;
     wire [7:0] leds;
     wire [7:0] display_leds;
+
+    // The LEDs are active low
+    assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
     wire instruction_start;
     wire [10:0] uc_address;
     wire cpu_alive;
