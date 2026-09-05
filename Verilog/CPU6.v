@@ -20,7 +20,8 @@
  */
 module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     input wire int_reqn, input wire [3:0] irq_number,
-    output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus);
+    output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus,
+    output wire instruction_start);
 
     /*
      * Rising edge triggered registers
@@ -98,7 +99,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
      */
 
     reg [10:0] uc_rom_address_pipe;
-    wire instruction_start = uc_rom_address_pipe == 11'h101;
+    assign instruction_start = uc_rom_address_pipe == 11'h101;
     assign pc_increment = h11 == 5 ? 1 : 0;
 
     `ifdef TRACE_I

@@ -97,7 +97,7 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
         reset = 0;
     end
 
-    assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~leds;
+    assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
     
     reg reset;
 
@@ -108,6 +108,9 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire [7:0] data_c2r, data_r2c;
     wire [18:0] addressBus;
     wire [7:0] leds;
+    wire [7:0] display_leds;
+    wire instruction_start;
+    wire cpu_alive;
 
     Gowin_rPLL pll(
         .clkout(ram_clk),        // 81MHZ psram clock
@@ -142,11 +145,78 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, data_r2c, leds);
     MUX mux0(in_clk, clock, uartTx, uartRx, addressBus & 19'hffff0 == 19'h0f200 ? 1 : 0, address[3:0], writeEnBus, data_c2r, data_r2c, int_reqn, irq_number);
 
-    CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
+    CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start);
+
+    Watchdog watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
         reset <= ~reset_btn;
     end
+endmodule
+
+
+/**
+ * CPU liveness watchdog.
+ *
+ * Runs entirely in the free running 27MHz input clock domain so that it keeps working
+ * even when the divided CPU clock is stopped or the core is wedged. The CPU pulses
+ * heartbeat once per instruction (microcode address 0x101). If no heartbeat arrives
+ * for TIMEOUT input clocks the core is considered dead, and the LEDs are taken over
+ * by a slow blink of all eight LEDs instead of showing the LED panel register.
+ *
+ * A steady ~1Hz blink of all eight LEDs therefore means "the bitstream is loaded and
+ * the board is clocking, but the CPU6 is not executing instructions".
+ */
+module Watchdog #(
+    parameter TIMEOUT = 13_500_000,     // 0.5s at 27MHz with no instruction executed
+    parameter BLINK   = 13_500_000      // 0.5s half period, so a 1Hz blink
+) (
+    input wire clock_in,                // 27MHz, always running
+    input wire heartbeat,               // pulses once per instruction, CPU clock domain
+    input wire [7:0] leds_in,           // normal LED panel value
+    output wire [7:0] leds_out,
+    output wire alive
+);
+    // The CPU clock is derived from clock_in, so the heartbeat only needs edge detection
+    // rather than a full clock domain crossing.
+    reg heartbeat_d;
+    wire heartbeat_edge = heartbeat & ~heartbeat_d;
+
+    reg [23:0] stall_counter;
+    reg [23:0] blink_counter;
+    reg blink;
+    reg stalled;
+
+    initial begin
+        heartbeat_d = 0;
+        stall_counter = 0;
+        blink_counter = 0;
+        blink = 0;
+        stalled = 0;
+    end
+
+    always @(posedge clock_in) begin
+        heartbeat_d <= heartbeat;
+
+        if (heartbeat_edge) begin
+            stall_counter <= 0;
+            stalled <= 0;
+        end else if (stall_counter == TIMEOUT) begin
+            stalled <= 1;
+        end else begin
+            stall_counter <= stall_counter + 1;
+        end
+
+        if (blink_counter == BLINK) begin
+            blink_counter <= 0;
+            blink <= ~blink;
+        end else begin
+            blink_counter <= blink_counter + 1;
+        end
+    end
+
+    assign alive = ~stalled;
+    assign leds_out = stalled ? {8{blink}} : leds_in;
 endmodule
 
 module Divide4(input wire clock_in, output reg clock_out);
