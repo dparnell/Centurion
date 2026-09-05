@@ -244,19 +244,30 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // show a count of the bytes handed to the MUX data register instead: that says
     // whether the core is getting as far as talking to the serial channel, without
     // needing a terminal to be connected and correctly configured.
-    reg [7:0] uart_writes;
+    // The count of bytes written to the MUX said writes happen but nothing about what
+    // is in them, so latch the first byte instead and hold it. LED6 lights once a byte
+    // has been captured, and LED1..LED5 are bits 7..3 of it. serial.txt sends 'H'
+    // (0x48) first, which reads as LED2, LED5 and LED6 lit. Everything dark except
+    // LED6 means the core wrote a zero, which points at the memory rather than at the
+    // serial channel.
+    reg [7:0] first_uart_byte;
+    reg got_first;
     reg led_panel_used;
     initial begin
-        uart_writes = 0;
+        first_uart_byte = 0;
+        got_first = 0;
         led_panel_used = 0;
     end
     always @(posedge clock) begin
-        if (cpu_en && writeEnBus && mux_select && addressBus[3:0] == 4'd1)
-            uart_writes <= uart_writes + 1;
+        if (cpu_en && writeEnBus && mux_select && addressBus[3:0] == 4'd1 && !got_first) begin
+            first_uart_byte <= data_c2r;
+            got_first <= 1;
+        end
         if (cpu_en && writeEnBus && addressBus == 19'h05c00)
             led_panel_used <= 1;
     end
-    wire [7:0] alive_leds = led_panel_used ? leds : uart_writes;
+    wire [7:0] alive_leds = led_panel_used ? leds
+                                           : { first_uart_byte[7:3], got_first, 2'b00 };
 
     Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, alive_leds, display_leds, cpu_alive);
 
