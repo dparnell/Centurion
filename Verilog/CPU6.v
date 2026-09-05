@@ -21,7 +21,7 @@
 module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     input wire int_reqn, input wire [3:0] irq_number,
     output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus,
-    output wire instruction_start);
+    output wire instruction_start, output wire [10:0] uc_address);
 
     /*
      * Rising edge triggered registers
@@ -187,6 +187,9 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
         seq_pup, seq2_yout, seq2_cout);
 
     assign uc_rom_address = { seq2_yout, seq1_yout, seq0_yout };
+    // Exported so the board level watchdog can tell "microcode frozen" apart from
+    // "microcode running but never reaching an instruction fetch".
+    assign uc_address = uc_rom_address;
 
     /*
      * Am2901 bit slice Arithmetic Logic Units (ALUs)

@@ -140,6 +140,7 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire [7:0] leds;
     wire [7:0] display_leds;
     wire instruction_start;
+    wire [10:0] uc_address;
     wire cpu_alive;
 
     Gowin_rPLL pll(
@@ -191,9 +192,9 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, leds);
     MUX mux0(in_clk, clock, uartTx, uartRx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
-    CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start);
+    CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start, uc_address);
 
-    Watchdog watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
+    Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
         if (!por_done) begin
@@ -207,29 +208,52 @@ endmodule
 
 
 /**
- * CPU liveness watchdog.
+ * CPU liveness watchdog and bring-up display.
  *
  * Runs entirely in the free running 27MHz input clock domain so that it keeps working
- * even when the divided CPU clock is stopped or the core is wedged. The CPU pulses
- * heartbeat once per instruction (microcode address 0x101). If no heartbeat arrives
- * for TIMEOUT input clocks the core is considered dead, and the LEDs are taken over
- * by a slow blink of all eight LEDs instead of showing the LED panel register.
+ * even when the core is wedged. The CPU pulses heartbeat once per instruction
+ * (microcode address 0x101). If no heartbeat arrives for TIMEOUT input clocks the core
+ * is considered dead and the LEDs are taken over by a diagnostic display instead of
+ * the LED panel register.
  *
- * A steady ~1Hz blink of all eight LEDs therefore means "the bitstream is loaded and
- * the board is clocking, but the CPU6 is not executing instructions".
+ * Every diagnostic input is an ordinary fabric signal. An earlier version sampled the
+ * CPU clock net itself, which nextpnr could not route to a LUT data input
+ * ("Failed to route net 'clock' ... to X1Y16/D2 using dedicated routing"), so that bit
+ * could not be trusted. por_done replaces it: it is a plain counter clocked by the CPU
+ * clock, so it can only be set if that clock is really running.
+ *
+ * The Tang Nano 9K has six LEDs and the top level maps display_leds[7] to LED1 down to
+ * display_leds[2] to LED6:
+ *
+ *   LED1  slow blink   the watchdog has taken over, the core is not executing
+ *   LED2  lit          reset_btn reads high, i.e. the pin's pull up is working
+ *   LED3  lit          reset is asserted right now
+ *   LED4  lit          the power on reset finished, so the CPU clock is running
+ *   LED5  lit          the CPU has executed at least one instruction since power up
+ *   LED6  lit          the microcode address is still changing
+ *
+ * Reading it: LED4 dark means the CPU clock is dead. LED4 lit with LED3 lit means the
+ * core is being held in reset, and LED2 says whether the button pin is to blame. LED4
+ * lit, LED3 dark and LED6 dark means the microsequencer is frozen. LED6 lit with LED5
+ * dark means the microcode runs but never reaches an instruction fetch.
  */
 module Watchdog #(
     parameter TIMEOUT = 13_500_000,     // 0.5s at 27MHz with no instruction executed
-    parameter BLINK   = 13_500_000      // 0.5s half period, so a 1Hz blink
+    parameter BLINK   = 13_500_000,     // 0.5s half period, so a 1Hz blink
+    parameter UC_DEAD = 6_750_000       // 0.25s without the microcode address moving
 ) (
     input wire clock_in,                // 27MHz, always running
-    input wire heartbeat,               // pulses once per instruction, CPU clock domain
+    input wire reset_btn,               // raw button pin, active low
+    input wire cpu_reset,               // reset as presented to CPU6
+    input wire por_done,                // the power on reset counter has expired
+    input wire heartbeat,               // pulses once per instruction
+    input wire [10:0] uc_address,       // microcode ROM address
     input wire [7:0] leds_in,           // normal LED panel value
     output wire [7:0] leds_out,
     output wire alive
 );
-    // The CPU clock is derived from clock_in, so the heartbeat only needs edge detection
-    // rather than a full clock domain crossing.
+    // The CPU clock and clock_in are the same net, so the heartbeat only needs edge
+    // detection rather than a full clock domain crossing.
     reg heartbeat_d;
     wire heartbeat_edge = heartbeat & ~heartbeat_d;
 
@@ -238,12 +262,21 @@ module Watchdog #(
     reg blink;
     reg stalled;
 
+    reg [10:0] uc_address_d;
+    reg [23:0] uc_timer;
+    reg uc_moving;
+    reg beat_seen;
+
     initial begin
         heartbeat_d = 0;
         stall_counter = 0;
         blink_counter = 0;
         blink = 0;
         stalled = 0;
+        uc_address_d = 0;
+        uc_timer = 0;
+        uc_moving = 0;
+        beat_seen = 0;
     end
 
     always @(posedge clock_in) begin
@@ -252,6 +285,7 @@ module Watchdog #(
         if (heartbeat_edge) begin
             stall_counter <= 0;
             stalled <= 0;
+            beat_seen <= 1;
         end else if (stall_counter == TIMEOUT) begin
             stalled <= 1;
         end else begin
@@ -264,10 +298,23 @@ module Watchdog #(
         end else begin
             blink_counter <= blink_counter + 1;
         end
+
+        // Is the microsequencer still moving?
+        uc_address_d <= uc_address;
+        if (uc_address_d != uc_address) begin
+            uc_timer <= 0;
+            uc_moving <= 1;
+        end else if (uc_timer == UC_DEAD) begin
+            uc_moving <= 0;
+        end else begin
+            uc_timer <= uc_timer + 1;
+        end
     end
 
     assign alive = ~stalled;
-    assign leds_out = stalled ? {8{blink}} : leds_in;
+    assign leds_out = stalled ? { blink, reset_btn, cpu_reset, por_done,
+                                  beat_seen, uc_moving, 2'b00 }
+                              : leds_in;
 endmodule
 
 module Divide4(input wire clock_in, output reg clock_out);
