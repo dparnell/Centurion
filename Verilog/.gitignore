@@ -5,6 +5,7 @@ __pycache__/
 *.vcd
 
 CPU6TestBench
+TopTestBench
 *.bin
 *.rpt
 *.fs
