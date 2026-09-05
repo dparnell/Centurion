@@ -72,7 +72,7 @@ endmodule //Gowin_rPLL
 localparam FREQ = 81_000_000;           
 localparam LATENCY = 3;
 
-module BlockRAM(input wire clock, input wire [18:0] address, input wire write_en, input wire [7:0] data_in,
+module BlockRAM(input wire clock, input wire enable, input wire [18:0] address, input wire write_en, input wire [7:0] data_in,
     output wire [7:0] data_out);
 
     reg [7:0] ram_cells[0:255];
@@ -85,13 +85,54 @@ module BlockRAM(input wire clock, input wire [18:0] address, input wire write_en
     assign data_out = ram_cells[mapped_address]; 
 
     always @(posedge clock) begin
-        if (write_en == 1 && address[15:8] == 8'hff) begin
+        if (enable && write_en == 1 && address[15:8] == 8'hff) begin
             ram_cells[mapped_address] <= data_in;
         end
     end
 endmodule
 
 
+
+
+/**
+ * CPU clock enable.
+ *
+ * The original CPU6 ran at about 5MHz: DLY takes 22725 cycles and 4.55ms, which puts
+ * it at 4.995MHz. The board clock is 27MHz, which is not a multiple of 5MHz, so rather
+ * than dividing, accumulate. Add TICKS every clock and emit an enable whenever the
+ * accumulator reaches PERIOD, carrying the remainder forward. That gives exactly TICKS
+ * enables every PERIOD clocks, so 5 every 27 is exactly 5.000MHz on average and DLY
+ * takes exactly 4.545ms. An individual cycle is up to one 27MHz period (37ns) early or
+ * late, which a synchronous design cannot see.
+ *
+ * An enable rather than a divided clock keeps the whole design in the one clock domain
+ * that arrives from the input pin. Generating a second clock in fabric is what stopped
+ * the CPU running on hardware before.
+ */
+module ClockEnable #(
+    parameter TICKS  = 5,       // CPU MHz
+    parameter PERIOD = 27       // board clock MHz. TICKS + PERIOD must be under 256.
+) (
+    input wire clock,
+    output reg enable
+);
+    reg [7:0] acc;
+
+    initial begin
+        acc = 0;
+        enable = 0;
+    end
+
+    always @(posedge clock) begin
+        if (acc + TICKS >= PERIOD) begin
+            acc <= acc + TICKS - PERIOD;
+            enable <= 1;
+        end else begin
+            acc <= acc + TICKS;
+            enable <= 0;
+        end
+    end
+endmodule
 
 /**
  * Peripheral decode for the CPU's 19 bit physical address bus.
@@ -170,10 +211,8 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     // global is exactly what went wrong on hardware: the watchdog reported the divided
     // clock dead and reset stuck asserted, because the reset flop is clocked by it.
     // Timing closes at about 44MHz for this domain, so 27MHz has plenty of margin.
-    //
-    // This runs the machine at 27MHz rather than the 3.375MHz the divider gave. To go
-    // back to a slower CPU, add a clock enable off this clock rather than a second
-    // clock domain, or take a divided output from the PLL.
+    // The core itself is slowed to the original 5MHz by ClockEnable below rather than
+    // by a second clock.
     wire clock = in_clk;
     // Peripheral read bus ---------------------------
     // Every readable peripheral drives its own data_out, and this module picks one.
@@ -188,11 +227,15 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
 
     assign data_r2c = mux_select ? mux_data : ram_data;
 
-    BlockRAM ram(clock, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
-    LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, leds);
-    MUX mux0(in_clk, clock, uartTx, uartRx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
+    // The core is enabled 5 clocks in every 27, giving the original CPU6's 5MHz.
+    wire cpu_en;
+    ClockEnable cpu_clock_enable(clock, cpu_en);
 
-    CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start, uc_address);
+    BlockRAM ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
+    LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
+    MUX mux0(in_clk, clock, cpu_en, uartTx, uartRx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
+
+    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start, uc_address);
 
     Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, leds, display_leds, cpu_alive);
 
