@@ -30,8 +30,8 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
     // channel's 9600 7E1 power on default.
     integer i;
     initial begin
-        $readmemh("programs/diag.txt", rom_cells);
-        // $readmemh("programs/serial.txt", rom_cells);   // 9600 7E1
+        // $readmemh("programs/diag.txt", rom_cells);      // 19200 7N1
+        $readmemh("programs/serial.txt", rom_cells);   // 9600 7E1
         // $readmemh("programs/blink.txt", rom_cells);
         for (i = 0; i < 4096; i = i + 1) ram_cells[i] = 8'h00;
         for (i = 0; i < 4096; i = i + 1) low_ram_cells[i] = 8'h00;
