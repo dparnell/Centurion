@@ -213,6 +213,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire [18:0] addressBus;
     wire [7:0] leds;
     wire [7:0] display_leds;
+    wire [2:0] baud_sel;
+    wire cfg_parity_enabled;
 
     // The LEDs are active low
     assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
@@ -283,7 +285,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
-    MUX mux0(in_clk, clock, cpu_en, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
+    MUX mux0(in_clk, clock, cpu_en, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number, baud_sel, cfg_parity_enabled);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start, uc_address);
 
@@ -314,8 +316,29 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (cpu_en && writeEnBus && addressBus == 19'h05c00)
             led_panel_used <= 1;
     end
-    wire [7:0] alive_leds = led_panel_used ? leds
-                                           : { first_uart_byte[7:3], got_first, 2'b00 };
+    // Bring-up display, so the board can be read without trusting a terminal:
+    //   LED1  a 0.5Hz reference, one second lit and one second dark IF the clock really
+    //         is 27MHz. Timing it says whether the whole design is clocked as assumed.
+    //   LED2-4  which rate the MUX control register selected, as a 3 bit number:
+    //         0=75 1=300 2=1200 3=2400 4=4800 5=9600 6=19200 7=38400
+    //   LED5  parity is enabled
+    //   LED6  a byte has been written to the data register
+    reg [24:0] second_counter;
+    reg second_tick;
+    initial begin
+        second_counter = 0;
+        second_tick = 0;
+    end
+    always @(posedge clock) begin
+        if (second_counter == 27_000_000 - 1) begin
+            second_counter <= 0;
+            second_tick <= ~second_tick;
+        end else begin
+            second_counter <= second_counter + 1;
+        end
+    end
+
+    wire [7:0] alive_leds = { second_tick, baud_sel, cfg_parity_enabled, got_first, 2'b00 };
 
     Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, alive_leds, display_leds, cpu_alive);
 
