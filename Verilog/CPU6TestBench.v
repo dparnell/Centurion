@@ -77,7 +77,7 @@ module CPU6TestBench;
     Clock cg0(clock);
     Memory ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
     reg reset;
-    LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, data_r2c, leds);
+    LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, leds);
 
     CPU6 cpu(reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
     reg sim_end;

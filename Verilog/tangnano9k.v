@@ -75,11 +75,11 @@ localparam LATENCY = 3;
 module BlockRAM(input wire clock, input wire [18:0] address, input wire write_en, input wire [7:0] data_in,
     output wire [7:0] data_out);
 
+    reg [7:0] ram_cells[0:255];
+
     initial begin
         $readmemh("programs/blink.txt", ram_cells);
     end
-
-    reg [7:0] ram_cells[0:255];
 
     wire [7:0] mapped_address = address[7:0];
     assign data_out = ram_cells[mapped_address]; 
@@ -91,6 +91,27 @@ module BlockRAM(input wire clock, input wire [18:0] address, input wire write_en
     end
 endmodule
 
+
+
+/**
+ * Peripheral decode for the CPU's 19 bit physical address bus.
+ *
+ * The LED panel does its own decode because it is write only and never drives the
+ * read bus. Everything that can be read has to be decoded here so that exactly one
+ * device drives data_r2c.
+ */
+module AddressDecode(input wire [18:0] address,
+    output wire mux_select, output wire ram_select);
+
+    // MUX serial board, 16 registers. This matches the Diag MUX addresses used by
+    // CPU6TestBench.v (status 0x3f200, data 0x3f201) and by programs/hellorld.txt.
+    assign mux_select = (address & 19'h7fff0) == 19'h3f200;
+
+    // The block RAM answers everything else. It aliases its 256 bytes across the
+    // whole address space, which is what lets the reset vector fetch land on the
+    // start of the loaded program.
+    assign ram_select = ~mux_select;
+endmodule
 
 module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, input uartTx, output uartRx);
     initial begin
@@ -141,9 +162,22 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire clock;
     Divide4 div(in_clk, clock_div);
     BUFG clock_bufg(.I(clock_div), .O(clock));
-    BlockRAM ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
-    LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, data_r2c, leds);
-    MUX mux0(in_clk, clock, uartTx, uartRx, addressBus & 19'hffff0 == 19'h0f200 ? 1 : 0, address[3:0], writeEnBus, data_c2r, data_r2c, int_reqn, irq_number);
+    // Peripheral read bus ---------------------------
+    // Every readable peripheral drives its own data_out, and this module picks one.
+    // Previously BlockRAM, LEDPanel and MUX were all wired straight onto data_r2c.
+    // Simulation resolved the undriven outputs as z and let the RAM value through, but
+    // yosys reported a driver-driver conflict, resolved it to a constant and dropped
+    // ram_cells entirely, so on hardware the CPU only ever read 'x' (decoded as HLT).
+    wire mux_select, ram_select;
+    wire [7:0] ram_data, mux_data;
+
+    AddressDecode decode(addressBus, mux_select, ram_select);
+
+    assign data_r2c = mux_select ? mux_data : ram_data;
+
+    BlockRAM ram(clock, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
+    LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, leds);
+    MUX mux0(in_clk, clock, uartTx, uartRx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
     CPU6 cpu (reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start);
 

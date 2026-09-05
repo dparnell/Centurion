@@ -7,7 +7,7 @@ module MUX(
     input wire [4:0] address, 
     input wire write_en, 
     input wire [7:0] data_in,
-    output wire [7:0] data_out,
+    output reg [7:0] data_out,
     output wire int_reqn,
     output wire [3:0] irq_number
 );
@@ -63,11 +63,6 @@ always @(posedge cpu_clock) begin
                     data_bits = 7;
                     stop_bits = 0;
                 end
-            endcase
-        end else begin
-            case(address)
-                0: data_out = { 6'b000000, txState == TX_STATE_IDLE ? 1 : 0, byteReady}; // status register
-                1: data_out = data_in;
             endcase
         end
     end
@@ -221,6 +216,20 @@ always @(posedge bit_clock) begin
             end            
         end
     endcase      
+end
+
+// CPU read port. The CPU samples the data bus in the same cycle that it drives the
+// address, so the read has to be combinational. This used to live in the
+// posedge cpu_clock block above, which returned the previous cycle's value, and
+// drove data_out procedurally even though it was declared as a wire.
+always @(*) begin
+    data_out = 8'h00;
+    if (selected && !write_en) begin
+        case (address)
+            0: data_out = { 6'b000000, txState == TX_STATE_IDLE ? 1'b1 : 1'b0, byteReady }; // status register
+            1: data_out = dataIn;                                                           // received byte
+        endcase
+    end
 end
 
 endmodule
