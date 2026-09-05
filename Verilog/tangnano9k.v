@@ -300,19 +300,15 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // (0x48) first, which reads as LED2, LED5 and LED6 lit. Everything dark except
     // LED6 means the core wrote a zero, which points at the memory rather than at the
     // serial channel.
-    reg [7:0] first_uart_byte;
-    reg got_first;
+    reg uart_used;
     reg led_panel_used;
     initial begin
-        first_uart_byte = 0;
-        got_first = 0;
+        uart_used = 0;
         led_panel_used = 0;
     end
     always @(posedge clock) begin
-        if (cpu_en && writeEnBus && mux_select && addressBus[3:0] == 4'd1 && !got_first) begin
-            first_uart_byte <= data_c2r;
-            got_first <= 1;
-        end
+        if (cpu_en && writeEnBus && mux_select && addressBus[3:0] == 4'd1)
+            uart_used <= 1;
         if (cpu_en && writeEnBus && addressBus == 19'h05c00)
             led_panel_used <= 1;
     end
@@ -338,7 +334,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         end
     end
 
-    wire [7:0] alive_leds = { second_tick, baud_sel, cfg_parity_enabled, got_first, 2'b00 };
+    // A program that uses the LED panel gets the LEDs; anything else, diag included,
+    // gets the bring-up display instead of six dark LEDs that say nothing.
+    wire [7:0] alive_leds = led_panel_used
+                          ? leds
+                          : { second_tick, baud_sel, cfg_parity_enabled, uart_used, 2'b00 };
 
     Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, alive_leds, display_leds, cpu_alive);
 
