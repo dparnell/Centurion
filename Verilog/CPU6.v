@@ -52,11 +52,12 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     reg writEnDelayed;
 
     // Page table B9/B10 93L422 - 2 x 256 x 4bit RAM
-    // NOTE: The page table has been broken up into smaller chunks to get it to fit in the Tang Nano 9K
-    reg [3:0] page_table_lo_even[0:127];
-    reg [3:0] page_table_hi_even[0:127];
-    reg [3:0] page_table_lo_odd[0:127];
-    reg [3:0] page_table_hi_odd[0:127];
+    // These map to LUTRAM, but only because they are written from their own always
+    // block further down. Writing them from the main block, which has an asynchronous
+    // reset, stops yosys mapping them and it falls back to plain registers: about 4700
+    // LUT4s instead of 32 LUTRAM cells, which is more than the Tang Nano 9K has.
+    reg [3:0] page_table_lo[0:255];
+    reg [3:0] page_table_hi[0:255];
 
 
     // Decoders
@@ -79,16 +80,14 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     integer i;
     initial begin
         cycle_counter = 0;
-        for (i=0; i<127; i=i+1) begin
-            page_table_lo_even[i] = 0;
-            page_table_hi_even[i] = 0;
-            page_table_lo_odd[i] = 0;
-            page_table_hi_odd[i] = 0;
+        for (i=0; i<256; i=i+1) begin
+            page_table_lo[i] = 0;
+            page_table_hi[i] = 0;
         end
     end
 
     wire [7:0] page_address = { memory_address[15:11], page_table_base };
-    wire [7:0] page_table_out = page_address & 1 == 0 ? { page_table_hi_even[page_address[7:1]], page_table_lo_even[page_address[7:1]] } : { page_table_hi_odd[page_address[7:1]], page_table_lo_odd[page_address[7:1]] };
+    wire [7:0] page_table_out = { page_table_hi[page_address], page_table_lo[page_address] };
     wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
     assign addressBus = virtual_address;
     // Register space read mux
@@ -532,15 +531,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
                 2: ;
                 3: ; // enable F11 addressable latch, machine state, bus state, A0-2 on F11 are B1-3 and D input is B0
                 4: ;
-                5: begin
-                    if (page_address & 1 == 0) begin
-                       page_table_lo_even[page_address[7:1]] <= result_register[3:0];
-                       page_table_hi_even[page_address[7:1]] <= result_register[7:4];
-                    end else begin
-                       page_table_lo_odd[page_address[7:1]] <= result_register[3:0];
-                       page_table_hi_odd[page_address[7:1]] <= result_register[7:4];
-                    end
-                   end
+                5: ; // Page table write, see the dedicated block below
                 6: // Load work_address low byte
                     begin
                         work_address[7:0] <= result_register;
@@ -550,6 +541,22 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
                     end
                 7: begin bus_write <= FBus; writEnDelayed <= 1; end
             endcase
+        end
+    end
+
+    /*
+     * Page table write port.
+     *
+     * This deliberately lives in its own always block with no asynchronous reset. The
+     * reset branch above never touches the page table, so the behaviour is identical,
+     * but yosys will only map a memory to LUTRAM when its write port is free of an
+     * async reset. Merged into the block above the table costs about 4700 LUT4s and
+     * does not fit the device.
+     */
+    always @(posedge clock) begin
+        if (reset == 0 && k11 == 5) begin
+            page_table_lo[page_address] <= result_register[3:0];
+            page_table_hi[page_address] <= result_register[7:4];
         end
     end
 endmodule
