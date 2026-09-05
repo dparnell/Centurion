@@ -6,6 +6,7 @@ __pycache__/
 
 CPU6TestBench
 TopTestBench
+DiagTestBench
 *.bin
 *.rpt
 *.fs
