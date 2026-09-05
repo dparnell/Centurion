@@ -1,0 +1,256 @@
+01 // NOP
+01 // NOP
+81 // LDAL #f200   ; wait for 'H'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #48     ; 'H'
+48
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for 'e'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #65     ; 'e'
+65
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for 'l'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #6c     ; 'l'
+6c
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for 'l'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #6c     ; 'l'
+6c
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for 'o'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #6f     ; 'o'
+6f
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for 'r'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #72     ; 'r'
+72
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for 'l'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #6c     ; 'l'
+6c
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for 'd'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #64     ; 'd'
+64
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for '!'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #21     ; '!'
+21
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for '\r'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #0d     ; '\r'
+0d
+a1 // STAL #f201   ; send it
+f2
+01
+81 // LDAL #f200   ; wait for '\n'
+f2
+00
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+2d // SLAL
+17 // BP -11       ; still busy
+f5
+80 // LDAL #0a     ; '\n'
+0a
+a1 // STAL #f201   ; send it
+f2
+01
+71 // JMP #8002    ; round again
+80
+02
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
+01
