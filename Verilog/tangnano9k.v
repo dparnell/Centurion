@@ -139,6 +139,53 @@ module BlockRAM(input wire clock, input wire enable, input wire [18:0] address, 
     end
 endmodule
 
+
+/**
+ * A standalone UART transmitter that sends one byte over and over, straight from a
+ * counter, with no CPU and no MUX involved.
+ *
+ * This exists to separate a fault in the design from a fault in the wire. If holding
+ * btn2 puts characters on a terminal then the pin, the board's USB serial adapter and
+ * the host are all fine, and whatever is wrong is in the CPU or the MUX. If it puts
+ * nothing on a terminal, nothing in the RTL can be at fault and the problem is physical.
+ *
+ * 8N1 rather than 7E1, because a terminal set for either will show something.
+ */
+module UartTestPattern #(
+    parameter DIVIDER = 27_000_000 / 9600,
+    parameter [7:0] BYTE = 8'h55            // 0101_0101, an obvious pattern on a scope
+) (
+    input wire clock,
+    output reg tx
+);
+    reg [19:0] counter;
+    reg [9:0] shifter;
+    reg [3:0] bits_left;
+
+    initial begin
+        tx = 1;
+        counter = 0;
+        shifter = 10'h3ff;
+        bits_left = 0;
+    end
+
+    always @(posedge clock) begin
+        if (counter == DIVIDER) begin
+            counter <= 0;
+            tx <= shifter[0];
+            if (bits_left == 0) begin
+                shifter   <= { 1'b1, BYTE, 1'b0 };   // stop bit, data, start bit
+                bits_left <= 10;
+            end else begin
+                shifter   <= { 1'b1, shifter[9:1] };
+                bits_left <= bits_left - 1;
+            end
+        end else begin
+            counter <= counter + 1;
+        end
+    end
+endmodule
+
 /**
  * Peripheral decode for the CPU's 19 bit physical address bus.
  *
@@ -168,7 +215,6 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     reg reset;
     reg [7:0] por_counter;
-    reg full_speed_d;
 
     // por_done is the most trustworthy "is the CPU clock running" indicator available:
     // it is an ordinary fabric counter on the CPU clock, so it can only have expired if
@@ -181,7 +227,6 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     initial begin
         reset = 1;
         por_counter = 0;
-        full_speed_d = 0;
     end
 
     wire int_reqn;
@@ -251,17 +296,14 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire cpu_en_slow;
     ClockEnable cpu_clock_enable(clock, cpu_en_slow);
 
-    // btn2 runs the core faster for bring-up. It cannot simply ungate the enable: the
-    // microcode ROM and register file read every clock and the control word is held in
-    // CPU6's pipeline register, so there must be at least two clocks between enabled
-    // cycles. One in two gives 13.5MHz, which is plenty to tell a speed related fault
-    // from any other kind.
-    reg half;
-    initial half = 0;
-    always @(posedge clock) half <= ~half;
+    wire cpu_en = cpu_en_slow;
 
-    wire full_speed = ~btn2;            // buttons are active low
-    wire cpu_en = full_speed ? half : cpu_en_slow;
+    // Holding btn2 drives the UART pin from the pattern generator instead of the MUX,
+    // which separates a fault in the design from a fault in the wire.
+    wire test_pattern_tx;
+    UartTestPattern pattern(clock, test_pattern_tx);
+    wire mux_uart_tx;
+    assign uart_tx = btn2 ? mux_uart_tx : test_pattern_tx;   // buttons are active low
 
     // Bisecting a board fault: the UART stopped working when the memory changed, and
     // nothing in the RTL, the netlist or the pin placement explains it. BlockRAM is the
@@ -270,7 +312,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     BlockRAM ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     // BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
-    MUX mux0(in_clk, clock, cpu_en, uart_rx, uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
+    MUX mux0(in_clk, clock, cpu_en, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start, uc_address);
 
@@ -307,12 +349,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, alive_leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
-        full_speed_d <= full_speed;
-        if (full_speed != full_speed_d) begin
-            // Speed changed, so run the core through reset again
-            por_counter <= 0;
-            reset <= 1;
-        end else if (!por_done) begin
+        if (!por_done) begin
             por_counter <= por_counter + 1;
             reset <= 1;
         end else if (cpu_en) begin
