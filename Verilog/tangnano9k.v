@@ -78,7 +78,8 @@ module BlockRAM(input wire clock, input wire enable, input wire [18:0] address, 
     reg [7:0] ram_cells[0:255];
 
     initial begin
-        $readmemh("programs/blink.txt", ram_cells);
+        $readmemh("programs/serial.txt", ram_cells);
+        // $readmemh("programs/blink.txt", ram_cells);
     end
 
     wire [7:0] mapped_address = address[7:0];
