@@ -8,9 +8,17 @@ module MUX(
     input wire write_en, 
     input wire [7:0] data_in,
     output reg [7:0] data_out,
-    output wire int_reqn,
-    output wire [3:0] irq_number
+    output reg int_reqn,
+    output reg [3:0] irq_number
 );
+
+// The interrupt request is active low. It has to power up deasserted: CPU6 gates its
+// microsequencers with jsr_ = ~(int_enabled & ~int_reqn), so a stuck-asserted request
+// stops the microcode dead and the CPU never executes a single instruction.
+initial begin
+    int_reqn = 1;
+    irq_number = 0;
+end
 
 // common stuff - default to 9600 7E1
 
@@ -20,8 +28,9 @@ reg parity_enabled = 1;
 reg [3:0] data_bits = 7;
 reg stop_bits = 0;
 
+reg [7:0] output_data;      // byte handed to the transmitter
 reg interrupts_enabled = 0;
-reg [3:0] interupt_level = 0;
+reg [3:0] interrupt_level = 0;
 
 // CPU interface
 always @(posedge cpu_clock) begin
@@ -82,8 +91,8 @@ localparam RX_STATE_READ_WAIT = 2;
 localparam RX_STATE_READ = 3;
 localparam RX_STATE_STOP_BIT = 5;
 
-always @(posedge clk) begin
-    int_reqn = 1;
+always @(posedge bit_clock) begin
+    int_reqn <= 1;
 
     case (rxState)
         RX_STATE_IDLE: begin
@@ -95,7 +104,7 @@ always @(posedge clk) begin
             end
         end 
         RX_STATE_START_BIT: begin
-            if (rxCounter == delay[15:1]) begin
+            if (rxCounter == divider[15:1]) begin   // sample half a bit in
                 rxState <= RX_STATE_READ_WAIT;
                 rxCounter <= 1;
             end else 
@@ -103,7 +112,7 @@ always @(posedge clk) begin
         end
         RX_STATE_READ_WAIT: begin
             rxCounter <= rxCounter + 1;
-            if ((rxCounter + 1) == DELAY_FRAMES) begin
+            if ((rxCounter + 1) == divider) begin
                 rxState <= RX_STATE_READ;
             end
         end
@@ -118,14 +127,14 @@ always @(posedge clk) begin
         end
         RX_STATE_STOP_BIT: begin
             rxCounter <= rxCounter + 1;
-            if ((rxCounter + 1) == DELAY_FRAMES) begin
+            if ((rxCounter + 1) == divider) begin
                 rxState <= RX_STATE_IDLE;
                 rxCounter <= 0;
                 byteReady <= 1;
 
-                if (int_enabled) begin
-                    irq_number = interrupt_level;
-                    int_reqn = 0;
+                if (interrupts_enabled) begin
+                    irq_number <= interrupt_level;
+                    int_reqn <= 0;
                 end
             end
         end
@@ -143,7 +152,6 @@ localparam TX_STATE_PARITY_BIT = 3;
 localparam TX_STATE_STOP_BIT = 4;
 localparam TX_STATE_STOP_BIT_2 = 5;
 
-reg [7:0] output_data;
 reg [3:0] txState = TX_STATE_IDLE;
 reg [24:0] txCounter = 0;
 reg txPinRegister = 1;
@@ -151,13 +159,12 @@ reg [2:0] txBitNumber = 0;
 
 assign uart_tx = txPinRegister;
 wire parity_bit;
-assign parity_bit = parity_enabled ? ^UI[7:0] : 1'b1;
+assign parity_bit = parity_enabled ? ^output_data[7:0] : 1'b1;
 
 always @(posedge bit_clock) begin
     case (txState)
         TX_STATE_IDLE: begin
             txCounter <= 0;
-            txByteCounter <= 0;
             txPinRegister <= 1;
         end 
         TX_STATE_START_BIT: begin
