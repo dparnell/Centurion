@@ -31,8 +31,10 @@ IO_PORT "reset_btn" PULL_MODE=UP;
 IO_LOC  "btn2" 4;
 IO_PORT "btn2" PULL_MODE=UP;
 
-IO_LOC  "uartTx" 17;
-IO_PORT "uartTx" PULL_MODE=UP;
+// Pin directions are from the FPGA's point of view: it transmits on 17 and receives
+// on 18. These used to be the other way round, so the design drove pin 18, which the
+// FT2232 also drives, and listened on pin 17, which nothing drives.
+IO_LOC  "uart_tx" 17;
 
-IO_LOC  "uartRx" 18;
-IO_PORT "uartRx" PULL_MODE=UP;
+IO_LOC  "uart_rx" 18;
+IO_PORT "uart_rx" PULL_MODE=UP;
