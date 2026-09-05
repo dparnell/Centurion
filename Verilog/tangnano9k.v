@@ -258,7 +258,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         end else if (!por_done) begin
             por_counter <= por_counter + 1;
             reset <= 1;
-        end else begin
+        end else if (cpu_en) begin
+            // Release reset only on an enabled cycle, so the core always leaves reset
+            // on a CPU clock edge whatever phase the clock enable happens to be in.
             reset <= ~reset_btn;
         end
     end
@@ -284,16 +286,18 @@ endmodule
  * display_leds[2] to LED6:
  *
  *   LED1  slow blink   the watchdog has taken over, the core is not executing
- *   LED2  lit          reset_btn reads high, i.e. the pin's pull up is working
- *   LED3  lit          reset is asserted right now
- *   LED4  lit          the power on reset finished, so the CPU clock is running
- *   LED5  lit          the CPU has executed at least one instruction since power up
- *   LED6  lit          the microcode address is still changing
+ *   LED2  lit          reset is asserted right now
+ *   LED3-6             uc_max[10:7], the highest microcode address reached since reset,
+ *                      as a 4 bit number, so the address is roughly that times 128
  *
- * Reading it: LED4 dark means the CPU clock is dead. LED4 lit with LED3 lit means the
- * core is being held in reset, and LED2 says whether the button pin is to blame. LED4
- * lit, LED3 dark and LED6 dark means the microsequencer is frozen. LED6 lit with LED5
- * dark means the microcode runs but never reaches an instruction fetch.
+ * The board is currently in a state where the clock runs, reset is released and the
+ * microcode address keeps changing, but the instruction fetch at 0x101 is never
+ * reached. LED3-6 say how far it gets. 0000 means it never leaves the first 128 words,
+ * so it is stuck at the very start of the reset sequence. 0010 is the 0x100 region,
+ * where the instruction fetch entry lives, so it gets all the way there and turns back.
+ * A large or drifting value means the control word is being corrupted and the
+ * sequencer is wandering the ROM, which points at the clock enable rather than at the
+ * microcode.
  */
 module Watchdog #(
     parameter TIMEOUT = 13_500_000,     // 0.5s at 27MHz with no instruction executed
@@ -325,6 +329,13 @@ module Watchdog #(
     reg uc_moving;
     reg beat_seen;
 
+    // Highest microcode address reached since the last reset. The core is known to be
+    // sequencing microcode without ever reaching the instruction fetch at 0x101, and
+    // this says where it actually gets to, which tells a core stuck waiting on
+    // something early apart from one whose control word is being corrupted and is
+    // wandering all over the ROM.
+    reg [10:0] uc_max;
+
     initial begin
         heartbeat_d = 0;
         stall_counter = 0;
@@ -335,6 +346,7 @@ module Watchdog #(
         uc_timer = 0;
         uc_moving = 0;
         beat_seen = 0;
+        uc_max = 0;
     end
 
     always @(posedge clock_in) begin
@@ -357,6 +369,9 @@ module Watchdog #(
             blink_counter <= blink_counter + 1;
         end
 
+        if (cpu_reset) uc_max <= 0;
+        else if (uc_address > uc_max) uc_max <= uc_address;
+
         // Is the microsequencer still moving?
         uc_address_d <= uc_address;
         if (uc_address_d != uc_address) begin
@@ -370,8 +385,7 @@ module Watchdog #(
     end
 
     assign alive = ~stalled;
-    assign leds_out = stalled ? { blink, reset_btn, cpu_reset, por_done,
-                                  beat_seen, uc_moving, 2'b00 }
+    assign leds_out = stalled ? { blink, cpu_reset, uc_max[10:7], 2'b00 }
                               : leds_in;
 endmodule
 
