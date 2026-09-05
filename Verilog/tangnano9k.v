@@ -239,7 +239,26 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start, uc_address);
 
-    Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, leds, display_leds, cpu_alive);
+    // Bring-up aid. diag never writes the LED panel, so while the core is alive the
+    // LEDs would sit dark and tell us nothing. Until something does write the panel,
+    // show a count of the bytes handed to the MUX data register instead: that says
+    // whether the core is getting as far as talking to the serial channel, without
+    // needing a terminal to be connected and correctly configured.
+    reg [7:0] uart_writes;
+    reg led_panel_used;
+    initial begin
+        uart_writes = 0;
+        led_panel_used = 0;
+    end
+    always @(posedge clock) begin
+        if (cpu_en && writeEnBus && mux_select && addressBus[3:0] == 4'd1)
+            uart_writes <= uart_writes + 1;
+        if (cpu_en && writeEnBus && addressBus == 19'h05c00)
+            led_panel_used <= 1;
+    end
+    wire [7:0] alive_leds = led_panel_used ? leds : uart_writes;
+
+    Watchdog watchdog(in_clk, reset_btn, reset, por_done, instruction_start, uc_address, alive_leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
         full_speed_d <= full_speed;
