@@ -238,8 +238,17 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire cpu_en_slow;
     ClockEnable cpu_clock_enable(clock, cpu_en_slow);
 
+    // btn2 runs the core faster for bring-up. It cannot simply ungate the enable: the
+    // microcode ROM and register file read every clock and the control word is held in
+    // CPU6's pipeline register, so there must be at least two clocks between enabled
+    // cycles. One in two gives 13.5MHz, which is plenty to tell a speed related fault
+    // from any other kind.
+    reg half;
+    initial half = 0;
+    always @(posedge clock) half <= ~half;
+
     wire full_speed = ~btn2;            // buttons are active low
-    wire cpu_en = full_speed | cpu_en_slow;
+    wire cpu_en = full_speed ? half : cpu_en_slow;
 
     BlockRAM ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);

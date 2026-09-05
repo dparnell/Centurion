@@ -14,7 +14,7 @@
  * It includes two RAM banks and one ROM.
  * Writing to the MUX UART prints to the console.
  */
-module Memory(input wire clock, input wire [18:0] address, input wire write_en, input wire [7:0] data_in,
+module Memory(input wire clock, input wire enable, input wire [18:0] address, input wire write_en, input wire [7:0] data_in,
     output reg [7:0] data_out);
 
     reg [7:0] rom_cells[0:8191];
@@ -53,7 +53,7 @@ module Memory(input wire clock, input wire [18:0] address, input wire write_en, 
     end
 
     always @(posedge clock) begin
-        if (write_en) begin
+        if (enable && write_en) begin
             if (ram_select) ram_cells[low12] <= data_in;
             if (low_ram_select) low_ram_cells[low12] <= data_in;
         end
@@ -75,13 +75,18 @@ module CPU6TestBench;
     assign leds = led_reg;
 
     Clock cg0(clock);
-    Memory ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
-    reg reset;
-    // Simulation runs the core on every clock; the board level clock enable that
-    // slows it to 5MHz is a property of the board, not of the CPU.
-    LEDPanel panel(clock, 1'b1, addressBus, writeEnBus, data_c2r, leds);
+    // The core is driven through a clock enable here too. It cannot be tied high: the
+    // microcode ROM and register file read every clock and CPU6 holds the control word
+    // in its pipeline register, so enabled cycles must be at least two clocks apart.
+    // One in two keeps simulation fast while matching the board's timing relationship.
+    reg cpu_en = 0;
+    always @(posedge clock) cpu_en <= ~cpu_en;
 
-    CPU6 cpu(reset, clock, 1'b1, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
+    Memory ram(clock, cpu_en, addressBus, writeEnBus, data_c2r, data_r2c);
+    reg reset;
+    LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
+
+    CPU6 cpu(reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
 
@@ -94,33 +99,33 @@ module CPU6TestBench;
 
         $readmemh("programs/hellorld.txt", ram.rom_cells);
         $write("hellorld: ");
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
         wait(sim_end == 1);
 
         $readmemh("programs/bnz_test.txt", ram.rom_cells);
         $write("bnz_test: ");
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
         wait(sim_end == 1);
 
         $readmemh("programs/alu_test.txt", ram.rom_cells);
         $write("alu_test: ");
-        sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
         wait(sim_end == 1);
 
         // $readmemh("programs/diag.txt", ram.rom_cells);
-        // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        // sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
         // #17000000 $finish;
 
         // $readmemh("programs/inst_test.txt", ram.rom_cells);
-        // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        // sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
         // #4100000 $finish;
 
         // $readmemh("programs/cylon.txt", ram.rom_cells);
-        // sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0;
+        // sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
 
         //$readmemh("programs/blink.txt", ram.rom_cells);
         //$display("running blink...");
-        //sim_end = 0; #0 reset = 0; #50 reset = 1; #200 reset = 0; #200000000; sim_end = 1;
+        //sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0; #200000000; sim_end = 1;
         //wait(sim_end == 1);
 
         $display("All done!");
@@ -130,7 +135,7 @@ module CPU6TestBench;
 
 
     always @(posedge clock) begin
-        if (writeEnBus == 1) begin
+        if (cpu_en && writeEnBus == 1) begin
             // Pretend there's a UART here :-)
             if (addressBus == 19'h3f201) begin
                 if ((cc >= 32) || (cc == 9) || (cc == 10) || (cc == 13)) begin
