@@ -48,6 +48,9 @@ module TopTB;
 
     initial begin
         #40000000;                          // 40ms of the CPU driving the pin
+        $display("page table self test: %0s (state %0d, first bad entry %02x)",
+                 dut.st_failed ? "FAILED" : "passed", dut.st_state, dut.st_fail_addr);
+        if (dut.st_state != 2) $display("FAIL: the self test never finished");
         $display("uart_tx transitions in 40ms: %0d", edges);
         $display("LEDs (LED1..LED6, lit=1): %b%b%b%b%b%b", ~L1,~L2,~L3,~L4,~L5,~L6);
         if (edges == 0) $display("FAIL: the top level never drives the UART pin");

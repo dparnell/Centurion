@@ -169,6 +169,26 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire [7:0] leds;
     wire [7:0] display_leds;
 
+    localparam ST_WRITE = 2'd0, ST_READ = 2'd1, ST_DONE = 2'd2;
+    reg [1:0] st_state;
+    reg [8:0] st_index;
+    reg st_failed;
+    reg [7:0] st_fail_addr;
+
+    initial begin
+        st_state = ST_WRITE;
+        st_index = 0;
+        st_failed = 0;
+        st_fail_addr = 0;
+    end
+
+    wire selftest_active = st_state != ST_DONE;
+    wire selftest_write  = st_state == ST_WRITE;
+    wire [7:0] selftest_addr = st_index[7:0];
+    wire [7:0] selftest_data = st_index[7:0];
+    wire [7:0] selftest_readback;
+
+
     // The LEDs are active low
     assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
     wire instruction_start;
@@ -225,18 +245,74 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
     MUX mux0(in_clk, clock, cpu_en, uart_rx, uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
-    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start);
+    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
+              selftest_active, selftest_write, selftest_addr, selftest_data, selftest_readback);
+
+    /*
+     * Power on self test of the page table.
+     *
+     * diag's CPU-6 MAPPING RAM TEST passes in simulation and hangs on the board, and
+     * the page table is the only thing it exercises that nothing else does. It is 256
+     * entries built from sixteen 16-deep LUTRAM blocks per nibble plus a read mux, which
+     * is the least ordinary memory in the design.
+     *
+     * So before letting the CPU out of reset, write every entry with its own address,
+     * read them all back and compare. Writing the address into the entry means any
+     * aliasing between blocks shows up as a mismatch rather than passing by luck.
+     *
+     * A failure blinks LED1 fast, about 5Hz, which is unmistakably different from the
+     * watchdog's slow 1Hz blink, and shows the first bad entry's address bits 7 to 3 on
+     * LED2 to LED6. A pass leaves the LEDs to the running program.
+     */
+    always @(posedge clock) begin
+        case (st_state)
+            ST_WRITE:
+                if (st_index == 255) begin
+                    st_index <= 0;
+                    st_state <= ST_READ;
+                end else begin
+                    st_index <= st_index + 1;
+                end
+            ST_READ: begin
+                if (selftest_readback != st_index[7:0] && !st_failed) begin
+                    st_failed <= 1;
+                    st_fail_addr <= st_index[7:0];
+                end
+                if (st_index == 255) st_state <= ST_DONE;
+                else st_index <= st_index + 1;
+            end
+            default: ;
+        endcase
+    end
+
+    reg [23:0] fast_counter;
+    reg fast_blink;
+    initial begin
+        fast_counter = 0;
+        fast_blink = 0;
+    end
+    always @(posedge clock) begin
+        if (fast_counter == 2_700_000 - 1) begin
+            fast_counter <= 0;
+            fast_blink <= ~fast_blink;
+        end else begin
+            fast_counter <= fast_counter + 1;
+        end
+    end
+
+    wire [7:0] board_leds = st_failed ? { fast_blink, st_fail_addr[7:3], 2'b00 } : leds;
+
 
     // Bring-up aid. diag never writes the LED panel, so while the core is alive the
     // LEDs would sit dark and tell us nothing. Until something does write the panel,
     // show a count of the bytes handed to the MUX data register instead: that says
     // whether the core is getting as far as talking to the serial channel, without
     // needing a terminal to be connected and correctly configured.
-    Watchdog watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
+    Watchdog watchdog(in_clk, instruction_start, board_leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
-        if (!por_done) begin
-            por_counter <= por_counter + 1;
+        if (!por_done || selftest_active) begin
+            if (!por_done) por_counter <= por_counter + 1;
             reset <= 1;
         end else if (cpu_en) begin
             // Release reset only on an enabled cycle, so the core always leaves reset

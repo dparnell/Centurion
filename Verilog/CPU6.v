@@ -21,7 +21,13 @@
 module CPU6(input wire reset, input wire clock, input wire enable, input wire [7:0] dataInBus,
     input wire int_reqn, input wire [3:0] irq_number,
     output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus,
-    output wire instruction_start);
+    output wire instruction_start,
+    // Power on self test of the page table. While selftest_active is high the CPU is
+    // held in reset and the page table is addressed from here instead, so the array can
+    // be walked without any microcode involved.
+    input wire selftest_active, input wire selftest_write,
+    input wire [7:0] selftest_addr, input wire [7:0] selftest_data,
+    output wire [7:0] selftest_readback);
 
     /*
      * Rising edge triggered registers
@@ -87,7 +93,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     end
 
     wire [7:0] page_address = { memory_address[15:11], page_table_base };
-    wire [7:0] page_table_out = { page_table_hi[page_address], page_table_lo[page_address] };
+    wire [7:0] page_table_read_address = selftest_active ? selftest_addr : page_address;
+    wire [7:0] page_table_out = { page_table_hi[page_table_read_address],
+                                  page_table_lo[page_table_read_address] };
+    assign selftest_readback = page_table_out;
     wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
     assign addressBus = virtual_address;
     // Register space read mux
@@ -563,7 +572,12 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
      * does not fit the device.
      */
     always @(posedge clock) begin
-        if (enable && reset == 0 && k11 == 5) begin
+        if (selftest_active) begin
+            if (selftest_write) begin
+                page_table_lo[selftest_addr] <= selftest_data[3:0];
+                page_table_hi[selftest_addr] <= selftest_data[7:4];
+            end
+        end else if (enable && reset == 0 && k11 == 5) begin
             page_table_lo[page_address] <= result_register[3:0];
             page_table_hi[page_address] <= result_register[7:4];
         end
