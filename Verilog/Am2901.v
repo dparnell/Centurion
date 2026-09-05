@@ -9,7 +9,7 @@
  *
  * See https://github.com/Nakazoto/CenturionComputer/blob/main/Computer/CPU6%20Board/Datasheets/am2901a.pdf
  */
-module Am2901(input wire clock, input wire [3:0] din, input wire [3:0] aSel,
+module Am2901(input wire clock, input wire enable, input wire [3:0] din, input wire [3:0] aSel,
     input wire [3:0] bSel, input wire [2:0] aluSrc, input wire [2:0] aluOp,
     input wire [2:0] aluDest, input cin, output reg[3:0] yout, output reg cout,
     output reg fzero, output reg f3, output reg ovr,
@@ -118,11 +118,13 @@ module Am2901(input wire clock, input wire [3:0] din, input wire [3:0] aSel,
     end
 
     always @(posedge clock) begin
-        if (writeQ == 1) begin
-            q <= qv;
-        end
-        if (writeRam == 1) begin
-            regs[bSel] <= bv;
+        if (enable) begin
+            if (writeQ == 1) begin
+                q <= qv;
+            end
+            if (writeRam == 1) begin
+                regs[bSel] <= bv;
+            end
         end
     end
 endmodule

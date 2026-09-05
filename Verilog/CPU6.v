@@ -18,7 +18,7 @@
  *
  * See https://github.com/Nakazoto/CenturionComputer/wiki/CPU6-Board
  */
-module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
+module CPU6(input wire reset, input wire clock, input wire enable, input wire [7:0] dataInBus,
     input wire int_reqn, input wire [3:0] irq_number,
     output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus,
     output wire instruction_start, output wire [10:0] uc_address);
@@ -126,7 +126,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     wire rr_write_en = k11 == 4;
     wire [7:0] reg_ram_data_in = result_register;
     wire [7:0] reg_ram_data_out;
-    RegisterRAM reg_ram(clock, rr_write_en, reg_ram_addr, reg_ram_data_in, reg_ram_data_out);
+    RegisterRAM reg_ram(clock, enable, rr_write_en, reg_ram_addr, reg_ram_data_in, reg_ram_data_out);
 
     // Sequencer shared nets
 
@@ -152,7 +152,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     wire [3:0] seq0_yout;
     wire seq0_cout;
 
-    Am2909 seq0(clock, seq0_din, seq0_rin, seq0_orin, seq0_s0, seq0_s1, seq_zero, seq0_cin,
+    Am2909 seq0(clock, enable, seq0_din, seq0_rin, seq0_orin, seq0_s0, seq0_s1, seq_zero, seq0_cin,
         seq0_re, seq_fe, seq_pup, seq0_yout, seq0_cout);
 
     // Case control
@@ -169,7 +169,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     wire [3:0] seq1_yout;
     wire seq1_cout;
 
-    Am2909 seq1(clock, seq1_din, seq1_rin, seq1_orin, seq1_s0, seq1_s1, seq_zero, seq1_cin,
+    Am2909 seq1(clock, enable, seq1_din, seq1_rin, seq1_orin, seq1_s0, seq1_s1, seq_zero, seq1_cin,
         seq1_re, seq_fe, seq_pup, seq1_yout, seq1_cout);
 
 
@@ -183,7 +183,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     wire [3:0] seq2_yout;
     wire seq2_cout;
 
-    Am2911 seq2(clock, seq2_din, seq2_s0, seq2_s1, seq_zero, seq2_cin, seq2_re, seq_fe,
+    Am2911 seq2(clock, enable, seq2_din, seq2_s0, seq2_s1, seq_zero, seq2_cin, seq2_re, seq_fe,
         seq_pup, seq2_yout, seq2_cout);
 
     assign uc_rom_address = { seq2_yout, seq1_yout, seq0_yout };
@@ -212,7 +212,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     reg alu0_q0_in;
     wire alu0_ram0_in, alu0_q3_in, alu0_ram3_in;
     wire alu0_q0_out, alu0_ram0_out, alu0_q3_out, alu0_ram3_out;
-    Am2901 alu0(clock, alu0_din, alu_a, alu_b, alu_src, alu_op, alu_dest, alu0_cin,
+    Am2901 alu0(clock, enable, alu0_din, alu_a, alu_b, alu_src, alu_op, alu_dest, alu0_cin,
         alu0_yout, alu0_cout, alu0_f0, alu0_f3, alu0_ovr,
         alu0_q0_in, alu0_ram0_in, alu0_q3_in, alu0_ram3_in,
         alu0_q0_out, alu0_ram0_out, alu0_q3_out, alu0_ram3_out);
@@ -228,7 +228,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
     wire alu1_q0_in, alu1_ram0_in, alu1_q3_in;
     wire alu1_q0_out, alu1_ram0_out, alu1_q3_out, alu1_ram3_out;
     reg alu1_ram3_in;
-    Am2901 alu1(clock, alu1_din, alu_a, alu_b, alu_src, alu_op, alu_dest, alu1_cin,
+    Am2901 alu1(clock, enable, alu1_din, alu_a, alu_b, alu_src, alu_op, alu_dest, alu1_cin,
         alu1_yout, alu1_cout, alu1_f0, alu1_f3, alu1_ovr,
         alu1_q0_in, alu1_ram0_in, alu1_q3_in, alu1_ram3_in,
         alu1_q0_out, alu1_ram0_out, alu1_q3_out, alu1_ram3_out);
@@ -441,7 +441,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
             bus_read <= 0;
             bus_write <= 0;
             page_table_base <= 0;
-        end else begin
+        end else if (enable) begin
             pipeline <= uc_rom_data;
             uc_rom_address_pipe <= uc_rom_address;
             if (instruction_start == 1) begin
@@ -557,7 +557,7 @@ module CPU6(input wire reset, input wire clock, input wire [7:0] dataInBus,
      * does not fit the device.
      */
     always @(posedge clock) begin
-        if (reset == 0 && k11 == 5) begin
+        if (enable && reset == 0 && k11 == 5) begin
             page_table_lo[page_address] <= result_register[3:0];
             page_table_hi[page_address] <= result_register[7:4];
         end

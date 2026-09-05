@@ -1,6 +1,7 @@
 module MUX(
     input wire bit_clock, // 27Mhz clock
     input wire cpu_clock,
+    input wire cpu_enable,      // one pulse per CPU clock, so a bus write happens once
     input uart_rx,
     output uart_tx,    
     input wire selected,
@@ -34,7 +35,7 @@ reg [3:0] interrupt_level = 0;
 
 // CPU interface
 always @(posedge cpu_clock) begin
-    if (selected) begin
+    if (cpu_enable && selected) begin
         if(write_en) begin
             case(address) 
                 0: begin  // control register

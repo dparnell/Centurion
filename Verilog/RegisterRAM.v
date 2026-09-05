@@ -2,7 +2,7 @@
 /**
  * This module implements the register file (D13/D14).
  */
-module RegisterRAM(input wire clock, input wire write_en, input wire [7:0] address, input wire [7:0] data_in,
+module RegisterRAM(input wire clock, input wire enable, input wire write_en, input wire [7:0] address, input wire [7:0] data_in,
     output reg [7:0] data_out);
 
     reg [7:0] memory[0:255];
@@ -16,9 +16,11 @@ module RegisterRAM(input wire clock, input wire write_en, input wire [7:0] addre
     wire [7:0] register1 = memory[1];
 
     always @(posedge clock) begin
-        data_out <= memory[address];
-        if (write_en == 1) begin
-            memory[address] <= data_in;
+        if (enable) begin
+            data_out <= memory[address];
+            if (write_en == 1) begin
+                memory[address] <= data_in;
+            end
         end
     end
 endmodule

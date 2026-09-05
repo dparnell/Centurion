@@ -6,7 +6,7 @@
  *
  * See https://github.com/Nakazoto/CenturionComputer/blob/main/Computer/CPU6%20Board/Datasheets/am2909_am2911.pdf
  */
-module Am2911(input wire clock, input wire [3:0] din,
+module Am2911(input wire clock, input wire enable, input wire [3:0] din,
     input wire s0, input wire s1, input wire zero, input wire cin, input wire re, input wire fe,
     input wire pup, output reg [3:0] yout, output reg cout);
 
@@ -61,22 +61,24 @@ module Am2911(input wire clock, input wire [3:0] din,
     end
 
     always @(posedge clock) begin
-        if (stackWr == 1) begin
-            stack[stackAddr] <= pc;
-        end
-        if (re == 0) begin
-            ar <= din;
-        end
-        if (fe == 0) begin
-            if (pup == 1) begin
-                sp <= sp + 1;
-            end else begin
-                sp <= sp - 1;
+        if (enable) begin
+            if (stackWr == 1) begin
+                stack[stackAddr] <= pc;
             end
-        end
-        pc <= yout;
-        if (cin == 1) begin
-            pc <= yout + 1;
+            if (re == 0) begin
+                ar <= din;
+            end
+            if (fe == 0) begin
+                if (pup == 1) begin
+                    sp <= sp + 1;
+                end else begin
+                    sp <= sp - 1;
+                end
+            end
+            pc <= yout;
+            if (cin == 1) begin
+                pc <= yout + 1;
+            end
         end
     end
 endmodule

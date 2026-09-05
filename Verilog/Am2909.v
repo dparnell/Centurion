@@ -6,7 +6,7 @@
  *
  * See https://github.com/Nakazoto/CenturionComputer/blob/main/Computer/CPU6%20Board/Datasheets/am2909_am2911.pdf
  */
-module Am2909(input wire clock, input wire [3:0] din, input wire [3:0] rin, input wire [3:0] orin,
+module Am2909(input wire clock, input wire enable, input wire [3:0] din, input wire [3:0] rin, input wire [3:0] orin,
     input wire s0, input wire s1, input wire zero, input wire cin, input wire re, input wire fe,
     input wire pup, output reg [3:0] yout, output reg cout);
 
@@ -63,22 +63,24 @@ module Am2909(input wire clock, input wire [3:0] din, input wire [3:0] rin, inpu
     // Guideline #1: When modeling sequential logic, use nonblocking 
     //              assignments.
     always @(posedge clock) begin
-        if (stackWr == 1) begin
-            stack[stackAddr] <= pc;
-        end
-        if (re == 0) begin
-            ar <= rin;
-        end
-        if (fe == 0) begin
-            if (pup == 1) begin
-                sp <= sp + 1;
-            end else begin
-                sp <= sp - 1;
+        if (enable) begin
+            if (stackWr == 1) begin
+                stack[stackAddr] <= pc;
             end
-        end
-        pc <= yout;
-        if (cin == 1) begin
-            pc <= yout + 1;
+            if (re == 0) begin
+                ar <= rin;
+            end
+            if (fe == 0) begin
+                if (pup == 1) begin
+                    sp <= sp + 1;
+                end else begin
+                    sp <= sp - 1;
+                end
+            end
+            pc <= yout;
+            if (cin == 1) begin
+                pc <= yout + 1;
+            end
         end
     end
 endmodule

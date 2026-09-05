@@ -77,9 +77,11 @@ module CPU6TestBench;
     Clock cg0(clock);
     Memory ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
     reg reset;
-    LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, leds);
+    // Simulation runs the core on every clock; the board level clock enable that
+    // slows it to 5MHz is a property of the board, not of the CPU.
+    LEDPanel panel(clock, 1'b1, addressBus, writeEnBus, data_c2r, leds);
 
-    CPU6 cpu(reset, clock, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
+    CPU6 cpu(reset, clock, 1'b1, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r);
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
 
