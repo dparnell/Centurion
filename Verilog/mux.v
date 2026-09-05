@@ -1,3 +1,14 @@
+/**
+ * This module implements a MUX serial board channel.
+ *
+ * The CPU side is a small register file; the line side is a transmitter and a receiver
+ * running off the 27MHz bit clock. See the Centurion wiki for the board itself:
+ * https://github.com/Nakazoto/CenturionComputer/wiki
+ *
+ * cpu_clock and bit_clock are the same net in this design, which is what lets the CPU
+ * side raise tx_request and the transmitter clear it with a plain flag. Separating them
+ * would need a real handshake across the two domains.
+ */
 module MUX(
     input wire bit_clock, // 27Mhz clock
     input wire cpu_clock,
@@ -9,22 +20,16 @@ module MUX(
     input wire write_en, 
     input wire [7:0] data_in,
     output reg [7:0] data_out,
-    output reg int_reqn,
-    output reg [3:0] irq_number
+    output wire int_reqn,
+    output wire [3:0] irq_number
 );
-
-// The interrupt request is active low. It has to power up deasserted: CPU6 gates its
-// microsequencers with jsr_ = ~(int_enabled & ~int_reqn), so a stuck-asserted request
-// stops the microcode dead and the CPU never executes a single instruction.
-initial begin
-    int_reqn = 1;
-    irq_number = 0;
-end
 
 // common stuff - default to 9600 7E1
 
-reg [15:0] divider = 27_000_000 / 9600;
-reg parity = 1;
+// 20 bits, because the slowest rate needs 27_000_000/75 = 360000 and that does not fit
+// in the 16 bits this used to have.
+reg [19:0] divider = 27_000_000 / 9600;
+reg parity = 1;                 // 1 = even, 0 = odd
 reg parity_enabled = 1;
 reg [3:0] data_bits = 7;
 reg stop_bits = 0;
@@ -33,45 +38,62 @@ reg [7:0] output_data;      // byte handed to the transmitter
 reg interrupts_enabled = 0;
 reg [3:0] interrupt_level = 0;
 
+// Character length, clamped so a nonsense control register write cannot make the shift
+// alignment below meaningless.
+wire [3:0] char_bits = (data_bits > 8) ? 4'd8 : ((data_bits < 5) ? 4'd5 : data_bits);
+
+// The CPU raises this by writing the data register; the transmitter clears it via
+// tx_taken. Both live in the bit clock domain, which is the same net as cpu_clock.
+reg tx_request = 0;
+reg tx_taken = 0;
+wire tx_idle;
+
+// A read of the data register consumes the received byte
+wire read_data_register = cpu_enable & selected & ~write_en & (address == 1);
+
 // CPU interface
 always @(posedge cpu_clock) begin
+    if (tx_taken) begin
+        tx_request <= 0;
+    end
     if (cpu_enable && selected) begin
         if(write_en) begin
             case(address) 
                 0: begin  // control register
-                    parity = data_in[0];
-                    data_bits = 5 + data_in[3:1];
-                    parity_enabled = data_in[4];
-                    stop_bits = data_in[5];
+                    parity <= data_in[0];
+                    data_bits <= 5 + data_in[3:1];
+                    parity_enabled <= data_in[4];
+                    stop_bits <= data_in[5];
 
                     case (data_in[7:5])
-                        0: divider = 27_000_000 / 75;
-                        1: divider = 27_000_000 / 300;
-                        2: divider = 27_000_000 / 1200;
-                        3: divider = 27_000_000 / 2400;
-                        4: divider = 27_000_000 / 4800;
-                        5: divider = 27_000_000 / 9600;
-                        6: divider = 27_000_000 / 19200;
-                        7: divider = 27_000_000 / 38400;
+                        0: divider <= 27_000_000 / 75;
+                        1: divider <= 27_000_000 / 300;
+                        2: divider <= 27_000_000 / 1200;
+                        3: divider <= 27_000_000 / 2400;
+                        4: divider <= 27_000_000 / 4800;
+                        5: divider <= 27_000_000 / 9600;
+                        6: divider <= 27_000_000 / 19200;
+                        7: divider <= 27_000_000 / 38400;
                     endcase
                 end
 
-                1: begin // data register
-                    output_data = data_in;
+                1: begin // data register: load the byte and start sending it
+                    output_data <= data_in;
+                    tx_request <= 1;
                 end
 
                 10: begin // interrupt level
-                    interrupt_level = data_in[3:0];
+                    interrupt_level <= data_in[3:0];
                 end
 
-                13: interrupts_enabled = 0;
-                14: interrupts_enabled = 1;
+                13: interrupts_enabled <= 0;
+                14: interrupts_enabled <= 1;
                 15: begin
-                    divider = 27_000_000 / 9600;
-                    parity = 1;
-                    parity_enabled = 1;
-                    data_bits = 7;
-                    stop_bits = 0;
+                    divider <= 27_000_000 / 9600;
+                    parity <= 1;
+                    parity_enabled <= 1;
+                    data_bits <= 7;
+                    stop_bits <= 0;
                 end
             endcase
         end
@@ -80,162 +102,177 @@ end
 
 // rx
 
-reg [3:0] rxState = 0;
-reg [12:0] rxCounter = 0;
+localparam RX_IDLE   = 0;
+localparam RX_START  = 1;
+localparam RX_DATA   = 2;
+localparam RX_PARITY = 3;
+localparam RX_STOP   = 4;
+
+reg [2:0] rxState = RX_IDLE;
+reg [19:0] rxCounter = 0;
+reg [3:0] rxBitNumber = 0;
+reg [7:0] rxShift = 0;
 reg [7:0] dataIn = 0;
-reg [2:0] rxBitNumber = 0;
 reg byteReady = 0;
 
-localparam RX_STATE_IDLE = 0;
-localparam RX_STATE_START_BIT = 1;
-localparam RX_STATE_READ_WAIT = 2;
-localparam RX_STATE_READ = 3;
-localparam RX_STATE_STOP_BIT = 5;
-
 always @(posedge bit_clock) begin
-    int_reqn <= 1;
+    // Clearing comes first so that a byte arriving in the same cycle the CPU reads the
+    // data register still leaves byteReady set, rather than being lost.
+    if (read_data_register) begin
+        byteReady <= 0;
+    end
 
     case (rxState)
-        RX_STATE_IDLE: begin
+        RX_IDLE: begin
+            rxCounter <= 0;
             if (uart_rx == 0) begin
-                rxState <= RX_STATE_START_BIT;
-                rxCounter <= 1;
-                rxBitNumber <= 0;
-                byteReady <= 0;
-            end
-        end 
-        RX_STATE_START_BIT: begin
-            if (rxCounter == divider[15:1]) begin   // sample half a bit in
-                rxState <= RX_STATE_READ_WAIT;
-                rxCounter <= 1;
-            end else 
-                rxCounter <= rxCounter + 1;
-        end
-        RX_STATE_READ_WAIT: begin
-            rxCounter <= rxCounter + 1;
-            if ((rxCounter + 1) == divider) begin
-                rxState <= RX_STATE_READ;
+                rxState <= RX_START;
             end
         end
-        RX_STATE_READ: begin
-            rxCounter <= 1;
-            dataIn <= {uart_rx, dataIn[7:1]};
-            rxBitNumber <= rxBitNumber + 1;
-            if (rxBitNumber == data_bits)
-                rxState <= RX_STATE_STOP_BIT;
-            else
-                rxState <= RX_STATE_READ_WAIT;
-        end
-        RX_STATE_STOP_BIT: begin
+        RX_START: begin
+            // Wait half a bit and check the line is still low, so a glitch on an idle
+            // line is not mistaken for a start bit.
             rxCounter <= rxCounter + 1;
-            if ((rxCounter + 1) == divider) begin
-                rxState <= RX_STATE_IDLE;
+            if (rxCounter == divider[19:1]) begin
                 rxCounter <= 0;
-                byteReady <= 1;
-
-                if (interrupts_enabled) begin
-                    irq_number <= interrupt_level;
-                    int_reqn <= 0;
+                rxBitNumber <= 0;
+                rxShift <= 0;
+                rxState <= (uart_rx == 0) ? RX_DATA : RX_IDLE;
+            end
+        end
+        RX_DATA: begin
+            rxCounter <= rxCounter + 1;
+            if (rxCounter == divider) begin
+                rxCounter <= 0;
+                rxShift <= { uart_rx, rxShift[7:1] };
+                if (rxBitNumber + 1 == char_bits) begin
+                    rxState <= parity_enabled ? RX_PARITY : RX_STOP;
+                end else begin
+                    rxBitNumber <= rxBitNumber + 1;
                 end
+            end
+        end
+        RX_PARITY: begin
+            // The parity bit is consumed but not checked; there is no status bit to
+            // report an error in.
+            rxCounter <= rxCounter + 1;
+            if (rxCounter == divider) begin
+                rxCounter <= 0;
+                rxState <= RX_STOP;
+            end
+        end
+        RX_STOP: begin
+            rxCounter <= rxCounter + 1;
+            if (rxCounter == divider) begin
+                rxCounter <= 0;
+                rxState <= RX_IDLE;
+                // Bits shift in from the top, so a character shorter than 8 bits has to
+                // be shifted down to be right aligned.
+                dataIn <= rxShift >> (8 - char_bits);
+                byteReady <= 1;
             end
         end
     endcase
 end
 
-
-
 // tx
 
-localparam TX_STATE_IDLE = 0;
-localparam TX_STATE_START_BIT = 1;
-localparam TX_STATE_WRITE = 2;
-localparam TX_STATE_PARITY_BIT = 3;
-localparam TX_STATE_STOP_BIT = 4;
-localparam TX_STATE_STOP_BIT_2 = 5;
+localparam TX_IDLE   = 0;
+localparam TX_START  = 1;
+localparam TX_DATA   = 2;
+localparam TX_PARITY = 3;
+localparam TX_STOP   = 4;
+localparam TX_STOP2  = 5;
 
-reg [3:0] txState = TX_STATE_IDLE;
-reg [24:0] txCounter = 0;
+reg [2:0] txState = TX_IDLE;
+reg [19:0] txCounter = 0;
 reg txPinRegister = 1;
-reg [2:0] txBitNumber = 0;
+reg [3:0] txBitNumber = 0;
+reg [7:0] txShift = 0;
+reg txParity = 0;
 
 assign uart_tx = txPinRegister;
-wire parity_bit;
-assign parity_bit = parity_enabled ? ^output_data[7:0] : 1'b1;
+assign tx_idle = (txState == TX_IDLE) && !tx_request;
 
 always @(posedge bit_clock) begin
+    tx_taken <= 0;
+
     case (txState)
-        TX_STATE_IDLE: begin
-            txCounter <= 0;
+        TX_IDLE: begin
             txPinRegister <= 1;
-        end 
-        TX_STATE_START_BIT: begin
+            txCounter <= 0;
+            if (tx_request) begin
+                txShift <= output_data;
+                txParity <= 0;
+                txBitNumber <= 0;
+                tx_taken <= 1;
+                txState <= TX_START;
+            end
+        end
+        TX_START: begin
             txPinRegister <= 0;
             txCounter <= txCounter + 1;
             if (txCounter == divider) begin
-                txState <= TX_STATE_WRITE;
-                txBitNumber <= 0;
                 txCounter <= 0;
-            end 
-                
+                txState <= TX_DATA;
+            end
         end
-        TX_STATE_WRITE: begin
-            txPinRegister <= output_data[txBitNumber];
+        TX_DATA: begin
+            txPinRegister <= txShift[0];
             txCounter <= txCounter + 1;
             if (txCounter == divider) begin
-                if (txBitNumber == data_bits) begin
-                    if (parity_enabled) begin
-                        txState <= TX_STATE_PARITY_BIT;
-                    end else begin
-                        txState <= TX_STATE_STOP_BIT;
-                    end
+                txCounter <= 0;
+                txShift <= { 1'b0, txShift[7:1] };
+                txParity <= txParity ^ txShift[0];
+                if (txBitNumber + 1 == char_bits) begin
+                    txState <= parity_enabled ? TX_PARITY : TX_STOP;
                 end else begin
-                    txState <= TX_STATE_WRITE;
                     txBitNumber <= txBitNumber + 1;
                 end
+            end
+        end
+        TX_PARITY: begin
+            // parity is 1 for even, so the bit is the running XOR, inverted for odd
+            txPinRegister <= parity ? txParity : ~txParity;
+            txCounter <= txCounter + 1;
+            if (txCounter == divider) begin
                 txCounter <= 0;
-            end 
+                txState <= TX_STOP;
+            end
         end
-        TX_STATE_PARITY_BIT: begin
-            txPinRegister <= parity_bit;
-            txCounter <= txCounter + 1;
-            if (txCounter == divider) begin
-                txState <= TX_STATE_STOP_BIT;
-                txCounter = 0;
-            end            
-        end        
-        TX_STATE_STOP_BIT: begin
+        TX_STOP: begin
             txPinRegister <= 1;
             txCounter <= txCounter + 1;
             if (txCounter == divider) begin
-                if (stop_bits) begin
-                    txState <= TX_STATE_STOP_BIT_2;
-                end else begin
-                    txState <= TX_STATE_IDLE;
-                end
-                txCounter = 0;
-            end            
+                txCounter <= 0;
+                txState <= stop_bits ? TX_STOP2 : TX_IDLE;
+            end
         end
-        TX_STATE_STOP_BIT_2: begin
+        TX_STOP2: begin
             txPinRegister <= 1;
             txCounter <= txCounter + 1;
             if (txCounter == divider) begin
-                txState <= TX_STATE_IDLE;
-                txCounter = 0;
-            end            
+                txCounter <= 0;
+                txState <= TX_IDLE;
+            end
         end
-    endcase      
+    endcase
 end
 
+// The interrupt request is active low and is a level, not a pulse. A one clock pulse at
+// 27MHz would be missed by a 5MHz CPU, which only samples every fifth or sixth clock.
+// It clears when the CPU reads the byte out of the data register.
+assign int_reqn = ~(interrupts_enabled & byteReady);
+assign irq_number = interrupt_level;
+
 // CPU read port. The CPU samples the data bus in the same cycle that it drives the
-// address, so the read has to be combinational. This used to live in the
-// posedge cpu_clock block above, which returned the previous cycle's value, and
-// drove data_out procedurally even though it was declared as a wire.
+// address, so the read has to be combinational.
 always @(*) begin
     data_out = 8'h00;
     if (selected && !write_en) begin
         case (address)
-            0: data_out = { 6'b000000, txState == TX_STATE_IDLE ? 1'b1 : 1'b0, byteReady }; // status register
-            1: data_out = dataIn;                                                           // received byte
+            0: data_out = { 6'b000000, tx_idle, byteReady };   // status register
+            1: data_out = dataIn;                              // received byte
         endcase
     end
 end
