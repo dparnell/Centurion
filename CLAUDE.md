@@ -67,4 +67,6 @@ Files follow the two Verilog coding guidelines quoted in the comments: blocking 
 
 - The README's synthesis section still describes the older iCE40 / Alchitry Cu target (and `LEDPanel.v`'s comment still mentions Alchitry). The Makefile and current work target the Gowin GW1NR-9C on the Tang Nano 9K; pin assignments are in [tangnano9k.cst](Verilog/tangnano9k.cst).
 - README says `make all` for simulation, but `all` is the synthesis target — use `make test`.
+- The divided CPU clock in [tangnano9k.v](Verilog/tangnano9k.v) must go through a `BUFG` to reach a global clock network. On general routing it accumulates ~2.4 ns of skew and nextpnr fails with `Hold/min time violation for clock 'posedge clock'` at the register file block RAM.
+- nextpnr constrains the divided `clock` at the `--freq 27` value because it cannot infer the divider, so its reported max frequency for that domain is pessimistic by 8x (the real CPU clock is 27 MHz / 8 = 3.375 MHz).
 - Interrupt and DMA logic is incomplete; the `MUX` UART can raise `int_reqn` but the CPU-side handling is still being built out.

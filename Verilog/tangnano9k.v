@@ -131,7 +131,13 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
         .O_psram_cs_n(O_psram_cs_n)
     );
 
-    Divide4 div(in_clk, clock);
+    // The divided CPU clock must be driven onto a global clock network. Left on general
+    // routing it picks up ~2.4ns of skew across the die, which shows up as hold time
+    // violations at the register file block RAM (cpu.reg_ram.memory.*.CLK).
+    wire clock_div;
+    wire clock;
+    Divide4 div(in_clk, clock_div);
+    BUFG clock_bufg(.I(clock_div), .O(clock));
     BlockRAM ram(clock, addressBus, writeEnBus, data_c2r, data_r2c);
     LEDPanel panel(clock, addressBus, writeEnBus, data_c2r, data_r2c, leds);
     MUX mux0(in_clk, clock, uartTx, uartRx, addressBus & 19'hffff0 == 19'h0f200 ? 1 : 0, address[3:0], writeEnBus, data_c2r, data_r2c, int_reqn, irq_number);
