@@ -328,7 +328,15 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     wire [7:0] constant = ~pipeline[16+7:16];
 
     wire bad_page_n = ~(virtual_address[18:13] == 6'h3f && virtual_address[11] == 1);
-    wire reg_n = ~(~virtual_address[12] & ~(memory_address[9] | memory_address[10]) &
+    // This used to test virtual_address[12] twice, once alone and once in the pair with
+    // [11], and never tested [17] at all. A term that is redundant next to a missing
+    // neighbour is a slip in transcribing the gates, not a gate: with [17] in its place
+    // this covers physical 11 to 17, and the one use of reg_n ands in ~[18], so between
+    // them the whole of page_table_out has to be zero. That is the same decode the read
+    // mux above uses, which is what it has to be, because the microcode branches on
+    // reg_n to decide an access is the CPU's own and would otherwise take the register
+    // path while the data came from the bus.
+    wire reg_n = ~(~virtual_address[17] & ~(memory_address[9] | memory_address[10]) &
         ~(virtual_address[15] | virtual_address[16]) & ~memory_address[8] &
         ~(virtual_address[13] | virtual_address[14]) & ~(virtual_address[11] | virtual_address[12]));
     wire not_mem = ~(bad_page_n & reg_n);
