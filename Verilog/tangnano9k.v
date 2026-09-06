@@ -256,6 +256,21 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire uart_written = cpu_en & writeEnBus & mux_select & (addressBus[3:0] == 4'd1);
 
     always @(posedge clock) begin
+        // This has to follow the core's reset like everything else with state. It did
+        // not, and compare_failed latches high for good, so after a reset fail_pass
+        // still held the value from the first run after configuration and could never
+        // update again. Every reading taken after a reset was the first run's number
+        // repeated back, which made an unrepeated measurement look repeatable across
+        // four different designs.
+        if (reset) begin
+            pass_count <= 0;
+            fail_pass <= 0;
+            compare_failed <= 0;
+            fault_caught <= 0;
+            quiet_counter <= 0;
+            pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
+            pc_live0 <= 0; pc_live1 <= 0;
+        end else begin
         if (instruction_fetch) begin
             pc_live0 <= dbg_memory_address;
             pc_live1 <= pc_live0;
@@ -287,6 +302,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             fault_caught <= 1;
         end else begin
             quiet_counter <= quiet_counter + 1;
+        end
         end
     end
 
