@@ -203,33 +203,56 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is
     // only worth interrogating when it has stopped printing.
     //
-    // Freezes the last four instruction fetches when the machine stops printing for two
+    // Freezes the last instruction fetch when the machine stops printing for two
     // seconds. Held down, btn2 then prints
-    //     F 87b0 87ad 0103 0007 0000
-    // the two most recent fetches, then whether a byte is waiting together with the last
-    // one received, then how many bytes the receiver has ever completed, then the page
-    // table base and mapping. A leading L means it has not gone quiet yet.
+    //     F 87b0 87ad 87b0 7e00 010d
+    // which is
+    //     1,2  the two most recent instruction fetches, still live, so a short loop
+    //          shows up as the pair changing from line to line
+    //     3    the last fetch before the machine went quiet, frozen
+    //     4    the mapping the last access to the 0xf000 page resolved to, and the page
+    //          table base, so 7e00 means the serial board was reachable and 0000 means
+    //          the mapping RAM no longer points at it
+    //     5    whether a byte is waiting, and the last one received
+    // A leading L means the machine has not gone quiet yet.
     //
-    // The count is the point: diag is sitting in its wait-for-a-character loop, so if
-    // pressing a key does not move it, nothing is reaching the receiver at all.
-    //
+    // The live pair is the point. The frozen fetch says where it stopped printing, but
+    // it says nothing about where it went afterwards, and the mapping RAM test moves
+    // the machine around on purpose.
     reg [15:0] pc_hist0, pc_hist1, pc_hist2, pc_hist3;
+    reg [15:0] pc_live0, pc_live1;
+    reg [7:0] last_io_page;
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
         pc_hist0 = 0; pc_hist1 = 0; pc_hist2 = 0; pc_hist3 = 0;
+        pc_live0 = 0; pc_live1 = 0;
+        last_io_page = 0;
         fault_caught = 0;
         quiet_counter = 0;
+    end
+
+    // What the last access to the page holding the serial board actually mapped to.
+    // 0xf200 is the MUX, so its virtual page is 0xf200 >> 11, and the board is at
+    // physical 0x3f200, so a healthy mapping reads back 0x3f200 >> 11 = 0x7e.
+    always @(posedge clock) begin
+        if (cpu_en && dbg_memory_address[15:11] == 5'h1e) begin
+            last_io_page <= dbg_page_table_out;
+        end
     end
     wire instruction_fetch = cpu_en & instruction_start;
     wire uart_written = cpu_en & writeEnBus & mux_select & (addressBus[3:0] == 4'd1);
 
     always @(posedge clock) begin
-        if (instruction_fetch && !fault_caught) begin
-            pc_hist0 <= dbg_memory_address;
-            pc_hist1 <= pc_hist0;
-            pc_hist2 <= pc_hist1;
-            pc_hist3 <= pc_hist2;
+        if (instruction_fetch) begin
+            pc_live0 <= dbg_memory_address;
+            pc_live1 <= pc_live0;
+            if (!fault_caught) begin
+                pc_hist0 <= dbg_memory_address;
+                pc_hist1 <= pc_hist0;
+                pc_hist2 <= pc_hist1;
+                pc_hist3 <= pc_hist2;
+            end
         end
 
         // Freeze when the machine has printed nothing for two seconds while still
@@ -256,12 +279,13 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (dbg_byte_ready && !byte_ready_d) rx_count <= rx_count + 1;
     end
 
-    // pc, pc, {byteReady, last received byte}, bytes received, page table base+mapping
+    // live pc, live pc, frozen pc, {serial board mapping, page table base},
+    // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { pc_hist0, pc_hist1, 7'b0, dbg_byte_ready, dbg_rx_byte, rx_count,
-            5'b0, dbg_page_table_base, dbg_page_table_out }
-        : { dbg_memory_address, 5'b0, dbg_uc_address, 7'b0, dbg_byte_ready, dbg_rx_byte,
-            rx_count, 5'b0, dbg_page_table_base, dbg_page_table_out };
+        ? { pc_live0, pc_live1, pc_hist0, last_io_page, 5'b0, dbg_page_table_base,
+            7'b0, dbg_byte_ready, dbg_rx_byte }
+        : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
+            dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
     StatusDump dump(clock, ~btn2, fault_caught ? "F" : "L", dump_payload, dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
