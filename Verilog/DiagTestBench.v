@@ -82,6 +82,20 @@ module DiagTestTB;
     end
     endtask
 
+    // Regression check for the mapping RAM window. diag loads the whole mapping RAM by
+    // writing physical 0x100 to 0x1ff as ordinary memory. When the CPU did not decode
+    // that window those writes went to the bus instead, the translation never changed,
+    // and the test relocated itself through a stale mapping and ran off into empty
+    // memory below 0x0100. A healthy run never executes down there at all.
+    integer low_count = 0;
+    reg [15:0] last_low = 16'hffff;
+    always @(posedge dut.clock) begin
+        if (dut.instruction_fetch && dut.dbg_memory_address < 16'h0100) begin
+            low_count = low_count + 1;
+            last_low = dut.dbg_memory_address;
+        end
+    end
+
     initial begin
         wait (prompt_seen);                // wait for "ENTER TEST NUMBER:"
         #2000000;
@@ -89,9 +103,20 @@ module DiagTestTB;
         $display("--- typing '%s' to select a test ---", TEST);
         send(TEST);
         send(8'h0d);
-        #1400000000;
+        // The mapping RAM test runs until it is interrupted, so let it grind for a
+        // while and then ask it to stop the way its own banner says to.
+        #600000000;
+        $display("");
+        $display("--- typing control-C to exit the test ---");
+        send(8'h03);
+        #800000000;
         $display("");
         $display("--- %0d characters total ---", n);
+        if (low_count == 0)
+            $display("ok: the machine never executed below 0x0100");
+        else
+            $display("FAIL: %0d instruction fetches below 0x0100, last at %04x",
+                     low_count, last_low);
         $finish;
     end
 endmodule
