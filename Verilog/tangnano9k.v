@@ -209,11 +209,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // which is
     //     1,2  the two most recent instruction fetches, still live, so a short loop
     //          shows up as the pair changing from line to line
-    //     3    the last fetch before the machine went quiet, frozen
-    //     4    the mapping the last access to the 0xf000 page resolved to, and the page
-    //          table base, so 7e00 means the serial board was reachable and 0000 means
-    //          the mapping RAM no longer points at it
-    //     5    whether a byte is waiting, and the last one received
+    //     3    the last fetch before the machine stopped, frozen
+    //     4    the mapping RAM test pass on which the compare first failed, or 0000 if
+    //          it never has
+    //     5    the pass the test has reached now, still counting
     // A leading L means the machine has not gone quiet yet.
     //
     // The live pair is the point. The frozen fetch says where it stopped printing, but
@@ -222,12 +221,25 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg [15:0] pc_hist0, pc_hist1, pc_hist2, pc_hist3;
     reg [15:0] pc_live0, pc_live1;
     reg [7:0] last_io_page;
+
+    // Bring-up aid for diag's mapping RAM test, which is the test being brought up, so
+    // these two addresses are that program's and nothing else's. Its main loop starts
+    // at 0x8e88 and it branches to 0x8f02 when the mapping RAM does not read back what
+    // was written. Counting passes and freezing the count at the first failure says
+    // whether the failure happens at the same point every run, which separates a bug in
+    // the design from something marginal in the hardware.
+    localparam [15:0] DIAG_LOOP_TOP = 16'h8e88;
+    localparam [15:0] DIAG_COMPARE_FAILED = 16'h8f02;
+    reg [15:0] pass_count;
+    reg [15:0] fail_pass;
+    reg compare_failed;
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
         pc_hist0 = 0; pc_hist1 = 0; pc_hist2 = 0; pc_hist3 = 0;
         pc_live0 = 0; pc_live1 = 0;
         last_io_page = 0;
+        pass_count = 0; fail_pass = 0; compare_failed = 0;
         fault_caught = 0;
         quiet_counter = 0;
     end
@@ -247,6 +259,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (instruction_fetch) begin
             pc_live0 <= dbg_memory_address;
             pc_live1 <= pc_live0;
+            if (dbg_memory_address == DIAG_LOOP_TOP) pass_count <= pass_count + 1;
+            if (dbg_memory_address == DIAG_COMPARE_FAILED && !compare_failed) begin
+                compare_failed <= 1;
+                fail_pass <= pass_count;
+            end
             if (!fault_caught) begin
                 pc_hist0 <= dbg_memory_address;
                 pc_hist1 <= pc_hist0;
@@ -259,6 +276,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         // executing. Running below 0x0100 is NOT a fault: the mapping test relocates
         // itself into the register file region on purpose, because that is the one
         // place unaffected by the mapping RAM it is rewriting. Going quiet is.
+        // Freeze on the compare failure too, not just on going quiet, so the frozen
+        // fetch is the failure itself rather than wherever it wandered afterwards.
+        if (instruction_fetch && dbg_memory_address == DIAG_COMPARE_FAILED)
+            fault_caught <= 1;
+
         if (uart_written || fault_caught) begin
             quiet_counter <= 0;
         end else if (quiet_counter == 54_000_000 - 1) begin
@@ -282,8 +304,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // live pc, live pc, frozen pc, {serial board mapping, page table base},
     // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { pc_live0, pc_live1, pc_hist0, last_io_page, 5'b0, dbg_page_table_base,
-            7'b0, dbg_byte_ready, dbg_rx_byte }
+        ? { pc_live0, pc_live1, pc_hist0, fail_pass, pass_count }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
