@@ -84,12 +84,13 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // reset_btn is a mechanical input with no relation to the clock, and it feeds the
     // reset of the whole core, so sample it through a synchroniser rather than directly.
     reg [2:0] reset_btn_sync;
-    reg [7:0] por_counter;
+    reg [9:0] por_counter;
 
     // por_done is the most trustworthy "is the CPU clock running" indicator available:
     // it is an ordinary fabric counter on the CPU clock, so it can only have expired if
     // that clock actually ticked 255 times.
-    wire por_done = por_counter == 8'hff;
+    wire por_done = por_counter == 10'h3ff;   // 1024 clocks, four times what the
+                                              // page table initialiser needs
 
     // Power on reset. The board's reset button only asserts reset while it is held,
     // so without this the core never runs its own reset sequence and depends entirely
@@ -115,13 +116,12 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire [7:0] dbg_page_table_out;
     wire dump_tx, dump_active;
 
+    // Re-initialised on every reset, not just at power up. The mapping test leaves the
+    // page table full of its own patterns, and nothing else puts it back, so after a
+    // reset diag was starting up against whatever the previous run had left behind.
     reg [7:0] ptinit_addr;
-    reg ptinit_done;
-    wire ptinit_write = !ptinit_done;
-    initial begin
-        ptinit_addr = 0;
-        ptinit_done = 0;
-    end
+    wire ptinit_write = reset;
+    initial ptinit_addr = 0;
 
 
 
@@ -186,7 +186,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
-    MUX mux0(in_clk, clock, cpu_en, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
+    MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr,
@@ -252,7 +252,6 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
      */
     always @(posedge clock) begin
         if (ptinit_write) ptinit_addr <= ptinit_addr + 1;
-        if (ptinit_addr == 255) ptinit_done <= 1;
     end
 
 
@@ -267,8 +266,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
 	always @ (posedge clock) begin
         reset_btn_sync <= { reset_btn_sync[1:0], reset_btn };
-        if (!por_done || ptinit_write) begin
-            if (!por_done) por_counter <= por_counter + 1;
+        if (!por_done) begin
+            por_counter <= por_counter + 1;
             reset <= 1;
         end else if (cpu_en) begin
             // Release reset only on an enabled cycle, so the core always leaves reset

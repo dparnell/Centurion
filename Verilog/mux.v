@@ -13,6 +13,7 @@ module MUX(
     input wire bit_clock, // 27Mhz clock
     input wire cpu_clock,
     input wire cpu_enable,      // one pulse per CPU clock, so a bus write happens once
+    input wire reset,           // synchronous, and shared with the core
     input uart_rx,
     output uart_tx,    
     input wire selected,
@@ -53,6 +54,20 @@ wire read_data_register = cpu_enable & selected & ~write_en & (address == 1);
 
 // CPU interface
 always @(posedge cpu_clock) begin
+    if (reset) begin
+        // Back to the 9600 7E1 power on defaults. Without this the channel keeps its
+        // configuration and its pending state across a reset of the core, and diag comes
+        // back up talking to a MUX that is still mid-character or still holding a byte.
+        divider <= 27_000_000 / 9600;
+        parity <= 1;
+        parity_enabled <= 1;
+        data_bits <= 7;
+        stop_bits <= 0;
+        interrupts_enabled <= 0;
+        interrupt_level <= 0;
+        output_data <= 0;
+        tx_request <= 0;
+    end else begin
     if (tx_taken) begin
         tx_request <= 0;
     end
@@ -98,6 +113,7 @@ always @(posedge cpu_clock) begin
             endcase
         end
     end
+    end
 end
 
 // rx
@@ -122,6 +138,14 @@ reg [7:0] dataIn = 0;
 reg byteReady = 0;
 
 always @(posedge bit_clock) begin
+    if (reset) begin
+        rxState <= RX_IDLE;
+        rxCounter <= 0;
+        rxBitNumber <= 0;
+        rxShift <= 0;
+        dataIn <= 0;
+        byteReady <= 0;
+    end else begin
     // Clearing comes first so that a byte arriving in the same cycle the CPU reads the
     // data register still leaves byteReady set, rather than being lost.
     if (read_data_register) begin
@@ -179,6 +203,7 @@ always @(posedge bit_clock) begin
             end
         end
     endcase
+    end
 end
 
 // tx
@@ -201,6 +226,15 @@ assign uart_tx = txPinRegister;
 assign tx_idle = (txState == TX_IDLE) && !tx_request;
 
 always @(posedge bit_clock) begin
+    if (reset) begin
+        txState <= TX_IDLE;
+        txCounter <= 0;
+        txPinRegister <= 1;
+        txBitNumber <= 0;
+        txShift <= 0;
+        txParity <= 0;
+        tx_taken <= 0;
+    end else begin
     tx_taken <= 0;
 
     case (txState)
@@ -263,6 +297,7 @@ always @(posedge bit_clock) begin
             end
         end
     endcase
+    end
 end
 
 // The interrupt request is active low and is a level, not a pulse. A one clock pulse at
