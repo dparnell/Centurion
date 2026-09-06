@@ -87,7 +87,7 @@ module CPU6TestBench;
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
 
     CPU6 cpu(reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r,
-             , 1'b0, 8'h00, 8'h00, , , , );
+             , 1'b0, 8'h00, 8'h00, , , , , );
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
 

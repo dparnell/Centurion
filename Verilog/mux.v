@@ -20,6 +20,8 @@ module MUX(
     input wire [4:0] address, 
     input wire write_en, 
     input wire [7:0] data_in,
+    // M13 bit 7 in the core: the CPU telling the board its interrupt has been taken
+    input wire interrupt_ack,
     output reg [7:0] data_out,
     output wire int_reqn,
     output wire [3:0] irq_number,
@@ -305,8 +307,36 @@ end
 
 // The interrupt request is active low and is a level, not a pulse. A one clock pulse at
 // 27MHz would be missed by a 5MHz CPU, which only samples every fifth or sixth clock.
-// It clears when the CPU reads the byte out of the data register.
-assign int_reqn = ~(interrupts_enabled & byteReady);
+//
+// It used to be byteReady itself, which meant the request was still asserted when the
+// handler returned unless the handler had read the data register, so the CPU took the
+// same interrupt again immediately. Here one arriving character raises one request, and
+// the request is dropped when the CPU reads the byte out of the data register or
+// acknowledges the interrupt.
+//
+// Both the set and the acknowledge are edges. The acknowledge is a latch bit rather than
+// a strobe, so if the microcode ever leaves it set, a level sensitive clear here would
+// hold interrupts off for good.
+reg int_pending = 0;
+reg byte_ready_d = 0;
+reg interrupt_ack_d = 0;
+
+always @(posedge bit_clock) begin
+    byte_ready_d <= byteReady;
+    interrupt_ack_d <= interrupt_ack;
+
+    if (reset) begin
+        int_pending <= 0;
+        byte_ready_d <= 0;
+        interrupt_ack_d <= 0;
+    end else if (read_data_register || (interrupt_ack && !interrupt_ack_d)) begin
+        int_pending <= 0;
+    end else if (interrupts_enabled && byteReady && !byte_ready_d) begin
+        int_pending <= 1;
+    end
+end
+
+assign int_reqn = ~int_pending;
 assign irq_number = interrupt_level;
 assign dbg_byte_ready = byteReady;
 assign dbg_rx_byte = dataIn;

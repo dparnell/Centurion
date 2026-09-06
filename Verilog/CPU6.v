@@ -27,7 +27,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     input wire ptinit_write, input wire [7:0] ptinit_addr, input wire [7:0] ptinit_data,
     // For the board level status dump: where the machine is, at both levels.
     output wire [15:0] dbg_memory_address, output wire [10:0] dbg_uc_address,
-    output wire [2:0] dbg_page_table_base, output wire [7:0] dbg_page_table_out);
+    output wire [2:0] dbg_page_table_base, output wire [7:0] dbg_page_table_out,
+    // M13 bit 7. Without it an enabled interrupt is never acknowledged and the request
+    // stands, so the handler is re-entered for ever.
+    output wire interrupt_ack);
 
     /*
      * Rising edge triggered registers
@@ -140,8 +143,18 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     wire seq_pup = pipeline[28];
     wire seq_zero = !reset;
 
-    // F11 addressable latch (machine state / bus state)
+    // The two 74LS259 addressable latches holding machine state. Both are written from
+    // the B register select field: alu_b[3:1] picks the latch bit and alu_b[0] is the
+    // value, which is why the wiki lists their functions in pairs. K11 output 3 enables
+    // F11 and output 2 enables M13.
+    //
+    //   F11  0 interrupt enable   1 address bus enable   2 DMA address increment
+    //        3 increment/decrement 4 DMA control         5 parity odd/even
+    //        6 parity check enable 7 DMA enable
+    //   M13  0,1 DMA              2 timer (RTC) enable   4 run/halt front panel light
+    //        5 timer reset        6 ABT front panel light 7 interrupt acknowledge
     reg [7:0] f11;
+    reg [7:0] m13;
 
     // Interrupt support. Bit 0 of the F11 latch is the interrupt enable: the microcode
     // for EI writes a 1 to it and DI writes a 0, which is how the bit was identified.
@@ -202,6 +215,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign dbg_uc_address = uc_rom_address;
     assign dbg_page_table_base = page_table_base;
     assign dbg_page_table_out = page_table_out;
+    assign interrupt_ack = m13[7];
 
     /*
      * Am2901 bit slice Arithmetic Logic Units (ALUs)
@@ -459,6 +473,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             bus_write <= 0;
             page_table_base <= 0;
             f11 <= 0;
+            m13 <= 0;
         end else if (enable) begin
             pipeline <= uc_rom_data;
             uc_rom_address_pipe <= uc_rom_address;
@@ -549,7 +564,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             case (k11)
                 0: ;
                 1: ;
-                2: ;
+                2: m13[alu_b[3:1]] <= alu_b[0];   // M13 'LS259 enable
                 3: // F11 addressable latch: machine state and bus state. The address is
                    // alu_b[3:1] and the data is alu_b[0], as the microcode trace above
                    // already documented.
