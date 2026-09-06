@@ -65,12 +65,38 @@ module TopTB;
     end
     endtask
 
+    // diag reconfigures the channel to 19200 7N1, so send at that. Getting this wrong
+    // makes the receiver report two bytes of nonsense for one sent, which looks exactly
+    // like a broken receiver and is not.
+    localparam RBITP = 27_000_000/19200 + 1;
+    integer rb;
+    task send_char(input [7:0] c);
+    integer k;
+    reg p;
+    begin
+        p = 0;
+        uart_rx = 0; repeat (RBITP) @(posedge in_clk);
+        for (k = 0; k < 7; k = k + 1) begin
+            uart_rx = c[k]; p = p ^ c[k];
+            repeat (RBITP) @(posedge in_clk);
+        end
+        uart_rx = 1;                       // no parity, straight to the stop bit
+        repeat (RBITP*3) @(posedge in_clk);
+    end
+    endtask
+
     initial begin
         #40000000;                          // 40ms of the CPU driving the pin
         $display("uart_tx transitions in 40ms: %0d", edges);
         $display("LEDs (LED1..LED6, lit=1): %b%b%b%b%b%b", ~L1,~L2,~L3,~L4,~L5,~L6);
         if (edges == 0) $display("FAIL: the top level never drives the UART pin");
         else $display("ok: the top level drives the UART pin from the MUX");
+
+        $display("received byte count before sending: %0d", dut.rx_count);
+        send_char("A");
+        $display("received byte count after sending 'A': %0d (last byte %02x)",
+                 dut.rx_count, dut.dbg_rx_byte);
+        if (dut.rx_count == 0) $display("FAIL: the receive counter did not move");
 
         // Hold btn2 and decode the status dump, at diag's 19200 7N1
         btn2 = 0;

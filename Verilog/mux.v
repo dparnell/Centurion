@@ -22,7 +22,10 @@ module MUX(
     input wire [7:0] data_in,
     output reg [7:0] data_out,
     output wire int_reqn,
-    output wire [3:0] irq_number
+    output wire [3:0] irq_number,
+    // For the board level status dump: is a byte waiting, and what was it
+    output wire dbg_byte_ready,
+    output wire [7:0] dbg_rx_byte
 );
 
 // common stuff - default to 9600 7E1
@@ -305,6 +308,8 @@ end
 // It clears when the CPU reads the byte out of the data register.
 assign int_reqn = ~(interrupts_enabled & byteReady);
 assign irq_number = interrupt_level;
+assign dbg_byte_ready = byteReady;
+assign dbg_rx_byte = dataIn;
 
 // CPU read port. The CPU samples the data bus in the same cycle that it drives the
 // address, so the read has to be combinational.

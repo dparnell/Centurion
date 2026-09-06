@@ -112,6 +112,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire mux_uart_tx;
     wire [15:0] dbg_memory_address;
     wire [10:0] dbg_uc_address;
+    wire dbg_byte_ready;
+    wire [7:0] dbg_rx_byte;
+    reg [15:0] rx_count;
+    reg byte_ready_d;
     wire [2:0] dbg_page_table_base;
     wire [7:0] dbg_page_table_out;
     wire dump_tx, dump_active;
@@ -186,7 +190,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
-    MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
+    MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number, dbg_byte_ready, dbg_rx_byte);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr,
@@ -198,9 +202,13 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     //
     // Freezes the last four instruction fetches when the machine stops printing for two
     // seconds. Held down, btn2 then prints
-    //     F 0017 0019 001b 001d 0003
-    // those four addresses newest first, then the page table base and the mapping in
-    // force. A leading L means it has not gone quiet and the numbers are a live sample.
+    //     F 87b0 87ad 0103 0007 0000
+    // the two most recent fetches, then whether a byte is waiting together with the last
+    // one received, then how many bytes the receiver has ever completed, then the page
+    // table base and mapping. A leading L means it has not gone quiet yet.
+    //
+    // The count is the point: diag is sitting in its wait-for-a-character loop, so if
+    // pressing a key does not move it, nothing is reaching the receiver at all.
     //
     reg [15:0] pc_hist0, pc_hist1, pc_hist2, pc_hist3;
     reg fault_caught;
@@ -234,9 +242,23 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         end
     end
 
+    // Count every byte the receiver has ever completed, so a dead receive path shows up
+    // as a count that does not move when a key is pressed.
+    initial begin
+        rx_count = 0;
+        byte_ready_d = 0;
+    end
+    always @(posedge clock) begin
+        byte_ready_d <= dbg_byte_ready;
+        if (dbg_byte_ready && !byte_ready_d) rx_count <= rx_count + 1;
+    end
+
+    // pc, pc, {byteReady, last received byte}, bytes received, page table base+mapping
     wire [79:0] dump_payload = fault_caught
-        ? { pc_hist0, pc_hist1, pc_hist2, pc_hist3, 5'b0, dbg_page_table_base, dbg_page_table_out }
-        : { dbg_memory_address, 5'b0, dbg_uc_address, pc_hist1, pc_hist2, 5'b0, dbg_page_table_base, dbg_page_table_out };
+        ? { pc_hist0, pc_hist1, 7'b0, dbg_byte_ready, dbg_rx_byte, rx_count,
+            5'b0, dbg_page_table_base, dbg_page_table_out }
+        : { dbg_memory_address, 5'b0, dbg_uc_address, 7'b0, dbg_byte_ready, dbg_rx_byte,
+            rx_count, 5'b0, dbg_page_table_base, dbg_page_table_out };
 
     StatusDump dump(clock, ~btn2, fault_caught ? "F" : "L", dump_payload, dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
