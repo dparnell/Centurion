@@ -1,7 +1,6 @@
 `include "CPU6.v"
 `include "BoardMemory.v"
 `include "LEDPanel.v"
-`include "psram_controller.v"
 `include "mux.v"
 
 /**
@@ -9,65 +8,6 @@
  */
 
 
-module Gowin_rPLL (clkout, clkoutp, clkin);
-
-output clkout;
-output clkoutp;
-input clkin;
-
-wire lock_o;
-wire clkoutd_o;
-wire clkoutd3_o;
-wire gw_vcc;
-wire gw_gnd;
-
-assign gw_vcc = 1'b1;
-assign gw_gnd = 1'b0;
-
-rPLL rpll_inst (
-    .CLKOUT(clkout),
-    .LOCK(lock_o),
-    .CLKOUTP(clkoutp),
-    .CLKOUTD(clkoutd_o),
-    .CLKOUTD3(clkoutd3_o),
-    .RESET(gw_gnd),
-    .RESET_P(gw_gnd),
-    .CLKIN(clkin),
-    .CLKFB(gw_gnd),
-    .FBDSEL({gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
-    .IDSEL({gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
-    .ODSEL({gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
-    .PSDA({gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
-    .DUTYDA({gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
-    .FDLY({gw_vcc,gw_vcc,gw_vcc,gw_vcc})
-);
-
-defparam rpll_inst.FCLKIN = "27";
-defparam rpll_inst.DYN_IDIV_SEL = "false";
-// 81 Mhz, LATENCY=3
-defparam rpll_inst.FBDIV_SEL = 2;
-defparam rpll_inst.IDIV_SEL = 0;       
-defparam rpll_inst.ODIV_SEL = 8;
-
-defparam rpll_inst.DYN_FBDIV_SEL = "false";
-defparam rpll_inst.DYN_ODIV_SEL = "false";
-defparam rpll_inst.PSDA_SEL = "0100";
-defparam rpll_inst.DYN_DA_EN = "false";
-defparam rpll_inst.DUTYDA_SEL = "1000";
-defparam rpll_inst.CLKOUT_FT_DIR = 1'b1;
-defparam rpll_inst.CLKOUTP_FT_DIR = 1'b1;
-defparam rpll_inst.CLKOUT_DLY_STEP = 0;
-defparam rpll_inst.CLKOUTP_DLY_STEP = 0;
-defparam rpll_inst.CLKFB_SEL = "internal";
-defparam rpll_inst.CLKOUT_BYPASS = "false";
-defparam rpll_inst.CLKOUTP_BYPASS = "false";
-defparam rpll_inst.CLKOUTD_BYPASS = "false";
-defparam rpll_inst.DYN_SDIV_SEL = 2;
-defparam rpll_inst.CLKOUTD_SRC = "CLKOUT";
-defparam rpll_inst.CLKOUTD3_SRC = "CLKOUT";
-defparam rpll_inst.DEVICE = "GW1NR-9C";
-
-endmodule //Gowin_rPLL
 
 
 
@@ -138,12 +78,6 @@ module AddressDecode(input wire [18:0] address,
 endmodule
 
 module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx);
-    // Change the PLL and these together to choose another PSRAM speed. These used to
-    // sit at file scope, which is not legal Verilog and meant iverilog could not
-    // elaborate this file, so the top level had never been simulated as a whole.
-    localparam FREQ = 81_000_000;
-    localparam LATENCY = 3;
-
     reg reset;
     // reset_btn is a mechanical input with no relation to the clock, and it feeds the
     // reset of the whole core, so sample it through a synchroniser rather than directly.
@@ -173,52 +107,12 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire [7:0] leds;
     wire [7:0] display_leds;
 
-    localparam ST_WRITE = 2'd0, ST_READ = 2'd1, ST_DONE = 2'd2;
-    reg [1:0] st_state;
-    reg [8:0] st_index;
-    reg st_failed;
-    reg [7:0] st_fail_addr;
-
-    initial begin
-        st_state = ST_WRITE;
-        st_index = 0;
-        st_failed = 0;
-        st_fail_addr = 0;
-    end
-
-    wire selftest_active = st_state != ST_DONE;
-    wire selftest_write  = st_state == ST_WRITE;
-    wire [7:0] selftest_addr = st_index[7:0];
-    wire [7:0] selftest_data = st_index[7:0];
-    wire [7:0] selftest_readback;
 
 
     // The LEDs are active low
     assign {LED1, LED2, LED3, LED4, LED5, LED6, LED7, LED8} = ~display_leds;
     wire instruction_start;
     wire cpu_alive;
-
-    Gowin_rPLL pll(
-        .clkout(ram_clk),        // 81MHZ psram clock
-        .clkoutp(ram_clk_p),     // 81MHZ psram clock phase shifted (90 degrees)
-        .clkin(in_clk)      // 27Mhz system clock
-    );
-
-    // Memory Controller ---------------------------
-    reg read, readd, write, byte_write;
-    reg [21:0] address;
-    reg [15:0] din;
-    wire [15:0] dout;
-    wire [7:0] dout_byte = address[0] ? dout[15:8] : dout[7:0];
-
-    PsramController #(
-        .LATENCY(LATENCY)
-    ) mem_ctrl (
-        .clk(ram_clk), .clk_p(ram_clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
-        .addr(address), .din(din), .dout(dout), .busy(busy),
-        .O_psram_ck(O_psram_ck), .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
-        .O_psram_cs_n(O_psram_cs_n)
-    );
 
     // The CPU runs directly from the 27MHz input pin, which arrives on a real global
     // clock network. It used to run from Divide4 through a BUFG, but a fabric driven
@@ -249,62 +143,8 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
     MUX mux0(in_clk, clock, cpu_en, uart_rx, uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
-    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
-              selftest_active, selftest_write, selftest_addr, selftest_data, selftest_readback);
+    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start);
 
-    /*
-     * Power on self test of the page table.
-     *
-     * diag's CPU-6 MAPPING RAM TEST passes in simulation and hangs on the board, and
-     * the page table is the only thing it exercises that nothing else does. It is 256
-     * entries built from sixteen 16-deep LUTRAM blocks per nibble plus a read mux, which
-     * is the least ordinary memory in the design.
-     *
-     * So before letting the CPU out of reset, write every entry with its own address,
-     * read them all back and compare. Writing the address into the entry means any
-     * aliasing between blocks shows up as a mismatch rather than passing by luck.
-     *
-     * A failure blinks LED1 fast, about 5Hz, which is unmistakably different from the
-     * watchdog's slow 1Hz blink, and shows the first bad entry's address bits 7 to 3 on
-     * LED2 to LED6. A pass leaves the LEDs to the running program.
-     */
-    always @(posedge clock) begin
-        case (st_state)
-            ST_WRITE:
-                if (st_index == 255) begin
-                    st_index <= 0;
-                    st_state <= ST_READ;
-                end else begin
-                    st_index <= st_index + 1;
-                end
-            ST_READ: begin
-                if (selftest_readback != st_index[7:0] && !st_failed) begin
-                    st_failed <= 1;
-                    st_fail_addr <= st_index[7:0];
-                end
-                if (st_index == 255) st_state <= ST_DONE;
-                else st_index <= st_index + 1;
-            end
-            default: ;
-        endcase
-    end
-
-    reg [23:0] fast_counter;
-    reg fast_blink;
-    initial begin
-        fast_counter = 0;
-        fast_blink = 0;
-    end
-    always @(posedge clock) begin
-        if (fast_counter == 2_700_000 - 1) begin
-            fast_counter <= 0;
-            fast_blink <= ~fast_blink;
-        end else begin
-            fast_counter <= fast_counter + 1;
-        end
-    end
-
-    wire [7:0] board_leds = st_failed ? { fast_blink, st_fail_addr[7:3], 2'b00 } : leds;
 
 
     // Bring-up aid. diag never writes the LED panel, so while the core is alive the
@@ -312,12 +152,12 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     // show a count of the bytes handed to the MUX data register instead: that says
     // whether the core is getting as far as talking to the serial channel, without
     // needing a terminal to be connected and correctly configured.
-    Watchdog watchdog(in_clk, instruction_start, board_leds, display_leds, cpu_alive);
+    Watchdog watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
         reset_btn_sync <= { reset_btn_sync[1:0], reset_btn };
-        if (!por_done || selftest_active) begin
-            if (!por_done) por_counter <= por_counter + 1;
+        if (!por_done) begin
+            por_counter <= por_counter + 1;
             reset <= 1;
         end else if (cpu_en) begin
             // Release reset only on an enabled cycle, so the core always leaves reset
