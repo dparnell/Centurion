@@ -1,4 +1,5 @@
 `include "CPU6.v"
+`include "psram_controller.v"
 `include "BoardMemory.v"
 `include "LEDPanel.v"
 `include "mux.v"
@@ -122,6 +123,35 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire instruction_start;
     wire cpu_alive;
 
+    // The PSRAM is not used, but the controller is kept so that its pins are driven
+    // to defined levels. Removing it left CS_n, CK and DQ floating at the PSRAM die,
+    // which is when diag's mapping RAM test went from failing sometimes to failing
+    // every time.
+    localparam FREQ = 81_000_000;
+    localparam LATENCY = 3;
+
+    Gowin_rPLL pll(
+        .clkout(ram_clk),        // 81MHZ psram clock
+        .clkoutp(ram_clk_p),     // 81MHZ psram clock phase shifted (90 degrees)
+        .clkin(in_clk)      // 27Mhz system clock
+    );
+
+    // Memory Controller ---------------------------
+    reg read, readd, write, byte_write;
+    reg [21:0] address;
+    reg [15:0] din;
+    wire [15:0] dout;
+    wire [7:0] dout_byte = address[0] ? dout[15:8] : dout[7:0];
+
+    PsramController #(
+        .LATENCY(LATENCY)
+    ) mem_ctrl (
+        .clk(ram_clk), .clk_p(ram_clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
+        .addr(address), .din(din), .dout(dout), .busy(busy),
+        .O_psram_ck(O_psram_ck), .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
+        .O_psram_cs_n(O_psram_cs_n)
+    );
+
     // The CPU runs directly from the 27MHz input pin, which arrives on a real global
     // clock network. It used to run from Divide4 through a BUFG, but a fabric driven
     // global is exactly what went wrong on hardware: the watchdog reported the divided
@@ -191,6 +221,66 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     end
 endmodule
 
+
+module Gowin_rPLL (clkout, clkoutp, clkin);
+
+output clkout;
+output clkoutp;
+input clkin;
+
+wire lock_o;
+wire clkoutd_o;
+wire clkoutd3_o;
+wire gw_vcc;
+wire gw_gnd;
+
+assign gw_vcc = 1'b1;
+assign gw_gnd = 1'b0;
+
+rPLL rpll_inst (
+    .CLKOUT(clkout),
+    .LOCK(lock_o),
+    .CLKOUTP(clkoutp),
+    .CLKOUTD(clkoutd_o),
+    .CLKOUTD3(clkoutd3_o),
+    .RESET(gw_gnd),
+    .RESET_P(gw_gnd),
+    .CLKIN(clkin),
+    .CLKFB(gw_gnd),
+    .FBDSEL({gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
+    .IDSEL({gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
+    .ODSEL({gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
+    .PSDA({gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
+    .DUTYDA({gw_gnd,gw_gnd,gw_gnd,gw_gnd}),
+    .FDLY({gw_vcc,gw_vcc,gw_vcc,gw_vcc})
+);
+
+defparam rpll_inst.FCLKIN = "27";
+defparam rpll_inst.DYN_IDIV_SEL = "false";
+// 81 Mhz, LATENCY=3
+defparam rpll_inst.FBDIV_SEL = 2;
+defparam rpll_inst.IDIV_SEL = 0;       
+defparam rpll_inst.ODIV_SEL = 8;
+
+defparam rpll_inst.DYN_FBDIV_SEL = "false";
+defparam rpll_inst.DYN_ODIV_SEL = "false";
+defparam rpll_inst.PSDA_SEL = "0100";
+defparam rpll_inst.DYN_DA_EN = "false";
+defparam rpll_inst.DUTYDA_SEL = "1000";
+defparam rpll_inst.CLKOUT_FT_DIR = 1'b1;
+defparam rpll_inst.CLKOUTP_FT_DIR = 1'b1;
+defparam rpll_inst.CLKOUT_DLY_STEP = 0;
+defparam rpll_inst.CLKOUTP_DLY_STEP = 0;
+defparam rpll_inst.CLKFB_SEL = "internal";
+defparam rpll_inst.CLKOUT_BYPASS = "false";
+defparam rpll_inst.CLKOUTP_BYPASS = "false";
+defparam rpll_inst.CLKOUTD_BYPASS = "false";
+defparam rpll_inst.DYN_SDIV_SEL = 2;
+defparam rpll_inst.CLKOUTD_SRC = "CLKOUT";
+defparam rpll_inst.CLKOUTD3_SRC = "CLKOUT";
+defparam rpll_inst.DEVICE = "GW1NR-9C";
+
+endmodule //Gowin_rPLL
 
 /**
  * CPU liveness watchdog.
