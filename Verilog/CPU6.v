@@ -102,8 +102,18 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // windowed write in the wrong entry.
     wire [7:0] page_address = { page_table_base, memory_address[15:11] };
     wire [7:0] page_table_out = { page_table_hi[page_address], page_table_lo[page_address] };
-    wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
-    assign addressBus = virtual_address;
+
+    // Bit 7 of a page entry is not an address bit. It marks the page write-tracked:
+    // reads and writes both pass through to the page underneath, and a write also traps
+    // to level 15. The physical address is 18 bits, entry[6:0] : va[10:0].
+    //
+    // It is kept as virtual_address[18] because that is the PA18 the microcode tests as
+    // a trap condition, in jsr_ and in the sequencer OR inputs. What it must not do is
+    // reach the address bus, which it did: an entry with bit 7 set addressed a page
+    // 0x40000 away from the real one. The mapping RAM test writes every value into
+    // every entry, so it hit one at a fixed point thousands of passes in.
+    wire [18:0] virtual_address = { page_table_out[7], page_table_out[6:0], memory_address[10:0] };
+    assign addressBus = { 1'b0, virtual_address[17:0] };
 
     /*
      * The bottom of physical memory is the CPU's own state rather than the bus:
