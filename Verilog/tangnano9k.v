@@ -111,6 +111,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire mux_uart_tx;
     wire [15:0] dbg_memory_address;
     wire [10:0] dbg_uc_address;
+    wire [2:0] dbg_page_table_base;
+    wire [7:0] dbg_page_table_out;
     wire dump_tx, dump_active;
 
     reg [7:0] ptinit_addr;
@@ -188,12 +190,46 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr,
-              dbg_memory_address, dbg_uc_address);
+              dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is
     // only worth interrogating when it has stopped printing.
-    StatusDump dump(clock, ~btn2, dbg_memory_address, dbg_uc_address, dump_tx, dump_active);
+    //
+    // The board goes off into the weeds rather than stalling: the status dump showed the
+    // program counter down at 0x0016 to 0x0030, the CPU's own register space, while the
+    // same code in simulation runs at 0x8exx with data at 0x01xx. So capture the moment
+    // it leaves, not the aftermath. Every instruction fetch is pushed into a short
+    // history, and the first fetch from below 0x0100 freezes it.
+    //
+    // Held down, btn2 then prints
+    //     F 0017 8f22 8f1e 8f1a 0003
+    // being the bad address, the three fetches before it, and the page table base with
+    // the mapping that was in force. A leading L instead means nothing has gone wrong
+    // yet and the values are a live sample.
+    //
+    reg [15:0] pc_hist0, pc_hist1, pc_hist2, pc_hist3;
+    reg fault_caught;
+    initial begin
+        pc_hist0 = 0; pc_hist1 = 0; pc_hist2 = 0; pc_hist3 = 0;
+        fault_caught = 0;
+    end
+    wire instruction_fetch = cpu_en & instruction_start;
+    always @(posedge clock) begin
+        if (instruction_fetch && !fault_caught) begin
+            pc_hist0 <= dbg_memory_address;
+            pc_hist1 <= pc_hist0;
+            pc_hist2 <= pc_hist1;
+            pc_hist3 <= pc_hist2;
+            if (dbg_memory_address < 16'h0100) fault_caught <= 1;
+        end
+    end
+
+    wire [79:0] dump_payload = fault_caught
+        ? { pc_hist0, pc_hist1, pc_hist2, pc_hist3, 5'b0, dbg_page_table_base, dbg_page_table_out }
+        : { dbg_memory_address, 5'b0, dbg_uc_address, pc_hist1, pc_hist2, 5'b0, dbg_page_table_base, dbg_page_table_out };
+
+    StatusDump dump(clock, ~btn2, fault_caught ? "F" : "L", dump_payload, dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
 
     /*

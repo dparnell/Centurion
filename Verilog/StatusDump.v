@@ -1,38 +1,38 @@
 
 /**
- * Prints the CPU's position over the serial line while a button is held.
+ * Prints CPU state over the serial line while a button is held.
  *
- * diag's mapping RAM test locks the machine in a loop rather than halting it, so the
- * watchdog stays quiet and there is nothing to see. This transmits a line of the form
+ * diag's mapping RAM test does not stall the machine, it sends it into the weeds: the
+ * program counter ends up at 0x0016 to 0x0030, the CPU's own register space, while the
+ * same code in simulation runs at 0x8exx. So the interesting moment is when the machine
+ * leaves its code, not where it ends up.
  *
- *     MA=1234 UC=567
+ * This prints a marker character and five 16 bit values as hex:
  *
- * giving the memory address, which during a fetch is effectively the program counter,
- * and the microcode ROM address. It repeats for as long as the button is held, taking a
- * fresh sample each time, so the addresses a loop covers can be read straight off the
- * terminal and compared against a simulation of the same code.
+ *     F 0017 8f22 8f1e 8f1a 0003
  *
- * The line settings match what diag configures, 19200 7N1, so the terminal does not
- * need touching. It drives the UART pin directly, which is safe because a locked up
- * machine is not printing anything.
+ * The top level decides what they mean. It uses 19200 7N1, which is what diag
+ * configures, so a terminal already talking to diag needs no changes, and it drives the
+ * UART pin directly, which is safe because the machine is only worth interrogating once
+ * it has stopped printing.
  */
 module StatusDump #(
     parameter DIVIDER = 27_000_000 / 19200
 ) (
     input wire clock,
-    input wire trigger,                     // held, not edge
-    input wire [15:0] memory_address,
-    input wire [10:0] uc_address,
+    input wire trigger,                     // held, not an edge
+    input wire [7:0] marker,
+    input wire [79:0] payload,
     output reg tx,
     output wire active
 );
     reg running;
-    reg [3:0] char_index;
-    reg [15:0] ma_latch;
-    reg [10:0] uc_latch;
+    reg [4:0] char_index;
+    reg [79:0] latch;
+    reg [7:0] marker_latch;
     reg [19:0] counter;
     reg [3:0] bit_index;
-    reg [8:0] shifter;                      // stop, 7 data bits, start
+    reg [8:0] shifter;                      // stop bit, 7 data bits, start bit
 
     assign active = running;
 
@@ -40,25 +40,22 @@ module StatusDump #(
         hex = (n < 10) ? (8'h30 + n) : (8'h61 + n - 8'd10);
     endfunction
 
+    // marker, then five groups of "<space>xxxx", then CR LF: 28 characters
     reg [7:0] ch;
+    reg [4:0] nibble_index;
     always @(*) begin
+        nibble_index = 5'd0;
         case (char_index)
-            0:  ch = "M";
-            1:  ch = "A";
-            2:  ch = "=";
-            3:  ch = hex(ma_latch[15:12]);
-            4:  ch = hex(ma_latch[11:8]);
-            5:  ch = hex(ma_latch[7:4]);
-            6:  ch = hex(ma_latch[3:0]);
-            7:  ch = " ";
-            8:  ch = "U";
-            9:  ch = "C";
-            10: ch = "=";
-            11: ch = hex({1'b0, uc_latch[10:8]});
-            12: ch = hex(uc_latch[7:4]);
-            13: ch = hex(uc_latch[3:0]);
-            14: ch = 8'h0d;
-            default: ch = 8'h0a;
+            5'd0:  ch = marker_latch;
+            5'd1, 5'd6, 5'd11, 5'd16, 5'd21: ch = " ";
+            5'd26: ch = 8'h0d;
+            5'd27: ch = 8'h0a;
+            default: begin
+                // 2..5, 7..10, 12..15, 17..20, 22..25 are the hex digits, four per
+                // group with a space between groups
+                nibble_index = (char_index - 5'd2) - ((char_index - 5'd2) / 5'd5);
+                ch = hex(latch[(79 - (nibble_index * 4)) -: 4]);
+            end
         endcase
     end
 
@@ -66,8 +63,8 @@ module StatusDump #(
         tx = 1;
         running = 0;
         char_index = 0;
-        ma_latch = 0;
-        uc_latch = 0;
+        latch = 0;
+        marker_latch = "L";
         counter = 0;
         bit_index = 0;
         shifter = 9'h1ff;
@@ -81,8 +78,8 @@ module StatusDump #(
             char_index <= 0;
             shifter <= 9'h1ff;
             if (trigger) begin
-                ma_latch <= memory_address;
-                uc_latch <= uc_address;
+                latch <= payload;
+                marker_latch <= marker;
                 running <= 1;
             end
         end else if (counter == DIVIDER) begin
@@ -95,11 +92,11 @@ module StatusDump #(
                 shifter <= { 1'b1, shifter[8:1] };
                 bit_index <= bit_index - 1;
                 if (bit_index == 1) begin
-                    if (char_index == 15) begin
+                    if (char_index == 27) begin
                         char_index <= 0;
-                        running <= trigger;         // another line while still held
-                        ma_latch <= memory_address; // fresh sample each line
-                        uc_latch <= uc_address;
+                        running <= trigger;         // another line while held
+                        latch <= payload;           // sampled afresh each line
+                        marker_latch <= marker;
                     end else begin
                         char_index <= char_index + 1;
                     end

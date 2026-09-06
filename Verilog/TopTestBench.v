@@ -51,7 +51,7 @@ module TopTB;
     reg [7:0] dch;
     task decode_dump;
     begin
-        repeat (34) begin
+        repeat (60) begin
             @(negedge uart_tx);
             repeat (DBITP + DBITP/2) @(posedge in_clk);
             dch = 0;

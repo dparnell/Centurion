@@ -26,7 +26,8 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // critical path of the whole design and must not gain a mux.
     input wire ptinit_write, input wire [7:0] ptinit_addr, input wire [7:0] ptinit_data,
     // For the board level status dump: where the machine is, at both levels.
-    output wire [15:0] dbg_memory_address, output wire [10:0] dbg_uc_address);
+    output wire [15:0] dbg_memory_address, output wire [10:0] dbg_uc_address,
+    output wire [2:0] dbg_page_table_base, output wire [7:0] dbg_page_table_out);
 
     /*
      * Rising edge triggered registers
@@ -199,6 +200,8 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign uc_rom_address = { seq2_yout, seq1_yout, seq0_yout };
     assign dbg_memory_address = memory_address;
     assign dbg_uc_address = uc_rom_address;
+    assign dbg_page_table_base = page_table_base;
+    assign dbg_page_table_out = page_table_out;
 
     /*
      * Am2901 bit slice Arithmetic Logic Units (ALUs)
