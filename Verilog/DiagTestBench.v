@@ -87,36 +87,6 @@ module DiagTestTB;
     // that window those writes went to the bus instead, the translation never changed,
     // and the test relocated itself through a stale mapping and ran off into empty
     // memory below 0x0100. A healthy run never executes down there at all.
-    // Hardware failed the mapping RAM compare on pass 24704 (0x6080), well past the
-    // 2649 passes reached so far, so run out to it. When the test takes its compare
-    // failure branch, dump the mapping RAM against the reference copy the test keeps at
-    // physical 0x200 and print only the entries that differ.
-    integer passes = 0;
-    reg caught = 0;
-    integer j, diffs;
-    reg [7:0] ent, ref;
-    always @(posedge dut.clock) begin
-        if (dut.instruction_fetch) begin
-            if (dut.dbg_memory_address == 16'h8e88) passes = passes + 1;
-            if (dut.dbg_memory_address == 16'h8f02 && !caught) begin
-                caught = 1;
-                $display("*** compare failed on pass %0d at %0t", passes, $time);
-                diffs = 0;
-                for (j = 0; j < 256; j = j + 1) begin
-                    ent = { dut.cpu.page_table_hi[j], dut.cpu.page_table_lo[j] };
-                    ref = dut.ram.low_ram_cells[16'h200 + j];
-                    if (ent !== ref) begin
-                        diffs = diffs + 1;
-                        if (diffs <= 20)
-                            $display("    entry %02x (table %0d page %02x): map %02x, reference %02x",
-                                     j, j >> 5, j & 5'h1f, ent, ref);
-                    end
-                end
-                $display("*** %0d of 256 entries differ", diffs);
-            end
-        end
-    end
-
     integer low_count = 0;
     reg [15:0] last_low = 16'hffff;
     always @(posedge dut.clock) begin
@@ -135,10 +105,13 @@ module DiagTestTB;
         send(8'h0d);
         // The mapping RAM test runs until it is interrupted, so let it grind for a
         // while and then ask it to stop the way its own banner says to.
-        #46000000000;
+        #600000000;
+        $display("");
+        $display("--- typing control-C to exit the test ---");
+        send(8'h03);
+        #800000000;
         $display("");
         $display("--- %0d characters total ---", n);
-        $display("--- reached pass %0d ---", passes);
         if (low_count == 0)
             $display("ok: the machine never executed below 0x0100");
         else
