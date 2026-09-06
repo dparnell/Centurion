@@ -107,6 +107,14 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     wire [7:0] leds;
     wire [7:0] display_leds;
 
+    reg [7:0] ptinit_addr;
+    reg ptinit_done;
+    wire ptinit_write = !ptinit_done;
+    initial begin
+        ptinit_addr = 0;
+        ptinit_done = 0;
+    end
+
 
 
     // The LEDs are active low
@@ -143,7 +151,23 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
     MUX mux0(in_clk, clock, cpu_en, uart_rx, uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, mux_data, int_reqn, irq_number);
 
-    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start);
+    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
+              ptinit_write, ptinit_addr, ptinit_addr);
+
+    /*
+     * Page table initialiser.
+     *
+     * The self test that used to live here wrote every entry with its own address and
+     * held the core in reset while it did so, and removing it made diag's mapping RAM
+     * test fail every time rather than occasionally. Whether that is the entries'
+     * starting contents or simply the longer reset is not yet known, so this restores
+     * both, without the read address mux that made the self test the critical path.
+     */
+    always @(posedge clock) begin
+        if (ptinit_write) ptinit_addr <= ptinit_addr + 1;
+        if (ptinit_addr == 255) ptinit_done <= 1;
+    end
+
 
 
 
@@ -156,8 +180,8 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
 
 	always @ (posedge clock) begin
         reset_btn_sync <= { reset_btn_sync[1:0], reset_btn };
-        if (!por_done) begin
-            por_counter <= por_counter + 1;
+        if (!por_done || ptinit_write) begin
+            if (!por_done) por_counter <= por_counter + 1;
             reset <= 1;
         end else if (cpu_en) begin
             // Release reset only on an enabled cycle, so the core always leaves reset

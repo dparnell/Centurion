@@ -21,7 +21,10 @@
 module CPU6(input wire reset, input wire clock, input wire enable, input wire [7:0] dataInBus,
     input wire int_reqn, input wire [3:0] irq_number,
     output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus,
-    output wire instruction_start);
+    output wire instruction_start,
+    // Page table initialiser. Only the write path is muxed: the read path is the
+    // critical path of the whole design and must not gain a mux.
+    input wire ptinit_write, input wire [7:0] ptinit_addr, input wire [7:0] ptinit_data);
 
     /*
      * Rising edge triggered registers
@@ -568,7 +571,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
      * does not fit the device.
      */
     always @(posedge clock) begin
-        if (enable && reset == 0 && k11 == 5) begin
+        if (ptinit_write) begin
+            page_table_lo[ptinit_addr] <= ptinit_data[3:0];
+            page_table_hi[ptinit_addr] <= ptinit_data[7:4];
+        end else if (enable && reset == 0 && k11 == 5) begin
             page_table_lo[page_address] <= result_register[3:0];
             page_table_hi[page_address] <= result_register[7:4];
         end
