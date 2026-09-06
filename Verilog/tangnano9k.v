@@ -196,32 +196,41 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is
     // only worth interrogating when it has stopped printing.
     //
-    // The board goes off into the weeds rather than stalling: the status dump showed the
-    // program counter down at 0x0016 to 0x0030, the CPU's own register space, while the
-    // same code in simulation runs at 0x8exx with data at 0x01xx. So capture the moment
-    // it leaves, not the aftermath. Every instruction fetch is pushed into a short
-    // history, and the first fetch from below 0x0100 freezes it.
-    //
-    // Held down, btn2 then prints
-    //     F 0017 8f22 8f1e 8f1a 0003
-    // being the bad address, the three fetches before it, and the page table base with
-    // the mapping that was in force. A leading L instead means nothing has gone wrong
-    // yet and the values are a live sample.
+    // Freezes the last four instruction fetches when the machine stops printing for two
+    // seconds. Held down, btn2 then prints
+    //     F 0017 0019 001b 001d 0003
+    // those four addresses newest first, then the page table base and the mapping in
+    // force. A leading L means it has not gone quiet and the numbers are a live sample.
     //
     reg [15:0] pc_hist0, pc_hist1, pc_hist2, pc_hist3;
     reg fault_caught;
+    reg [26:0] quiet_counter;
     initial begin
         pc_hist0 = 0; pc_hist1 = 0; pc_hist2 = 0; pc_hist3 = 0;
         fault_caught = 0;
+        quiet_counter = 0;
     end
     wire instruction_fetch = cpu_en & instruction_start;
+    wire uart_written = cpu_en & writeEnBus & mux_select & (addressBus[3:0] == 4'd1);
+
     always @(posedge clock) begin
         if (instruction_fetch && !fault_caught) begin
             pc_hist0 <= dbg_memory_address;
             pc_hist1 <= pc_hist0;
             pc_hist2 <= pc_hist1;
             pc_hist3 <= pc_hist2;
-            if (dbg_memory_address < 16'h0100) fault_caught <= 1;
+        end
+
+        // Freeze when the machine has printed nothing for two seconds while still
+        // executing. Running below 0x0100 is NOT a fault: the mapping test relocates
+        // itself into the register file region on purpose, because that is the one
+        // place unaffected by the mapping RAM it is rewriting. Going quiet is.
+        if (uart_written || fault_caught) begin
+            quiet_counter <= 0;
+        end else if (quiet_counter == 54_000_000 - 1) begin
+            fault_caught <= 1;
+        end else begin
+            quiet_counter <= quiet_counter + 1;
         end
     end
 
