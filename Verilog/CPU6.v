@@ -95,12 +95,37 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
         end
     end
 
-    wire [7:0] page_address = { memory_address[15:11], page_table_base };
+    // The mapping RAM is one flat 256 entry array addressed as table * 32 + page, which
+    // is the order diag uses when it writes the whole table through the window below.
+    // The base therefore has to be the high three bits and the virtual page the low
+    // five; the other way round is self consistent for translation but puts every
+    // windowed write in the wrong entry.
+    wire [7:0] page_address = { page_table_base, memory_address[15:11] };
     wire [7:0] page_table_out = { page_table_hi[page_address], page_table_lo[page_address] };
     wire [18:0] virtual_address = { page_table_out, memory_address[10:0] };
     assign addressBus = virtual_address;
+
+    /*
+     * The bottom of physical memory is the CPU's own state rather than the bus:
+     * 0x000 to 0x0ff is the register file and 0x100 to 0x1ff is the mapping RAM.
+     *
+     * diag loads the whole mapping RAM by writing 0x100 to 0x1ff as ordinary memory,
+     * eight 32 byte blocks, one per table. Without this window those writes went out to
+     * the bus, the board's low RAM absorbed them, and the mapping never changed, so the
+     * mapping RAM test relocated itself through a translation that had not moved and
+     * ran off into empty memory.
+     *
+     * The select needs the translated address, so it cannot also supply the index or the
+     * read would feed itself. The index comes straight from the untranslated address
+     * instead, which is the same 8 bits and has no such loop.
+     */
+    wire [7:0] map_window_index = memory_address[7:0];
+    wire [7:0] map_window_out = { page_table_hi[map_window_index], page_table_lo[map_window_index] };
+    wire map_window = page_table_out == 8'h00 && memory_address[10:8] == 3'b001;
+
     // Register space read mux
-    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus : dataInBus;
+    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus :
+                           map_window ? map_window_out : dataInBus;
 
     /*
      * Instrumentation
@@ -599,6 +624,11 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
         end else if (enable && reset == 0 && k11 == 5) begin
             page_table_lo[page_address] <= result_register[3:0];
             page_table_hi[page_address] <= result_register[7:4];
+        end else if (enable && reset == 0 && k11 == 7 && map_window) begin
+            // A bus write into the mapping RAM window. k11 == 7 is where the write data
+            // is latched, so the address and the data are both valid here.
+            page_table_lo[map_window_index] <= FBus[3:0];
+            page_table_hi[map_window_index] <= FBus[7:4];
         end
     end
 endmodule
