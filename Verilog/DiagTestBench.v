@@ -39,12 +39,12 @@ module DiagTestTB;
     parameter [7:0] TEST = "2";
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
-    reg reset_btn = 1;
+    reg reset_btn = 1, btn2 = 1;
     wire L1,L2,L3,L4,L5,L6,L7,L8;
     wire uart_tx;
     reg  uart_rx = 1;
 
-    tangnano9k dut(in_clk, reset_btn, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
+    tangnano9k dut(in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
 
     // diag reconfigures the channel to 19200 7N1
     localparam BITP = 27_000_000/19200 + 1;

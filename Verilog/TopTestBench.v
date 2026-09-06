@@ -36,15 +36,34 @@ module BUFG(input I, output O); assign O = I; endmodule
 module TopTB;
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;      // 27MHz
-    reg reset_btn = 1;                     // pulled up, not pressed
+    reg reset_btn = 1, btn2 = 1;           // pulled up, not pressed
     wire L1,L2,L3,L4,L5,L6,L7,L8;
     wire uart_tx;
     reg  uart_rx = 1;
 
-    tangnano9k dut(in_clk, reset_btn, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
+    tangnano9k dut(in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
 
     integer edges = 0;
     always @(uart_tx) edges = edges + 1;
+
+    localparam DBITP = 27_000_000/19200 + 1;
+    integer di, dump_chars = 0;
+    reg [7:0] dch;
+    task decode_dump;
+    begin
+        repeat (34) begin
+            @(negedge uart_tx);
+            repeat (DBITP + DBITP/2) @(posedge in_clk);
+            dch = 0;
+            for (di = 0; di < 7; di = di + 1) begin
+                dch[di] = uart_tx;
+                repeat (DBITP) @(posedge in_clk);
+            end
+            dump_chars = dump_chars + 1;
+            $write("%s", dch);
+        end
+    end
+    endtask
 
     initial begin
         #40000000;                          // 40ms of the CPU driving the pin
@@ -53,6 +72,13 @@ module TopTB;
         if (edges == 0) $display("FAIL: the top level never drives the UART pin");
         else $display("ok: the top level drives the UART pin from the MUX");
 
+        // Hold btn2 and decode the status dump, at diag's 19200 7N1
+        btn2 = 0;
+        $write("status dump: ");
+        decode_dump;
+        $display("");
+        if (dump_chars < 30) $display("FAIL: the status dump produced almost nothing");
+        else $display("ok: the status dump printed %0d characters", dump_chars);
         $finish;
     end
 endmodule
