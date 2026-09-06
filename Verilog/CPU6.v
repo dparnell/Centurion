@@ -121,26 +121,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
      */
     wire [7:0] map_window_index = memory_address[7:0];
     wire [7:0] map_window_out = { page_table_hi[map_window_index], page_table_lo[map_window_index] };
-
-    // The board decodes its own space from physical bits 16:11 and 10:8 and from
-    // nothing else. reg_n below is a transcription of those gates: it tests
-    // virtual_address[16:11], which is page_table_out[5:0], and never looks at physical
-    // 18 or 17. Requiring all eight bits of page_table_out to be zero is stricter than
-    // the hardware, and it only diverges once an entry has bit 6 or bit 7 set, which is
-    // why the mapping RAM test ran thousands of passes and then failed at one exact
-    // point: the real machine still reaches its own space through such an entry and
-    // this one stopped.
-    //
-    // Both windows have to use the same decode as reg_n. The microcode branches on
-    // reg_n to decide an access belongs to the CPU rather than the bus, so if the read
-    // mux disagrees with it the microcode takes the register path while the data comes
-    // from the bus.
-    wire cpu_space = page_table_out[5:0] == 6'h00;
-    wire register_window = cpu_space && memory_address[10:8] == 3'b000;
-    wire map_window      = cpu_space && memory_address[10:8] == 3'b001;
+    wire map_window = page_table_out == 8'h00 && memory_address[10:8] == 3'b001;
 
     // Register space read mux
-    wire [7:0] dataInCPU = register_window ? dataOutBus :
+    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus :
                            map_window ? map_window_out : dataInBus;
 
     /*
