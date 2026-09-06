@@ -145,6 +145,9 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     localparam LATENCY = 3;
 
     reg reset;
+    // reset_btn is a mechanical input with no relation to the clock, and it feeds the
+    // reset of the whole core, so sample it through a synchroniser rather than directly.
+    reg [2:0] reset_btn_sync;
     reg [7:0] por_counter;
 
     // por_done is the most trustworthy "is the CPU clock running" indicator available:
@@ -158,6 +161,7 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     initial begin
         reset = 1;
         por_counter = 0;
+        reset_btn_sync = 3'b111;
     end
 
     wire int_reqn;
@@ -311,13 +315,14 @@ module tangnano9k(input in_clk, input reset_btn, output LED1, output LED2, outpu
     Watchdog watchdog(in_clk, instruction_start, board_leds, display_leds, cpu_alive);
 
 	always @ (posedge clock) begin
+        reset_btn_sync <= { reset_btn_sync[1:0], reset_btn };
         if (!por_done || selftest_active) begin
             if (!por_done) por_counter <= por_counter + 1;
             reset <= 1;
         end else if (cpu_en) begin
             // Release reset only on an enabled cycle, so the core always leaves reset
             // on a CPU clock edge whatever phase the clock enable happens to be in.
-            reset <= ~reset_btn;
+            reset <= ~reset_btn_sync[2];
         end
     end
 endmodule

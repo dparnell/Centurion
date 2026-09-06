@@ -108,6 +108,12 @@ localparam RX_DATA   = 2;
 localparam RX_PARITY = 3;
 localparam RX_STOP   = 4;
 
+// uart_rx arrives from outside with no relation to this clock, so synchronise it
+// before the state machine looks at it.
+reg [2:0] uart_rx_sync = 3'b111;
+always @(posedge bit_clock) uart_rx_sync <= { uart_rx_sync[1:0], uart_rx };
+wire uart_rx_s = uart_rx_sync[2];
+
 reg [2:0] rxState = RX_IDLE;
 reg [19:0] rxCounter = 0;
 reg [3:0] rxBitNumber = 0;
@@ -125,7 +131,7 @@ always @(posedge bit_clock) begin
     case (rxState)
         RX_IDLE: begin
             rxCounter <= 0;
-            if (uart_rx == 0) begin
+            if (uart_rx_s == 0) begin
                 rxState <= RX_START;
             end
         end
@@ -137,14 +143,14 @@ always @(posedge bit_clock) begin
                 rxCounter <= 0;
                 rxBitNumber <= 0;
                 rxShift <= 0;
-                rxState <= (uart_rx == 0) ? RX_DATA : RX_IDLE;
+                rxState <= (uart_rx_s == 0) ? RX_DATA : RX_IDLE;
             end
         end
         RX_DATA: begin
             rxCounter <= rxCounter + 1;
             if (rxCounter == divider) begin
                 rxCounter <= 0;
-                rxShift <= { uart_rx, rxShift[7:1] };
+                rxShift <= { uart_rx_s, rxShift[7:1] };
                 if (rxBitNumber + 1 == char_bits) begin
                     rxState <= parity_enabled ? RX_PARITY : RX_STOP;
                 end else begin

@@ -435,7 +435,12 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
 
     // Guideline #1: When modeling sequential logic, use nonblocking 
     //              assignments.
-    always @(posedge clock, posedge reset) begin
+    // Synchronous reset. This used to be asynchronous, which put reset on the
+    // asynchronous CLEAR pin of 159 flip flops spread across the die, reached over
+    // general routing. Flops then leave reset at slightly different times and the core
+    // can start in an inconsistent state, which is unrepeatable by nature. As ordinary
+    // data the reset is covered by normal setup and hold analysis.
+    always @(posedge clock) begin
         if (reset == 1) begin
             work_address <= 0;
             memory_address <= 0;
