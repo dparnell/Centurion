@@ -205,11 +205,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // which is
     //     1,2  the two most recent instruction fetches, still live, so a short loop
     //          shows up as the pair changing from line to line
-    //     3    the instruction that jumped to 0x8f02: 8e97 means the mapping RAM
-    //          compare failed, anything else means the test finished normally
-    //     4    the mapping RAM test pass on which the compare first failed, or 0000 if
-    //          it never has
-    //     5    the pass the test has reached now, still counting
+    //     3    the low physical address the compare had reached when it failed
+    //     4    the two bytes that did not match: buffer at 0x100, then reference at
+    //          0x200
+    //     5    the pass on which the compare first failed
     // A leading L means the machine has not gone quiet yet.
     //
     // The live pair is the point. The frozen fetch says where it stopped printing, but
@@ -249,6 +248,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // That distinction decides whether the test is passing, and the dump has never
     // been able to answer it because diag's own verdict never prints.
     reg [15:0] fail_from;
+    // diag's compare walks the buffer at physical 0x100 against its reference at 0x200
+    // and stops at the first difference. Capture the last byte read from each region,
+    // so the dump reports the mismatching pair itself rather than just where it stopped.
+    reg [7:0] last_buf, last_ref;
+    reg [7:0] fail_buf, fail_ref;
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
@@ -259,6 +263,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         last_low_addr = 0; fail_addr = 0;
         print_entry = 0; print_base = 0; print_seen = 0;
         fail_from = 0;
+        last_buf = 0; last_ref = 0; fail_buf = 0; fail_ref = 0;
         fault_caught = 0;
         quiet_counter = 0;
     end
@@ -291,6 +296,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             print_base <= 0;
             print_seen <= 0;
             fail_from <= 0;
+            last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
             fault_caught <= 0;
             quiet_counter <= 0;
             pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
@@ -298,6 +304,12 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         end else begin
         if (cpu_en && !compare_failed && addressBus[18:10] == 9'd0)
             last_low_addr <= addressBus[9:0];
+
+        // e7 == 3 is where the CPU latches read data
+        if (cpu_en && !compare_failed && cpu.e7 == 3 && addressBus[18:10] == 9'd0) begin
+            if (addressBus[9:8] == 2'b01) last_buf <= cpu.dataInCPU;
+            if (addressBus[9:8] == 2'b10) last_ref <= cpu.dataInCPU;
+        end
 
         if (instruction_fetch) begin
             pc_live0 <= dbg_memory_address;
@@ -313,6 +325,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 fail_pass <= pass_count;
                 fail_addr <= last_low_addr;
                 fail_from <= pc_live0;   // the instruction that jumped to 0x8f02
+                fail_buf <= last_buf;
+                fail_ref <= last_ref;
             end
             if (!fault_caught) begin
                 pc_hist0 <= dbg_memory_address;
@@ -355,7 +369,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // live pc, live pc, frozen pc, {serial board mapping, page table base},
     // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { pc_live0, pc_live1, fail_from, fail_pass, pass_count }
+        ? { pc_live0, pc_live1, 6'b0, fail_addr, fail_buf, fail_ref, fail_pass }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
