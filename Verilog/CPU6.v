@@ -24,6 +24,9 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     output wire instruction_start,
     // Page table initialiser. Only the write path is muxed: the read path is the
     // critical path of the whole design and must not gain a mux.
+    input wire ptinit_write, input wire [7:0] ptinit_addr, input wire [7:0] ptinit_data,
+    // Page table initialiser. Only the write path is muxed: the read path is the
+    // critical path of the whole design and must not gain a mux.
     // For the board level status dump: where the machine is, at both levels.
     output wire [15:0] dbg_memory_address, output wire [10:0] dbg_uc_address,
     output wire [2:0] dbg_page_table_base, output wire [7:0] dbg_page_table_out,
@@ -636,7 +639,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             // 74LS138
             case (k11)
                 0: ;
-                1: ; // Page file write, see the dedicated block below
+                1: ; // Not a page file write: doing that breaks the instruction test
                 2: m13[alu_b[3:1]] <= alu_b[0];   // M13 'LS259 enable
                 3: // F11 addressable latch: machine state and bus state. The address is
                    // alu_b[3:1] and the data is alu_b[0], as the microcode trace above
@@ -666,21 +669,14 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
      * does not fit the device.
      */
     always @(posedge clock) begin
-        if (enable && reset == 0 && k11 == 7 && map_window) begin
+        if (ptinit_write) begin
+            page_table_lo[ptinit_addr] <= ptinit_data[3:0];
+            page_table_hi[ptinit_addr] <= ptinit_data[7:4];
+        end else if (enable && reset == 0 && k11 == 7 && map_window) begin
             // A bus write into the mapping RAM window.
             page_table_lo[map_window_index] <= FBus[3:0];
             page_table_hi[map_window_index] <= FBus[7:4];
-        end else if (enable && reset == 0 && (k11 == 5 || k11 == 1)) begin
-            // K11 output 5 is "Load Page File" on the wiki's decoder table. Output 1 is
-            // listed there with no function at all, but it appears at exactly one
-            // microcode word, reached from 0x7e, which diag calls in a loop that steps
-            // the MAR one page at a time with result_register counting 0, 1, 2 ... That
-            // is the same {base, page} entry addressing the PAGE instruction uses, so
-            // it is a page file write: diag building its own identity map at boot.
-            //
-            // Dropping these writes is why the board needed the ptinit workaround, and
-            // why removing that workaround previously made the mapping RAM test fail
-            // every time rather than occasionally.
+        end else if (enable && reset == 0 && k11 == 5) begin
             page_table_lo[page_address] <= result_register[3:0];
             page_table_hi[page_address] <= result_register[7:4];
         end

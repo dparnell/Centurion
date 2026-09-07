@@ -187,6 +187,16 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // M13 bit 7, from the core back to the serial board so it can drop its request.
     wire interrupt_ack;
 
+    // Page table initialiser. diag does not build its own map: the strobe that looked
+    // like it did, K11 output 1, turns out to break the instruction test when treated
+    // as a page file write. So this stays.
+    reg [7:0] ptinit_addr;
+    wire ptinit_write = reset;
+    initial ptinit_addr = 0;
+    always @(posedge clock) begin
+        if (ptinit_write) ptinit_addr <= ptinit_addr + 1;
+    end
+
     // The core is enabled 5 clocks in every 27, giving the original CPU6's 5MHz.
     wire cpu_en;
     ClockEnable cpu_clock_enable(clock, cpu_en);
@@ -196,6 +206,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, interrupt_ack, mux_data, int_reqn, irq_number, dbg_byte_ready, dbg_rx_byte);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
+              ptinit_write, ptinit_addr, ptinit_addr,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
               dbg_e7, dbg_data_in, dbg_entry0, interrupt_ack);
 
