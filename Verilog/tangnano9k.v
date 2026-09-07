@@ -209,8 +209,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // which is
     //     1,2  the two most recent instruction fetches, still live, so a short loop
     //          shows up as the pair changing from line to line
-    //     3    the low physical address the compare last touched before it failed,
-    //          which names the mapping RAM entry that mismatched
+    //     3    the print routine at virtual 0x07cc: top bit set if it was ever
+    //          reached, then the page table base and the entry page 0 mapped to
     //     4    the mapping RAM test pass on which the compare first failed, or 0000 if
     //          it never has
     //     5    the pass the test has reached now, still counting
@@ -239,6 +239,14 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // low address it touched before branching names the entry that mismatched.
     reg [9:0] last_low_addr;
     reg [9:0] fail_addr;
+    // Both of diag's verdict messages are printed by a JSR to virtual 0x07cc, and
+    // nothing has ever come out of it. Capture what that address resolved to the first
+    // time it is fetched: the page table base in use and the entry for page 0. An entry
+    // pointing into ROM means the routine is real code; 0x00 means it is empty RAM.
+    localparam [15:0] DIAG_PRINT = 16'h07cc;
+    reg [7:0] print_entry;
+    reg [2:0] print_base;
+    reg print_seen;
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
@@ -247,6 +255,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         last_io_page = 0;
         pass_count = 0; fail_pass = 0; compare_failed = 0;
         last_low_addr = 0; fail_addr = 0;
+        print_entry = 0; print_base = 0; print_seen = 0;
         fault_caught = 0;
         quiet_counter = 0;
     end
@@ -275,6 +284,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             compare_failed <= 0;
             last_low_addr <= 0;
             fail_addr <= 0;
+            print_entry <= 0;
+            print_base <= 0;
+            print_seen <= 0;
             fault_caught <= 0;
             quiet_counter <= 0;
             pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
@@ -287,6 +299,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             pc_live0 <= dbg_memory_address;
             pc_live1 <= pc_live0;
             if (dbg_memory_address == DIAG_LOOP_TOP) pass_count <= pass_count + 1;
+            if (dbg_memory_address == DIAG_PRINT && !print_seen) begin
+                print_seen <= 1;
+                print_entry <= dbg_page_table_out;
+                print_base <= dbg_page_table_base;
+            end
             if (dbg_memory_address == DIAG_COMPARE_FAILED && !compare_failed) begin
                 compare_failed <= 1;
                 fail_pass <= pass_count;
@@ -333,7 +350,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // live pc, live pc, frozen pc, {serial board mapping, page table base},
     // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { pc_live0, pc_live1, 6'b0, fail_addr, fail_pass, pass_count }
+        ? { pc_live0, pc_live1, print_seen, 4'b0, print_base, print_entry,
+            fail_pass, pass_count }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
