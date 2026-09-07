@@ -12,67 +12,70 @@ Below is a picure of CPU6 board. Notice the prominent [Am2900 series](https://en
 
 ## Simulation
 
-The [Verilog](https://en.wikipedia.org/wiki/Verilog) implementation was simulated with [Icarus Verilog](http://iverilog.icarus.com/), specifically, [Icarus Verilog for Windows](https://bleyer.org/icarus/).
-
-The build process is straightforward:
-
-```
-> cd Verilog
-> make all
-```
-
-## Synthesis
-
-[Project IceStorm](https://clifford.at/icestorm) open source tools were used for synthesis. Below is a demonstration program running on an [Alchitry Cu](https://alchitry.com/boards/cu) FPGA board containing a [Lattice iCE40 HX8K](https://www.latticesemi.com/iCE40):
-
-![Centurion1](images/cylon.gif "Running code")
-
-The iCE40 HX8K FPGA has 32 4kBit synchronous RAM blocks. Most of the block RAM is used for microcode (2k x 56-bit). Storing microcode in internal block RAM reduces the need for external storage, which is convenient. One RAM block is used for register RAM (256 bytes) and one more is used for a small amount of memory (instructions and data). External RAM will be connected in the future, limited internal block RAM is available for testing.
-
-This version is operating with a CPU clock of 5MHz, which is the estimated the clock rate of the original Centurion CPU6. This design can operate as high as 40MHz, many times faster the original.
-
-Synthesis is known to work on [WSL](https://docs.microsoft.com/en-us/windows/wsl/install) Ubuntu running on Windows 11. The following command will perform synthesis:
+The [Verilog](https://en.wikipedia.org/wiki/Verilog) implementation is simulated with [Icarus Verilog](http://iverilog.icarus.com/):
 
 ```
 cd Verilog
-make
+make test
 ```
 
-USB support on WSL requires [usbipd](https://devblogs.microsoft.com/commandline/connecting-usb-devices-to-wsl) for device programming in WSL. To connect a USB device to WSL Ubuntu, the following commands must be executed from an **administrator** command prompt on Windows:
+That builds and runs two testbenches: `CPU6TestBench`, which runs a set of small
+hand-assembled programs against the core, and `TopTestBench`, which simulates
+the real synthesis top level including the UART pin and the Gowin hard blocks.
+
+A third, `make diagtest`, boots the original diagnostic ROM and types a test
+number over a simulated serial link. It is not part of `make test` because it
+simulates hundreds of milliseconds of a 27 MHz board and takes minutes.
+
+## Synthesis
+
+The design targets a [Gowin GW1NR-9C](https://www.gowinsemi.com/en/product/detail/46/) on a
+[Tang Nano 9K](https://wiki.sipeed.com/hardware/en/tang/tang-nano-9k/nano-9k.html), built with the
+open source [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) toolchain: yosys for
+synthesis, nextpnr-himbaechel for place and route, and gowin_pack for the bitstream.
 
 ```
-usbipd wsl list
-```
-```
-usbipd wsl attach --busid <busid>
-```
-
-Where busid is the appropriate USB bus ID from the wsl list command above. The device should appear in WSL Ubuntu using ```lsusb```.
-
-The board can be programmed from WSL Ubuntu using:
-
-```
-make sudo-prog
+cd Verilog
+make          # synthesise
+make load     # program the attached board with openFPGALoader
 ```
 
-Resource utilization and timing analysis is below:
+Pin assignments are in `Verilog/tangnano9k.cst`. Everything is clocked from the
+27 MHz input pin as a single clock domain; the core is gated down to the
+original CPU6's 5 MHz by a clock enable rather than by a divided clock, because
+driving a fabric-generated clock onto a global did not work on real hardware.
+
+The board's UART appears on the second channel of its FT2232, usually
+`/dev/ttyUSB1`. Serial settings are per program: the diagnostic ROM reconfigures
+the serial board to 19200 baud, 7 data bits, no parity, so
+`picocom -b 19200 -d 7 -p n /dev/ttyUSB1`.
+
+Resource utilisation and timing:
 
 ```
 Info: Device utilisation:
-Info:            ICESTORM_LC:  5382/ 7680    70%
-Info:           ICESTORM_RAM:    30/   32    93%
-Info:                  SB_IO:     9/  256     3%
-Info:                  SB_GB:     5/    8    62%
-Info:           ICESTORM_PLL:     1/    2    50%
-Info:            SB_WARMBOOT:     0/    1     0%
+Info:                  IOB:      13/    276     4%
+Info:                 LUT4:    2766/   8640    32%
+Info:                  ALU:     392/   6480     6%
+Info:                  DFF:    1302/   6480    20%
+Info:            RAM16SDP4:     103/    270    38%
+Info:                BSRAM:      15/     26    57%
 
-Info: Max frequency for clock      'clock_$glb_clk': 39.35 MHz (PASS at 12.00 MHz)
-Info: Max frequency for clock 'clock20MHz_$glb_clk': 362.45 MHz (PASS at 12.00 MHz)
-
-Info: Max delay posedge clock_$glb_clk -> <async>: 2.29 ns
+Info: Max frequency for clock 'clock': 46.25 MHz (PASS at 27.00 MHz)
 ```
 
-Most of the LCs (about 4000 or so) are used for page table lookup, as that is not pipelined and cannot use block RAM. Without the page table, only 1200 LCs are required.
+The page table used to dominate the logic, taking roughly 4700 LUT4s because an
+asynchronous reset on its write port stopped yosys mapping it to memory at all.
+Written from its own always block it maps to LUTRAM instead, which is where most
+of the `RAM16SDP4` usage above comes from, and the whole design dropped from 45%
+to under a third of the device.
+
+Earlier revisions of this project targeted a [Lattice iCE40
+HX8K](https://www.latticesemi.com/iCE40) on an [Alchitry Cu](https://alchitry.com/boards/cu) board
+using [Project IceStorm](https://clifford.at/icestorm). Below is a demonstration program running on
+that earlier target:
+
+![Centurion1](images/cylon.gif "Running code")
 
 ## Architecture
 
@@ -90,7 +93,15 @@ Below is the CPU data path with enables for busses and registers. The enables ar
 
 ## Status
 
-All CPU6 instruction tests pass. Interrupts are enabled, requested and acknowledged; DMA logic is pending.
+The machine boots the original diagnostic ROM on a Tang Nano 9K with a serial
+console, and diag's CPU instruction test (menu entry 01) passes.
+
+All CPU6 instruction tests in the local testbench pass. Interrupts are enabled,
+requested and acknowledged. The MMU is implemented, including the mapping RAM,
+though diag's mapping RAM test (entry 02) still fails on one entry. DMA is not
+implemented, so the disk controller tests cannot run yet; see
+[docs/sd-card-disk-images.md](docs/sd-card-disk-images.md) for how disk images
+might eventually be served from the board's SD card.
 
 ### Links
 
