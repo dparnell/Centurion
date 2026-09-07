@@ -31,6 +31,9 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // are brought out as ports because the top level needs them for instrumentation and
     // a hierarchical reference into the core is not synthesisable.
     output wire [1:0] dbg_e7, output wire [7:0] dbg_data_in,
+    // Entry 0 of the current map, for instrumentation. The mapping RAM test fails on
+    // this entry and it is the one the test's own buffers are addressed through.
+    output wire [7:0] dbg_entry0,
     // M13 bit 7. Without it an enabled interrupt is never acknowledged and the request
     // stands, so the handler is re-entered for ever.
     output wire interrupt_ack);
@@ -255,6 +258,8 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign dbg_uc_address = uc_rom_address;
     assign dbg_page_table_base = page_table_base;
     assign dbg_page_table_out = page_table_out;
+    assign dbg_entry0 = { page_table_hi[{page_table_base, 5'b00000}],
+                          page_table_lo[{page_table_base, 5'b00000}] };
     assign dbg_e7 = e7;
     assign dbg_data_in = dataInCPU;
     assign interrupt_ack = m13[7];

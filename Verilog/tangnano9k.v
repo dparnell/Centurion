@@ -120,6 +120,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire [7:0] dbg_page_table_out;
     wire [1:0] dbg_e7;
     wire [7:0] dbg_data_in;
+    wire [7:0] dbg_entry0;
     wire dump_tx, dump_active;
 
     // Re-initialised on every reset, not just at power up. The mapping test leaves the
@@ -196,7 +197,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
-              dbg_e7, dbg_data_in, interrupt_ack);
+              dbg_e7, dbg_data_in, dbg_entry0, interrupt_ack);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is
@@ -258,6 +259,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg [7:0] fail_buf, fail_ref;
     reg [17:0] rd0, rd1, rd2, rd3;        // {address[9:0], value[7:0]}
     reg [17:0] f0, f1, f2, f3;            // frozen at the branch
+    reg [7:0] fentry0;                    // entry 0 of the running map, frozen too
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
@@ -270,7 +272,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         fail_from = 0;
         last_buf = 0; last_ref = 0; fail_buf = 0; fail_ref = 0;
         rd0 = 0; rd1 = 0; rd2 = 0; rd3 = 0;
-        f0 = 0; f1 = 0; f2 = 0; f3 = 0;
+        f0 = 0; f1 = 0; f2 = 0; f3 = 0; fentry0 = 0;
         fault_caught = 0;
         quiet_counter = 0;
     end
@@ -305,7 +307,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             fail_from <= 0;
             last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
             rd0 <= 0; rd1 <= 0; rd2 <= 0; rd3 <= 0;
-            f0 <= 0; f1 <= 0; f2 <= 0; f3 <= 0;
+            f0 <= 0; f1 <= 0; f2 <= 0; f3 <= 0; fentry0 <= 0;
             fault_caught <= 0;
             quiet_counter <= 0;
             pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
@@ -341,6 +343,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 fail_pass <= pass_count;
                 fail_from <= pc_live0;   // the instruction that jumped to 0x8f02
                 f0 <= rd0; f1 <= rd1; f2 <= rd2; f3 <= rd3;
+                fentry0 <= dbg_entry0;
             end
             if (!fault_caught) begin
                 pc_hist0 <= dbg_memory_address;
@@ -383,7 +386,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // live pc, live pc, frozen pc, {serial board mapping, page table base},
     // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { f3, f2, f1, f0, 8'h00 }   // four {address[9:0], value[7:0]} entries
+        ? { f3, f2, f1, f0, fentry0 } // four {address, value} entries, then entry 0
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
