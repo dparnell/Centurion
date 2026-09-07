@@ -30,7 +30,7 @@ simulates hundreds of milliseconds of a 27 MHz board and takes minutes.
 ## Synthesis
 
 The design targets a [Gowin GW1NR-9C](https://www.gowinsemi.com/en/product/detail/46/) on a
-[Tang Nano 9K](https://wiki.sipeed.com/hardware/en/tang/tang-nano-9k/nano-9k.html), built with the
+[Tang Nano 9K](https://wiki.sipeed.com/hardware/en/tang/Tang-Nano-9K/Nano-9K.html), built with the
 open source [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) toolchain: yosys for
 synthesis, nextpnr-himbaechel for place and route, and gowin_pack for the bitstream.
 
