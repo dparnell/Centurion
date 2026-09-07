@@ -37,6 +37,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // Entry 0 of the current map, for instrumentation. The mapping RAM test fails on
     // this entry and it is the one the test's own buffers are addressed through.
     output wire [7:0] dbg_entry0,
+    // Every write to entry 0 of the running map: the value, and whether it arrived
+    // through the memory window at 0x100..0x1ff or through the microcode's own k11 == 5
+    // page file write. That entry is the one diag's mapping test fails on.
+    output wire dbg_e0_write, output wire [7:0] dbg_e0_value, output wire dbg_e0_via_window,
     // M13 bit 7. Without it an enabled interrupt is never acknowledged and the request
     // stands, so the handler is re-entered for ever.
     output wire interrupt_ack);
@@ -276,6 +280,13 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign dbg_page_table_out = page_table_out;
     assign dbg_entry0 = { page_table_hi[{page_table_base, 5'b00000}],
                           page_table_lo[{page_table_base, 5'b00000}] };
+    wire e0_win = enable && reset == 0 && k11 == 7 && map_window
+                  && map_window_index == { page_table_base, 5'b00000 };
+    wire e0_uc  = enable && reset == 0 && k11 == 5
+                  && page_address == { page_table_base, 5'b00000 };
+    assign dbg_e0_write = e0_win | e0_uc;
+    assign dbg_e0_value = e0_win ? FBus : result_register;
+    assign dbg_e0_via_window = e0_win;
     assign dbg_e7 = e7;
     assign dbg_data_in = dataInCPU;
     assign interrupt_ack = m13[7];
