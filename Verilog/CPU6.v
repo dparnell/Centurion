@@ -136,8 +136,21 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
      * instead, which is the same 8 bits and has no such loop.
      */
 
+    // The mapping RAM is also reachable as memory at physical 0x100 to 0x1ff. The
+    // reference manual says that range is ordinary RAM and that software reaches the
+    // page RAM only through the PAGE instruction, and removing this window on that
+    // basis looked right: instrumentation showed it substituting the table's own
+    // contents for RAM from pass 1 of the mapping test. But it broke diag's CPU
+    // instruction test, which aborts immediately without it and leaves diag showing a
+    // menu with its CPU-6 entries missing. Whatever the manual means, the machine
+    // depends on this, so it stays until that is understood.
+    wire [7:0] map_window_index = memory_address[7:0];
+    wire [7:0] map_window_out = { page_table_hi[map_window_index], page_table_lo[map_window_index] };
+    wire map_window = page_table_out == 8'h00 && memory_address[10:8] == 3'b001;
+
     // Register space read mux
-    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus : dataInBus;
+    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus :
+                           map_window ? map_window_out : dataInBus;
 
     /*
      * Instrumentation
@@ -604,18 +617,15 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                             work_address[15:8] <= memory_address[15:8];
                         end
                     end
-                // F11 bit 3 is the increment/decrement control. The MAR and the work AR
-                // are 74LS669s on the real board, which are up/down counters, so the
-                // direction has to come from somewhere and this is the bit the wiki
-                // names for it.
-                //
-                // Set means count up. It is set for essentially every step diag makes:
-                // 296779 of 296779 work AR steps and 732803 of 732809 MAR steps during
-                // the mapping test. The six MAR steps with it clear are the whole point,
-                // and an earlier attempt at this had the polarity inverted, which made
-                // almost every address step go backwards and hung the machine at once.
-                4: work_address <= f11[3] ? work_address + 1 : work_address - 1;
-                5: memory_address <= f11[3] ? memory_address + 1 : memory_address - 1;
+                // The MAR and work AR are 74LS669s on the real board, which are up/down
+                // counters, so a direction control exists somewhere, and the wiki names
+                // F11 bit 3 for it. Driving these two from that bit is wrong though:
+                // with it clear meaning count down, diag's menu comes back with its
+                // first three entries missing and the rest renumbered, so the text is
+                // being read from the wrong address. With it set meaning count down the
+                // machine hangs outright. Whatever the bit controls, it is not these.
+                4: work_address <= work_address + 1; // WAR increment
+                5: memory_address <= memory_address + 1; // MAR increment
                 6: ; // Select FBus source (combinational)
                 7: swap_register <= { DPBus[3:0], DPBus[7:4] };
             endcase
@@ -656,7 +666,11 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
      * does not fit the device.
      */
     always @(posedge clock) begin
-        if (enable && reset == 0 && (k11 == 5 || k11 == 1)) begin
+        if (enable && reset == 0 && k11 == 7 && map_window) begin
+            // A bus write into the mapping RAM window.
+            page_table_lo[map_window_index] <= FBus[3:0];
+            page_table_hi[map_window_index] <= FBus[7:4];
+        end else if (enable && reset == 0 && (k11 == 5 || k11 == 1)) begin
             // K11 output 5 is "Load Page File" on the wiki's decoder table. Output 1 is
             // listed there with no function at all, but it appears at exactly one
             // microcode word, reached from 0x7e, which diag calls in a loop that steps

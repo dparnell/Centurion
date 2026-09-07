@@ -36,7 +36,7 @@ module BUFG(input I, output O); assign O = I; endmodule
  * different entry from the menu.
  */
 module DiagTestTB;
-    parameter [7:0] TEST = "2";
+    parameter [7:0] TEST = "1";
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
@@ -87,6 +87,18 @@ module DiagTestTB;
     // that window those writes went to the bus instead, the translation never changed,
     // and the test relocated itself through a stale mapping and ran off into empty
     // memory below 0x0100. A healthy run never executes down there at all.
+    defparam dut.cpu_clock_enable.TICKS = 13;
+    // Regression guard for the increment/decrement control. diag's mapping RAM test
+    // branches to 0x8f02 when its compare fails; with F11 bit 3 driving the MAR and
+    // work AR step direction it should never get there.
+    integer npass = 0, failures = 0;
+    always @(posedge dut.clock) if (dut.instruction_fetch) begin
+        if (dut.dbg_memory_address == 16'h8e88) npass = npass + 1;
+        if (dut.dbg_memory_address == 16'h8f02) begin
+            failures = failures + 1;
+            if (failures == 1) $display("*** compare failed on pass %0d", npass);
+        end
+    end
     integer low_count = 0;
     reg [15:0] last_low = 16'hffff;
     always @(posedge dut.clock) begin
@@ -105,13 +117,17 @@ module DiagTestTB;
         send(8'h0d);
         // The mapping RAM test runs until it is interrupted, so let it grind for a
         // while and then ask it to stop the way its own banner says to.
-        #600000000;
+        repeat (400) #1000000;
         $display("");
-        $display("--- typing control-C to exit the test ---");
+        $display("--- typing control-C ---");
         send(8'h03);
-        #800000000;
+        repeat (600) #1000000;
         $display("");
         $display("--- %0d characters total ---", n);
+        if (failures == 0)
+            $display("ok: %0d mapping test passes, no compare failure", npass);
+        else
+            $display("FAIL: %0d compare failures in %0d passes", failures, npass);
         if (low_count == 0)
             $display("ok: the machine never executed below 0x0100");
         else
