@@ -373,7 +373,12 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
-    StatusDump dump(clock, ~btn2, fault_caught ? "F" : "L", dump_payload, dump_tx, dump_active);
+    // Trigger on btn2 as before, and also automatically once the machine has stopped
+    // printing or diag's compare has failed. The automatic trigger is what makes the
+    // board usable without someone holding a button: it cannot corrupt diag's own
+    // output because fault_caught only sets after two seconds of silence.
+    StatusDump dump(clock, ~btn2 | fault_caught, fault_caught ? "F" : "L", dump_payload,
+                    dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
 
     // Bring-up aid. diag never writes the LED panel, so while the core is alive the
