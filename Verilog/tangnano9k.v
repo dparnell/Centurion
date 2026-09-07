@@ -253,6 +253,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // so the dump reports the mismatching pair itself rather than just where it stopped.
     reg [7:0] last_buf, last_ref;
     reg [7:0] fail_buf, fail_ref;
+    reg [1:0] rd_region;
+    reg rd_pending;
+    reg [7:0] miss_buf, miss_ref;
+    reg [9:0] miss_addr;
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
@@ -264,6 +268,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         print_entry = 0; print_base = 0; print_seen = 0;
         fail_from = 0;
         last_buf = 0; last_ref = 0; fail_buf = 0; fail_ref = 0;
+        rd_region = 0; rd_pending = 0;
+        miss_buf = 0; miss_ref = 0; miss_addr = 0;
         fault_caught = 0;
         quiet_counter = 0;
     end
@@ -297,6 +303,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             print_seen <= 0;
             fail_from <= 0;
             last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
+            rd_region <= 0; rd_pending <= 0;
+            miss_buf <= 0; miss_ref <= 0; miss_addr <= 0;
             fault_caught <= 0;
             quiet_counter <= 0;
             pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
@@ -305,10 +313,26 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (cpu_en && !compare_failed && addressBus[18:10] == 9'd0)
             last_low_addr <= addressBus[9:0];
 
-        // e7 == 3 is where the CPU latches read data
-        if (cpu_en && !compare_failed && cpu.e7 == 3 && addressBus[18:10] == 9'd0) begin
-            if (addressBus[9:8] == 2'b01) last_buf <= cpu.dataInCPU;
-            if (addressBus[9:8] == 2'b10) last_ref <= cpu.dataInCPU;
+        // The read data latches at e7 == 3, a cycle after the address is on the bus, so
+        // the region has to be remembered from the read start at h11 == 1 rather than
+        // sampled again when the data arrives.
+        if (cpu_en && !compare_failed && cpu.h11 == 1 && addressBus[18:10] == 9'd0) begin
+            rd_region <= addressBus[9:8];
+            rd_pending <= 1;
+        end
+        if (cpu_en && !compare_failed && cpu.e7 == 3 && rd_pending) begin
+            rd_pending <= 0;
+            if (rd_region == 2'b01) last_buf <= cpu.dataInCPU;
+            if (rd_region == 2'b10) begin
+                last_ref <= cpu.dataInCPU;
+                // The compare reads ahead, so the last pair it read is not necessarily
+                // the one that failed. Remember the most recent pair that disagreed.
+                if (cpu.dataInCPU !== last_buf) begin
+                    miss_buf <= last_buf;
+                    miss_ref <= cpu.dataInCPU;
+                    miss_addr <= last_low_addr;
+                end
+            end
         end
 
         if (instruction_fetch) begin
@@ -323,10 +347,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             if (dbg_memory_address == DIAG_COMPARE_FAILED && !compare_failed) begin
                 compare_failed <= 1;
                 fail_pass <= pass_count;
-                fail_addr <= last_low_addr;
                 fail_from <= pc_live0;   // the instruction that jumped to 0x8f02
-                fail_buf <= last_buf;
-                fail_ref <= last_ref;
+                fail_buf <= miss_buf;
+                fail_ref <= miss_ref;
+                fail_addr <= miss_addr;
             end
             if (!fault_caught) begin
                 pc_hist0 <= dbg_memory_address;
@@ -373,11 +397,44 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
-    // Trigger on btn2 as before, and also automatically once the machine has stopped
-    // printing or diag's compare has failed. The automatic trigger is what makes the
-    // board usable without someone holding a button: it cannot corrupt diag's own
-    // output because fault_caught only sets after two seconds of silence.
-    StatusDump dump(clock, ~btn2 | fault_caught, fault_caught ? "F" : "L", dump_payload,
+    // Trigger on btn2 as before, and also automatically a few seconds after diag's
+    // compare has failed, so the board can be driven without anyone holding a button.
+    //
+    // The delay matters. The dump takes the UART pin away from the machine, so an
+    // automatic trigger that fired whenever things went quiet would also fire at the
+    // idle prompt and eat diag's own output, including any verdict it managed to print.
+    // Waiting for a failure and then giving the machine three seconds to say whatever
+    // it is going to say keeps the dump out of the way.
+    // Sending 0x00 down the serial line asks for one status dump. That is better than
+    // any automatic trigger: the dump takes the UART pin away from the machine, so
+    // anything that fires on its own eventually eats diag's own output. This way the
+    // dump only ever happens when it has been asked for, and exactly one line comes
+    // back per request. 0x7f rather than 0xff because the channel is running seven data
+    // bits, so the eighth never arrives. NUL rather than DEL because DEL is wanted
+    // for line editing. This whole trigger is scaffolding and should come out once the
+    // machine is being driven by something other than a debugger.
+    //
+    // The request is cleared as the dump starts, not when it ends: StatusDump does
+    // "running <= trigger" at the end of a line, so running never drops between lines
+    // while the trigger is held and a falling edge never arrives.
+    reg dump_request;
+    reg rx_ready_d;
+    reg dump_active_d;
+    initial begin dump_request = 0; rx_ready_d = 0; dump_active_d = 0; end
+    always @(posedge clock) begin
+        rx_ready_d <= dbg_byte_ready;
+        dump_active_d <= dump_active;
+        if (reset) begin
+            dump_request <= 0;
+        end else begin
+            if (dump_active)
+                dump_request <= 0;   // consumed as the line starts
+            else if (dbg_byte_ready && !rx_ready_d && dbg_rx_byte == 8'h00)
+                dump_request <= 1;
+        end
+    end
+
+    StatusDump dump(clock, ~btn2 | dump_request, fault_caught ? "F" : "L", dump_payload,
                     dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
 
