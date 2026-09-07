@@ -189,6 +189,12 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     //        5 timer reset        6 ABT front panel light 7 interrupt acknowledge
     reg [7:0] f11;
     reg [7:0] m13;
+    // Defined before the first reset: f11[3] now selects the address step direction, and
+    // an X there propagates straight into the address registers.
+    initial begin
+        f11 = 0;
+        m13 = 0;
+    end
 
     // Interrupt support. Bit 0 of the F11 latch is the interrupt enable: the microcode
     // for EI writes a 1 to it and DI writes a 0, which is how the bit was identified.
@@ -593,6 +599,11 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                             work_address[15:8] <= memory_address[15:8];
                         end
                     end
+                // F11 bit 3 is the wiki's "increment/decrement control" and diag does
+                // write it during the mapping RAM test, at 0x8e7c just before the main
+                // loop. It is not these two steps though: making either of them
+                // conditional on it, in either polarity, hangs the basic instruction
+                // tests immediately.
                 4: work_address <= work_address + 1; // WAR increment
                 5: memory_address <= memory_address + 1; // MAR increment
                 6: ; // Select FBus source (combinational)
