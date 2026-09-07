@@ -271,6 +271,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg e0w0, e0w1, e0w2, e0w3;
     reg [7:0] fe0v0, fe0v1, fe0v2, fe0v3;
     reg fe0w0, fe0w1, fe0w2, fe0w3;
+    reg [15:0] e0p0, e0p1, e0p2, e0p3;      // the instruction doing each write
+    reg [15:0] fe0p0, fe0p1, fe0p2, fe0p3;
     // diag's compare walks the buffer at physical 0x100 against its reference at 0x200
     // and stops at the first difference. Capture the last byte read from each region,
     // so the dump reports the mismatching pair itself rather than just where it stopped.
@@ -291,6 +293,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         fail_from = 0;
         e0v0=0; e0v1=0; e0v2=0; e0v3=0; e0w0=0; e0w1=0; e0w2=0; e0w3=0;
         fe0v0=0; fe0v1=0; fe0v2=0; fe0v3=0; fe0w0=0; fe0w1=0; fe0w2=0; fe0w3=0;
+        e0p0=0; e0p1=0; e0p2=0; e0p3=0; fe0p0=0; fe0p1=0; fe0p2=0; fe0p3=0;
         last_buf = 0; last_ref = 0; fail_buf = 0; fail_ref = 0;
         rd0 = 0; rd1 = 0; rd2 = 0; rd3 = 0;
         f0 = 0; f1 = 0; f2 = 0; f3 = 0; fentry0 = 0;
@@ -328,6 +331,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             fail_from <= 0;
             e0v0<=0; e0v1<=0; e0v2<=0; e0v3<=0; e0w0<=0; e0w1<=0; e0w2<=0; e0w3<=0;
             fe0v0<=0; fe0v1<=0; fe0v2<=0; fe0v3<=0; fe0w0<=0; fe0w1<=0; fe0w2<=0; fe0w3<=0;
+            e0p0<=0; e0p1<=0; e0p2<=0; e0p3<=0; fe0p0<=0; fe0p1<=0; fe0p2<=0; fe0p3<=0;
             last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
             rd0 <= 0; rd1 <= 0; rd2 <= 0; rd3 <= 0;
             f0 <= 0; f1 <= 0; f2 <= 0; f3 <= 0; fentry0 <= 0;
@@ -339,6 +343,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (cpu_en && !compare_failed && dbg_e0_write) begin
             e0v3 <= e0v2; e0v2 <= e0v1; e0v1 <= e0v0; e0v0 <= dbg_e0_value;
             e0w3 <= e0w2; e0w2 <= e0w1; e0w1 <= e0w0; e0w0 <= dbg_e0_via_window;
+            e0p3 <= e0p2; e0p2 <= e0p1; e0p1 <= e0p0; e0p0 <= pc_live0;
         end
         if (cpu_en && !compare_failed && addressBus[18:10] == 9'd0)
             last_low_addr <= addressBus[9:0];
@@ -371,6 +376,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 fail_from <= pc_live0;   // the instruction that jumped to 0x8f02
                 fe0v0 <= e0v0; fe0v1 <= e0v1; fe0v2 <= e0v2; fe0v3 <= e0v3;
                 fe0w0 <= e0w0; fe0w1 <= e0w1; fe0w2 <= e0w2; fe0w3 <= e0w3;
+                fe0p0 <= e0p0; fe0p1 <= e0p1; fe0p2 <= e0p2; fe0p3 <= e0p3;
                 f0 <= rd0; f1 <= rd1; f2 <= rd2; f3 <= rd3;
                 fentry0 <= dbg_entry0;
             end
@@ -420,7 +426,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         // The ring of compare reads has served its purpose and is dropped: without a
         // live PC in here there is no way to tell a running test from a hung machine.
         // last four writes to entry 0, oldest first, then their paths and the flag
-        ? { fe0v3, fe0v2, fe0v1, fe0v0, pass_count, fail_pass,
+        // the instruction addresses of the last four writes to entry 0, oldest first,
+        // then the four via-window flags and the failure flag
+        ? { fe0p3, fe0p2, fe0p1, fe0p0,
             4'b0, fe0w3, fe0w2, fe0w1, fe0w0, 7'b0, compare_failed }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
