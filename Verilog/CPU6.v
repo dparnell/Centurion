@@ -466,7 +466,13 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             8: DPBus = page_table_out; // read the mapping RAM back, translated address hi
             9: DPBus = { ~condition_codes[0], ~condition_codes[1], ~condition_codes[2], ~condition_codes[3], 4'b0000 }; // low nibble is sense switches
             10: DPBus = bus_read;
-            11: DPBus = 8'h0f; // read ILR (interrupt level register?) { A8 4 bits, H14 4 bits }
+            // The PAGE store assembles each byte from two sources: d2d3 == 8 gives the
+            // entry's seven address bits, and the microcode at 488 computes ~D and
+            // shifts bit 0 of the result into the top of the byte. That bit is the
+            // page's write-tracked flag, which the reference manual describes as bit 7
+            // of an entry and which is not part of the physical address. The stub here
+            // held bit 0 at 1, so every byte the store wrote came out with bit 7 clear.
+            11: DPBus = { 7'b0000111, ~page_table_out[7] };
             12: ; // read switch 2 other half of dip switches and condition codes?
             13: DPBus = constant;
             14: ;
