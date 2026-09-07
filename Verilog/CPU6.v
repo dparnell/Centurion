@@ -27,6 +27,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // For the board level status dump: where the machine is, at both levels.
     output wire [15:0] dbg_memory_address, output wire [10:0] dbg_uc_address,
     output wire [2:0] dbg_page_table_base, output wire [7:0] dbg_page_table_out,
+    // e7 == 3 is where a bus read is latched, and dataInCPU is the byte latched. These
+    // are brought out as ports because the top level needs them for instrumentation and
+    // a hierarchical reference into the core is not synthesisable.
+    output wire [1:0] dbg_e7, output wire [7:0] dbg_data_in,
     // M13 bit 7. Without it an enabled interrupt is never acknowledged and the request
     // stands, so the handler is re-entered for ever.
     output wire interrupt_ack);
@@ -245,6 +249,8 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign dbg_uc_address = uc_rom_address;
     assign dbg_page_table_base = page_table_base;
     assign dbg_page_table_out = page_table_out;
+    assign dbg_e7 = e7;
+    assign dbg_data_in = dataInCPU;
     assign interrupt_ack = m13[7];
 
     /*

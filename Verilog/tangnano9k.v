@@ -118,6 +118,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg byte_ready_d;
     wire [2:0] dbg_page_table_base;
     wire [7:0] dbg_page_table_out;
+    wire [1:0] dbg_e7;
+    wire [7:0] dbg_data_in;
     wire dump_tx, dump_active;
 
     // Re-initialised on every reset, not just at power up. The mapping test leaves the
@@ -193,7 +195,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, interrupt_ack, mux_data, int_reqn, irq_number, dbg_byte_ready, dbg_rx_byte);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
-              dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out, interrupt_ack);
+              dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
+              dbg_e7, dbg_data_in, interrupt_ack);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is
@@ -205,10 +208,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // which is
     //     1,2  the two most recent instruction fetches, still live, so a short loop
     //          shows up as the pair changing from line to line
-    //     3    the low physical address the compare had reached when it failed
-    //     4    the two bytes that did not match: buffer at 0x100, then reference at
-    //          0x200
-    //     5    the pass on which the compare first failed
+    // In the failure case the eighty bits are four {address[9:0], value[7:0]} entries,
+    // oldest first, being the last four bytes the compare read before it branched,
+    // followed by eight spare bits. They straddle the printed word boundaries, so
+    // reassemble the five words into one number and unpack from the top.
     // A leading L means the machine has not gone quiet yet.
     //
     // The live pair is the point. The frozen fetch says where it stopped printing, but
@@ -253,10 +256,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // so the dump reports the mismatching pair itself rather than just where it stopped.
     reg [7:0] last_buf, last_ref;
     reg [7:0] fail_buf, fail_ref;
-    reg [1:0] rd_region;
-    reg rd_pending;
-    reg [7:0] miss_buf, miss_ref;
-    reg [9:0] miss_addr;
+    reg [17:0] rd0, rd1, rd2, rd3;        // {address[9:0], value[7:0]}
+    reg [17:0] f0, f1, f2, f3;            // frozen at the branch
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
@@ -268,8 +269,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         print_entry = 0; print_base = 0; print_seen = 0;
         fail_from = 0;
         last_buf = 0; last_ref = 0; fail_buf = 0; fail_ref = 0;
-        rd_region = 0; rd_pending = 0;
-        miss_buf = 0; miss_ref = 0; miss_addr = 0;
+        rd0 = 0; rd1 = 0; rd2 = 0; rd3 = 0;
+        f0 = 0; f1 = 0; f2 = 0; f3 = 0;
         fault_caught = 0;
         quiet_counter = 0;
     end
@@ -303,8 +304,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             print_seen <= 0;
             fail_from <= 0;
             last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
-            rd_region <= 0; rd_pending <= 0;
-            miss_buf <= 0; miss_ref <= 0; miss_addr <= 0;
+            rd0 <= 0; rd1 <= 0; rd2 <= 0; rd3 <= 0;
+            f0 <= 0; f1 <= 0; f2 <= 0; f3 <= 0;
             fault_caught <= 0;
             quiet_counter <= 0;
             pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
@@ -313,26 +314,17 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (cpu_en && !compare_failed && addressBus[18:10] == 9'd0)
             last_low_addr <= addressBus[9:0];
 
-        // The read data latches at e7 == 3, a cycle after the address is on the bus, so
-        // the region has to be remembered from the read start at h11 == 1 rather than
-        // sampled again when the data arrives.
-        if (cpu_en && !compare_failed && cpu.h11 == 1 && addressBus[18:10] == 9'd0) begin
-            rd_region <= addressBus[9:8];
-            rd_pending <= 1;
-        end
-        if (cpu_en && !compare_failed && cpu.e7 == 3 && rd_pending) begin
-            rd_pending <= 0;
-            if (rd_region == 2'b01) last_buf <= cpu.dataInCPU;
-            if (rd_region == 2'b10) begin
-                last_ref <= cpu.dataInCPU;
-                // The compare reads ahead, so the last pair it read is not necessarily
-                // the one that failed. Remember the most recent pair that disagreed.
-                if (cpu.dataInCPU !== last_buf) begin
-                    miss_buf <= last_buf;
-                    miss_ref <= cpu.dataInCPU;
-                    miss_addr <= last_low_addr;
-                end
-            end
+        // Keep the last four bytes read out of the compare's buffers, address and value
+        // together, and freeze them when it branches. Guessing which pair matters has
+        // not worked: watching only 0x1xx against 0x2xx produced nothing, and there is a
+        // second compare and a second pair of PAGE buffers at 0x300. Recording whatever
+        // it actually read last avoids having to know in advance.
+        if (cpu_en && !compare_failed && dbg_e7 == 3
+            && addressBus[18:10] == 9'd0 && addressBus[9:8] != 2'b00) begin
+            rd3 <= rd2;
+            rd2 <= rd1;
+            rd1 <= rd0;
+            rd0 <= { addressBus[9:0], dbg_data_in };
         end
 
         if (instruction_fetch) begin
@@ -348,9 +340,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 compare_failed <= 1;
                 fail_pass <= pass_count;
                 fail_from <= pc_live0;   // the instruction that jumped to 0x8f02
-                fail_buf <= miss_buf;
-                fail_ref <= miss_ref;
-                fail_addr <= miss_addr;
+                f0 <= rd0; f1 <= rd1; f2 <= rd2; f3 <= rd3;
             end
             if (!fault_caught) begin
                 pc_hist0 <= dbg_memory_address;
@@ -393,7 +383,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // live pc, live pc, frozen pc, {serial board mapping, page table base},
     // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { pc_live0, pc_live1, 6'b0, fail_addr, fail_buf, fail_ref, fail_pass }
+        ? { f3, f2, f1, f0, 8'h00 }   // four {address[9:0], value[7:0]} entries
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
