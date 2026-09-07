@@ -604,13 +604,18 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                             work_address[15:8] <= memory_address[15:8];
                         end
                     end
-                // F11 bit 3 is the wiki's "increment/decrement control" and diag does
-                // write it during the mapping RAM test, at 0x8e7c just before the main
-                // loop. It is not these two steps though: making either of them
-                // conditional on it, in either polarity, hangs the basic instruction
-                // tests immediately.
-                4: work_address <= work_address + 1; // WAR increment
-                5: memory_address <= memory_address + 1; // MAR increment
+                // F11 bit 3 is the increment/decrement control. The MAR and the work AR
+                // are 74LS669s on the real board, which are up/down counters, so the
+                // direction has to come from somewhere and this is the bit the wiki
+                // names for it.
+                //
+                // Set means count up. It is set for essentially every step diag makes:
+                // 296779 of 296779 work AR steps and 732803 of 732809 MAR steps during
+                // the mapping test. The six MAR steps with it clear are the whole point,
+                // and an earlier attempt at this had the polarity inverted, which made
+                // almost every address step go backwards and hung the machine at once.
+                4: work_address <= f11[3] ? work_address + 1 : work_address - 1;
+                5: memory_address <= f11[3] ? memory_address + 1 : memory_address - 1;
                 6: ; // Select FBus source (combinational)
                 7: swap_register <= { DPBus[3:0], DPBus[7:4] };
             endcase

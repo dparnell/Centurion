@@ -209,10 +209,10 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // which is
     //     1,2  the two most recent instruction fetches, still live, so a short loop
     //          shows up as the pair changing from line to line
-    // In the failure case the eighty bits are four {address[9:0], value[7:0]} entries,
-    // oldest first, being the last four bytes the compare read before it branched,
-    // followed by eight spare bits. They straddle the printed word boundaries, so
-    // reassemble the five words into one number and unpack from the top.
+    //     1,2  the two most recent instruction fetches, live
+    //     3    the pass the mapping test has reached, still counting
+    //     4    the pass its compare first failed on, 0000 if it never has
+    //     5    0001 if the compare has failed, 0000 if not
     // A leading L means the machine has not gone quiet yet.
     //
     // The live pair is the point. The frozen fetch says where it stopped printing, but
@@ -386,7 +386,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // live pc, live pc, frozen pc, {serial board mapping, page table base},
     // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { f3, f2, f1, f0, fentry0 } // four {address, value} entries, then entry 0
+        // Live program counter pair, the pass the test has reached, the pass any compare
+        // failure happened on, and entry 0 with a flag saying whether it failed at all.
+        // The ring of compare reads has served its purpose and is dropped: without a
+        // live PC in here there is no way to tell a running test from a hung machine.
+        ? { pc_live0, pc_live1, pass_count, fail_pass, 15'b0, compare_failed }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
