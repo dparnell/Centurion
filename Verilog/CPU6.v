@@ -41,6 +41,9 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // through the memory window at 0x100..0x1ff or through the microcode's own k11 == 5
     // page file write. That entry is the one diag's mapping test fails on.
     output wire dbg_e0_write, output wire [7:0] dbg_e0_value, output wire dbg_e0_via_window,
+    // Any page table write: which entry, what value, and by which path.
+    output wire dbg_pt_write, output wire [7:0] dbg_pt_index, output wire [7:0] dbg_pt_value,
+    output wire dbg_pt_via_window,
     // M13 bit 7. Without it an enabled interrupt is never acknowledged and the request
     // stands, so the handler is re-entered for ever.
     output wire interrupt_ack);
@@ -155,9 +158,15 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     wire [7:0] map_window_out = { page_table_hi[map_window_index], page_table_lo[map_window_index] };
     wire map_window = page_table_out == 8'h00 && memory_address[10:8] == 3'b001;
 
-    // Register space read mux
-    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus :
-                           map_window ? map_window_out : dataInBus;
+    // Register space read mux. The mapping RAM window is write only: a read of
+    // 0x100..0x1ff comes from memory, not from the table.
+    //
+    // With the window answering reads too, the PAGE load could never load anything. It
+    // reads its source at 0x100+i, the window handed back entry i instead of memory, and
+    // the instruction became a copy of the table onto itself. Measured on hardware, all
+    // 15951 non-identity writes to the table came from the store at 0x8ed9 through the
+    // window and none from the load, which is backwards.
+    wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus : dataInBus;
 
     /*
      * Instrumentation
@@ -287,6 +296,12 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign dbg_e0_write = e0_win | e0_uc;
     assign dbg_e0_value = e0_win ? FBus : result_register;
     assign dbg_e0_via_window = e0_win;
+    wire pt_win = enable && reset == 0 && k11 == 7 && map_window;
+    wire pt_uc  = enable && reset == 0 && k11 == 5;
+    assign dbg_pt_write = pt_win | pt_uc;
+    assign dbg_pt_index = pt_win ? map_window_index : page_address;
+    assign dbg_pt_value = pt_win ? FBus : result_register;
+    assign dbg_pt_via_window = pt_win;
     assign dbg_e7 = e7;
     assign dbg_data_in = dataInCPU;
     assign interrupt_ack = m13[7];

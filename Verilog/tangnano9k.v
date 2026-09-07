@@ -122,6 +122,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     wire [7:0] dbg_data_in;
     wire [7:0] dbg_entry0;
     wire dbg_e0_write, dbg_e0_via_window;
+    wire dbg_pt_write, dbg_pt_via_window;
+    wire [7:0] dbg_pt_index, dbg_pt_value;
     wire [7:0] dbg_e0_value;
     wire dump_tx, dump_active;
 
@@ -211,7 +213,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
               ptinit_write, ptinit_addr, ptinit_addr,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
               dbg_e7, dbg_data_in, dbg_entry0,
-              dbg_e0_write, dbg_e0_value, dbg_e0_via_window, interrupt_ack);
+              dbg_e0_write, dbg_e0_value, dbg_e0_via_window,
+              dbg_pt_write, dbg_pt_index, dbg_pt_value, dbg_pt_via_window, interrupt_ack);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is
@@ -271,6 +274,13 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg e0w0, e0w1, e0w2, e0w3;
     reg [7:0] fe0v0, fe0v1, fe0v2, fe0v3;
     reg fe0w0, fe0w1, fe0w2, fe0w3;
+    // Writes whose value is not the entry's own identity value. If diag's test pattern
+    // ever reaches the table, it shows up here; if this stays empty, the pattern never
+    // gets written at all.
+    reg [7:0] ni_i0, ni_i1, ni_i2, ni_v0, ni_v1, ni_v2;
+    reg [15:0] ni_pc, ni_count;
+    reg [7:0] fni_i0, fni_i1, fni_i2, fni_v0, fni_v1, fni_v2;
+    reg [15:0] fni_pc, fni_count;
     reg [15:0] e0p0, e0p1, e0p2, e0p3;      // the instruction doing each write
     reg [15:0] fe0p0, fe0p1, fe0p2, fe0p3;
     // diag's compare walks the buffer at physical 0x100 against its reference at 0x200
@@ -294,6 +304,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         e0v0=0; e0v1=0; e0v2=0; e0v3=0; e0w0=0; e0w1=0; e0w2=0; e0w3=0;
         fe0v0=0; fe0v1=0; fe0v2=0; fe0v3=0; fe0w0=0; fe0w1=0; fe0w2=0; fe0w3=0;
         e0p0=0; e0p1=0; e0p2=0; e0p3=0; fe0p0=0; fe0p1=0; fe0p2=0; fe0p3=0;
+        ni_i0=0; ni_i1=0; ni_i2=0; ni_v0=0; ni_v1=0; ni_v2=0; ni_pc=0; ni_count=0;
+        fni_i0=0; fni_i1=0; fni_i2=0; fni_v0=0; fni_v1=0; fni_v2=0; fni_pc=0; fni_count=0;
         last_buf = 0; last_ref = 0; fail_buf = 0; fail_ref = 0;
         rd0 = 0; rd1 = 0; rd2 = 0; rd3 = 0;
         f0 = 0; f1 = 0; f2 = 0; f3 = 0; fentry0 = 0;
@@ -332,6 +344,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             e0v0<=0; e0v1<=0; e0v2<=0; e0v3<=0; e0w0<=0; e0w1<=0; e0w2<=0; e0w3<=0;
             fe0v0<=0; fe0v1<=0; fe0v2<=0; fe0v3<=0; fe0w0<=0; fe0w1<=0; fe0w2<=0; fe0w3<=0;
             e0p0<=0; e0p1<=0; e0p2<=0; e0p3<=0; fe0p0<=0; fe0p1<=0; fe0p2<=0; fe0p3<=0;
+            ni_i0<=0; ni_i1<=0; ni_i2<=0; ni_v0<=0; ni_v1<=0; ni_v2<=0; ni_pc<=0; ni_count<=0;
+            fni_i0<=0; fni_i1<=0; fni_i2<=0; fni_v0<=0; fni_v1<=0; fni_v2<=0; fni_pc<=0; fni_count<=0;
             last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
             rd0 <= 0; rd1 <= 0; rd2 <= 0; rd3 <= 0;
             f0 <= 0; f1 <= 0; f2 <= 0; f3 <= 0; fentry0 <= 0;
@@ -340,6 +354,12 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
             pc_live0 <= 0; pc_live1 <= 0;
         end else begin
+        if (cpu_en && !compare_failed && dbg_pt_write && dbg_pt_value != dbg_pt_index) begin
+            ni_i2 <= ni_i1; ni_i1 <= ni_i0; ni_i0 <= dbg_pt_index;
+            ni_v2 <= ni_v1; ni_v1 <= ni_v0; ni_v0 <= dbg_pt_value;
+            ni_pc <= pc_live0;
+            ni_count <= ni_count + 1;
+        end
         if (cpu_en && !compare_failed && dbg_e0_write) begin
             e0v3 <= e0v2; e0v2 <= e0v1; e0v1 <= e0v0; e0v0 <= dbg_e0_value;
             e0w3 <= e0w2; e0w2 <= e0w1; e0w1 <= e0w0; e0w0 <= dbg_e0_via_window;
@@ -377,6 +397,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 fe0v0 <= e0v0; fe0v1 <= e0v1; fe0v2 <= e0v2; fe0v3 <= e0v3;
                 fe0w0 <= e0w0; fe0w1 <= e0w1; fe0w2 <= e0w2; fe0w3 <= e0w3;
                 fe0p0 <= e0p0; fe0p1 <= e0p1; fe0p2 <= e0p2; fe0p3 <= e0p3;
+                fni_i0 <= ni_i0; fni_i1 <= ni_i1; fni_i2 <= ni_i2;
+                fni_v0 <= ni_v0; fni_v1 <= ni_v1; fni_v2 <= ni_v2;
+                fni_pc <= ni_pc; fni_count <= ni_count;
                 f0 <= rd0; f1 <= rd1; f2 <= rd2; f3 <= rd3;
                 fentry0 <= dbg_entry0;
             end
@@ -428,8 +451,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         // last four writes to entry 0, oldest first, then their paths and the flag
         // the instruction addresses of the last four writes to entry 0, oldest first,
         // then the four via-window flags and the failure flag
-        ? { fe0p3, fe0p2, fe0p1, fe0p0,
-            4'b0, fe0w3, fe0w2, fe0w1, fe0w0, 7'b0, compare_failed }
+        // three most recent non-identity table writes as {entry, value}, newest first,
+        // then the instruction that did the newest, then how many there have been
+        ? { fni_i0, fni_v0, fni_pc, pass_count, fail_pass, 15'b0, compare_failed }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
