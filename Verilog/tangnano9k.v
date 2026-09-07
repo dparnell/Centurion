@@ -123,9 +123,6 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // Re-initialised on every reset, not just at power up. The mapping test leaves the
     // page table full of its own patterns, and nothing else puts it back, so after a
     // reset diag was starting up against whatever the previous run had left behind.
-    reg [7:0] ptinit_addr;
-    wire ptinit_write = reset;
-    initial ptinit_addr = 0;
 
 
 
@@ -196,7 +193,6 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, interrupt_ack, mux_data, int_reqn, irq_number, dbg_byte_ready, dbg_rx_byte);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
-              ptinit_write, ptinit_addr, ptinit_addr,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out, interrupt_ack);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
@@ -357,22 +353,6 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     StatusDump dump(clock, ~btn2, fault_caught ? "F" : "L", dump_payload, dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
-
-    /*
-     * Page table initialiser.
-     *
-     * The self test that used to live here wrote every entry with its own address and
-     * held the core in reset while it did so, and removing it made diag's mapping RAM
-     * test fail every time rather than occasionally. Whether that is the entries'
-     * starting contents or simply the longer reset is not yet known, so this restores
-     * both, without the read address mux that made the self test the critical path.
-     */
-    always @(posedge clock) begin
-        if (ptinit_write) ptinit_addr <= ptinit_addr + 1;
-    end
-
-
-
 
     // Bring-up aid. diag never writes the LED panel, so while the core is alive the
     // LEDs would sit dark and tell us nothing. Until something does write the panel,
