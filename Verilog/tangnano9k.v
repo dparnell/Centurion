@@ -205,8 +205,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // which is
     //     1,2  the two most recent instruction fetches, still live, so a short loop
     //          shows up as the pair changing from line to line
-    //     3    the print routine at virtual 0x07cc: top bit set if it was ever
-    //          reached, then the page table base and the entry page 0 mapped to
+    //     3    the instruction that jumped to 0x8f02: 8e97 means the mapping RAM
+    //          compare failed, anything else means the test finished normally
     //     4    the mapping RAM test pass on which the compare first failed, or 0000 if
     //          it never has
     //     5    the pass the test has reached now, still counting
@@ -243,6 +243,12 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg [7:0] print_entry;
     reg [2:0] print_base;
     reg print_seen;
+    // Which instruction jumped to 0x8f02. diag branches there from 0x8e97 when its
+    // mapping RAM compare fails; arriving from anywhere else means the test finished
+    // its loop normally and 0x8f02 is on the completion path, not the failure path.
+    // That distinction decides whether the test is passing, and the dump has never
+    // been able to answer it because diag's own verdict never prints.
+    reg [15:0] fail_from;
     reg fault_caught;
     reg [26:0] quiet_counter;
     initial begin
@@ -252,6 +258,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         pass_count = 0; fail_pass = 0; compare_failed = 0;
         last_low_addr = 0; fail_addr = 0;
         print_entry = 0; print_base = 0; print_seen = 0;
+        fail_from = 0;
         fault_caught = 0;
         quiet_counter = 0;
     end
@@ -283,6 +290,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             print_entry <= 0;
             print_base <= 0;
             print_seen <= 0;
+            fail_from <= 0;
             fault_caught <= 0;
             quiet_counter <= 0;
             pc_hist0 <= 0; pc_hist1 <= 0; pc_hist2 <= 0; pc_hist3 <= 0;
@@ -304,6 +312,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 compare_failed <= 1;
                 fail_pass <= pass_count;
                 fail_addr <= last_low_addr;
+                fail_from <= pc_live0;   // the instruction that jumped to 0x8f02
             end
             if (!fault_caught) begin
                 pc_hist0 <= dbg_memory_address;
@@ -346,8 +355,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // live pc, live pc, frozen pc, {serial board mapping, page table base},
     // {byteReady, last received byte}
     wire [79:0] dump_payload = fault_caught
-        ? { pc_live0, pc_live1, print_seen, 4'b0, print_base, print_entry,
-            fail_pass, pass_count }
+        ? { pc_live0, pc_live1, fail_from, fail_pass, pass_count }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
