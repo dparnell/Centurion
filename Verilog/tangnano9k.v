@@ -97,6 +97,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // complementary clock is left alone: an ODDR output has to reach an IOB directly,
     // and fanning it into an inverter as well makes nextpnr fail to pack the IO logic.
     assign O_psram_reset_n = 2'b11;
+
     reg reset;
     // reset_btn is a mechanical input with no relation to the clock, and it feeds the
     // reset of the whole core, so sample it through a synchroniser rather than directly.

@@ -215,6 +215,13 @@ ODDR oddr_ck(
 );
 assign O_psram_ck[0] = ck_tbuf;
 
+// The package holds two dies sharing one DQ bus and this controller only uses the
+// first, so it left the second's clock and chip select undriven. Floating, die 1 can
+// select itself and drive the bus against die 0, and every read comes back as the
+// same constant whatever was written. Hold it deselected and its clock quiet.
+assign O_psram_cs_n[1] = 1'b1;
+assign O_psram_ck[1]   = 1'b0;
+
 
 // Tristate DDR input
 IDDR iddr_rwds(
