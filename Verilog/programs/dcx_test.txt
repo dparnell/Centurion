@@ -1,7 +1,16 @@
 // DCX counts a 16 bit register down to zero and BNZ leaves the loop when it
 // gets there. Three stars means DCX set the zero flag on exactly the right
-// iteration. Written while chasing diag's mapping RAM test, whose outer loop
-// is a DCX/BNZ pair; see CLAUDE.md for the 16 bit values that still fail.
+// iteration.
+//
+// The two NOPs are load bearing. With the LDXW first, its two operand bytes
+// are executed as instructions instead: a literal containing 0x00 traps on the
+// HLT and one that does not leaves X holding whatever the previous program put
+// there. hellorld.txt and bnz_test.txt both open with NOPs for the same
+// reason. Chasing this cost a whole round of "DCX is broken for 16 bit
+// values", which it is not - with the NOPs in place, literals 0x0101, 0x0180
+// and 0x02ff count out to exactly 257, 384 and 767.
+01 // NOP
+01 // NOP
 60 // LDXW #0003
 00
 03

@@ -1,17 +1,31 @@
-// JSR must not destroy X. Load X with 3, call a subroutine that returns at
-// once, then count X down printing a star per iteration. Three stars means the
-// call and return left X alone. This is the fault that makes diag's mapping
-// RAM test fail on pass 57345: its outer loop counter is X, the PAGE-load
-// subroutine it calls each pass zeroes it, and the loop then runs 224 times
-// instead of 32.
+// JSR must not destroy X. Point the stack at RAM, load X with 3, call a
+// subroutine that returns at once, then count X down printing a star per
+// iteration. Three stars means the call and return left X alone.
+//
+// CPU6's JSR keeps the return address in X and pushes the *old* X, so this
+// fails whenever the stack is not backed by memory: the return pops zero into
+// X and the loop then runs 65536 times. That is exactly what made diag's
+// mapping RAM test fail - its stack sits at physical 0x0c000, which the board
+// did not decode. Setting S here is therefore the point of the test, not
+// boilerplate: with S left at 0 the push goes to 0x3fffe, in the I/O space.
+//
+// The leading NOPs are load bearing. With a three byte instruction first, its
+// operand bytes are executed instead; hellorld.txt and bnz_test.txt open with
+// NOPs for the same reason.
+01 // NOP
+01 // NOP
+90 // LDAW #0c00
+0c
+00
+5f // XASW, so S = 0c00
 60 // LDXW #0003
 00
 03
 7b // JSR +3, to the RSR below
 03
-71 // JMP 8009, over the subroutine
+71 // JMP 800f, over the subroutine
 80
-09
+0f
 09 // RSR
 80 // LDAL '*'
 2a

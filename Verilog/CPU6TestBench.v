@@ -18,20 +18,24 @@ module Memory(input wire clock, input wire enable, input wire [18:0] address, in
     output reg [7:0] data_out);
 
     reg [7:0] rom_cells[0:8191];
-    reg [7:0] ram_cells[0:4095];
+    reg [7:0] ram_cells[0:8191];
     reg [7:0] low_ram_cells[0:4095];
 
     integer i;
     initial begin
-        for (i=0; i<4096; i=i+1) ram_cells[i] = 8'h00;
+        for (i=0; i<8192; i=i+1) ram_cells[i] = 8'h00;
         for (i=0; i<4096; i=i+1) low_ram_cells[i] = 8'h00;
     end
 
     wire rom_select = address[18:13] == 4;
-    wire ram_select = address[18:12] == 7'hb;
+    // 8K covering physical 0x0b000 to 0x0cfff, matching BoardMemory.v. It has to
+    // reach 0x0c000 because that is where a program's stack ends up, and CPU6's JSR
+    // pushes the old X, so calls made with an unbacked stack return with X zeroed.
+    wire ram_select = address[18:12] == 7'h0b || address[18:12] == 7'h0c;
     wire low_ram_select = address[18:12] == 0;
     wire [12:0] low13 = address[12:0];
     wire [11:0] low12 = address[11:0];
+    wire [12:0] ram_addr = { address[12], address[11:0] };
 
     always @(*) begin
         data_out = 0;
@@ -46,7 +50,7 @@ module Memory(input wire clock, input wire enable, input wire [18:0] address, in
             default:
                 begin
                     if (rom_select) data_out = rom_cells[low13];
-                    if (ram_select) data_out = ram_cells[low12];
+                    if (ram_select) data_out = ram_cells[ram_addr];
                     if (low_ram_select) data_out = low_ram_cells[low12];
                 end
         endcase
@@ -54,7 +58,7 @@ module Memory(input wire clock, input wire enable, input wire [18:0] address, in
 
     always @(posedge clock) begin
         if (enable && write_en) begin
-            if (ram_select) ram_cells[low12] <= data_in;
+            if (ram_select) ram_cells[ram_addr] <= data_in;
             if (low_ram_select) low_ram_cells[low12] <= data_in;
         end
     end
