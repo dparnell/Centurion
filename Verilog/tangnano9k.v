@@ -211,7 +211,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [2:0] ctrl_state;
     wire ctrl_rst_done;
     wire [4:0] ctrl_cycles;
-    wire [15:0] ctrl_dq_echo;
+    wire [15:0] ctrl_dq_echo, ctrl_dq_float;
+    wire ctrl_released;
     PsramController #(
         .FREQ(PSRAM_FREQ), .LATENCY(LATENCY), .DIE(PSRAM_DIE)
     ) mem_ctrl (
@@ -220,7 +221,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .O_psram_ck(O_psram_ck), .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
         .O_psram_cs_n(O_psram_cs_n), .O_psram_ck_n(O_psram_ck_n),
         .dbg_state(ctrl_state), .dbg_rst_done(ctrl_rst_done), .dbg_cycles(ctrl_cycles),
-        .dbg_dq_echo(ctrl_dq_echo)
+        .dbg_dq_echo(ctrl_dq_echo), .dbg_released(ctrl_released), .dbg_dq_float(ctrl_dq_float)
     );
 
     // The CPU runs directly from the 27MHz input pin, which arrives on a real global
@@ -883,7 +884,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [79:0] dump_payload =
         { 4'b0, psram_saw_idle, busy, write, read, ctrl_state, psram_stage,
           psram_done_s2, psram_pass,
-          psram_cycles, 10'b0, ctrl_rst_done, ctrl_cycles, psram_read0, ctrl_dq_echo };
+          15'b0, ctrl_released, 10'b0, ctrl_rst_done, ctrl_cycles, ctrl_dq_float, ctrl_dq_echo };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.

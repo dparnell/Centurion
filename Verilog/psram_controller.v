@@ -45,7 +45,12 @@ module PsramController #(
     // What the DQ input path sees while the FPGA itself is driving the bus. If this
     // does not echo the command bytes being driven out, the input path is broken
     // independently of the memory, and nothing read back from the die means anything.
-    output reg [15:0] dbg_dq_echo
+    output reg [15:0] dbg_dq_echo,
+    // Does the FPGA actually release the bus during a read? dbg_released goes high if
+    // dq_oen is ever deasserted while in READ_ST, and dbg_dq_float accumulates what
+    // the input path sees while it is released. If dbg_released stays low the FPGA is
+    // driving against the die and every read is our own output latch.
+    output reg dbg_released, output reg [15:0] dbg_dq_float
 );
 
 reg [2:0] state;
@@ -244,8 +249,16 @@ assign O_psram_ck_n[1-DIE] = 1'b1;
 // input path never sees the pins at all, and no value read back from the die means
 // anything.
 always @(posedge clk) begin
-    if (!resetn) dbg_dq_echo <= 0;
-    else if (!dq_oen) dbg_dq_echo <= dbg_dq_echo | {dq_in_ris, dq_in_fal};
+    if (!resetn) begin
+        dbg_dq_echo <= 0;
+        dbg_dq_float <= 0;
+        dbg_released <= 0;
+    end else if (!dq_oen) begin
+        dbg_dq_echo <= dbg_dq_echo | {dq_in_ris, dq_in_fal};
+    end else begin
+        dbg_dq_float <= dbg_dq_float | {dq_in_ris, dq_in_fal};
+        if (state == READ_ST) dbg_released <= 1;
+    end
 end
 
 // Tristate DDR input
