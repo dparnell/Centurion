@@ -12,3 +12,4 @@ DiagTestBench
 *.fs
 *.json
 PsramTB
+MapFailTB

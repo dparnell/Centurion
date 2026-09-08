@@ -462,6 +462,57 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     reg [15:0] fidx0_count, fnz0_count, fnz0_pc;
     reg [7:0]  fnz0_val;
     reg [9:0] fail_addr;
+    // The map in use when the compare failed. diag runs its own code in map 0 but
+    // tests maps 1 to 7 and then 0, so this says which invocation went wrong.
+    reg [2:0] fail_base;
+    // Which instruction reaches the PSRAM, and through which map. Nothing diag does
+    // during this test should leave page 0 of map 0 - its code, its stack and its
+    // buffers are all identity mapped into the block RAM - so any access that lands
+    // in the PSRAM at all is already wrong, and the map it went through names the
+    // culprit. Frozen at the compare failure like everything else.
+    reg [15:0] ps_pc, ps_va;
+    reg [18:0] ps_pa;
+    reg [2:0]  ps_base;
+    reg [15:0] ps_count;
+    reg [15:0] fps_pc, fps_va;
+    reg [18:0] fps_pa;
+    reg [2:0]  fps_base;
+    reg [15:0] fps_count;
+    // Bus writes that went through a map other than 0. diag runs entirely in map 0 -
+    // its code, its stack and its buffers are all there - and the PAGE instruction is
+    // supposed to put the base back before its own memory side access. So every one of
+    // these is a store landing at the wrong physical address, and the count says
+    // whether that is happening at all before any theory about why.
+    reg [15:0] wb_pc, wb_va;
+    reg [18:0] wb_pa;
+    reg [2:0]  wb_base;
+    reg [15:0] wb_count;
+    reg [15:0] fwb_pc, fwb_va;
+    reg [18:0] fwb_pa;
+    reg [2:0]  fwb_base;
+    reg [15:0] fwb_count;
+    // The load half of PAGE reads a byte from memory and writes it into a page table
+    // entry. Every failure so far is an entry that came back 00 when its source byte
+    // held its identity value, so catch the write that puts a zero into a non-zero
+    // entry and record the buffer byte read immediately before it - that is the
+    // source the load had in hand.
+    reg [7:0]  z0_index, z0_value, z0_src;
+    reg [9:0]  z0_src_addr;
+    reg [15:0] z0_pc, z0_count;
+    reg [7:0]  fz0_index, fz0_value, fz0_src;
+    reg [9:0]  fz0_src_addr;
+    reg [15:0] fz0_pc, fz0_count;
+    // The most recent read out of the buffer page, live: {address, value}.
+    reg [17:0] buf_rd;
+
+    reg [15:0] rb_pc, rb_va;
+    reg [18:0] rb_pa;
+    reg [2:0]  rb_base;
+    reg [15:0] rb_count;
+    reg [15:0] frb_pc, frb_va;
+    reg [18:0] frb_pa;
+    reg [2:0]  frb_base;
+    reg [15:0] frb_count;
     // Both of diag's verdict messages are printed by a JSR to virtual 0x07cc, and
     // nothing has ever come out of it. Capture what that address resolved to the first
     // time it is fetched: the page table base in use and the entry for page 0. An entry
@@ -556,6 +607,17 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
             compare_failed <= 0;
             last_low_addr <= 0;
             fail_addr <= 0;
+            fail_base <= 0;
+            ps_pc <= 0; ps_va <= 0; ps_pa <= 0; ps_base <= 0; ps_count <= 0;
+            fps_pc <= 0; fps_va <= 0; fps_pa <= 0; fps_base <= 0; fps_count <= 0;
+            wb_pc <= 0; wb_va <= 0; wb_pa <= 0; wb_base <= 0; wb_count <= 0;
+            fwb_pc <= 0; fwb_va <= 0; fwb_pa <= 0; fwb_base <= 0; fwb_count <= 0;
+            z0_index <= 0; z0_value <= 0; z0_src <= 0; z0_src_addr <= 0;
+            z0_pc <= 0; z0_count <= 0; buf_rd <= 0;
+            fz0_index <= 0; fz0_value <= 0; fz0_src <= 0; fz0_src_addr <= 0;
+            fz0_pc <= 0; fz0_count <= 0;
+            rb_pc <= 0; rb_va <= 0; rb_pa <= 0; rb_base <= 0; rb_count <= 0;
+            frb_pc <= 0; frb_va <= 0; frb_pa <= 0; frb_base <= 0; frb_count <= 0;
             print_entry <= 0;
             print_base <= 0;
             print_seen <= 0;
@@ -627,6 +689,48 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         end
         if (cpu_en && !compare_failed && addressBus[18:10] == 9'd0)
             last_low_addr <= addressBus[9:0];
+
+        if (cpu_en && !compare_failed && dbg_e7 == 2'd3 && addressBus[18:10] == 9'd0)
+            buf_rd <= { addressBus[9:0], dbg_data_in };
+
+        if (cpu_en && !compare_failed && dbg_pt_write
+            && dbg_pt_value == 8'h00 && dbg_pt_index != 8'h00) begin
+            z0_index <= dbg_pt_index;
+            z0_value <= dbg_pt_value;
+            z0_src <= buf_rd[7:0];
+            z0_src_addr <= buf_rd[17:8];
+            z0_pc <= pc_live0;
+            z0_count <= z0_count + 1;
+        end
+
+        // A real bus read - e7 == 3 is the only cycle in which CPU6 latches the bus -
+        // taken through a map other than 0. The bridge fetches speculatively whenever
+        // the MAR happens to point into the PSRAM, so an access at a wrong-map address
+        // proves nothing on its own; this is the one that the microcode actually
+        // consumed.
+        if (cpu_en && !compare_failed && dbg_e7 == 2'd3 && dbg_page_table_base != 3'd0) begin
+            rb_pc <= pc_live0;
+            rb_va <= dbg_memory_address;
+            rb_pa <= addressBus;
+            rb_base <= dbg_page_table_base;
+            rb_count <= rb_count + 1;
+        end
+
+        if (cpu_en && !compare_failed && writeEnBus && dbg_page_table_base != 3'd0) begin
+            wb_pc <= pc_live0;
+            wb_va <= dbg_memory_address;
+            wb_pa <= addressBus;
+            wb_base <= dbg_page_table_base;
+            wb_count <= wb_count + 1;
+        end
+
+        if (cpu_en && !compare_failed && psram_select) begin
+            ps_pc <= pc_live0;
+            ps_va <= dbg_memory_address;
+            ps_pa <= addressBus;
+            ps_base <= dbg_page_table_base;
+            ps_count <= ps_count + 1;
+        end
 
         // Every byte the CPU reads out of the buffer page, and the one that was in
         // hand when the table's index 0 was last written.
@@ -733,6 +837,15 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                 compare_failed <= 1;
                 fail_pass <= pass_count;
                 fail_from <= pc_live0;   // the instruction that jumped to 0x8f02
+                fail_base <= dbg_page_table_base;
+                fps_pc <= ps_pc; fps_va <= ps_va; fps_pa <= ps_pa;
+                fps_base <= ps_base; fps_count <= ps_count;
+                fwb_pc <= wb_pc; fwb_va <= wb_va; fwb_pa <= wb_pa;
+                fwb_base <= wb_base; fwb_count <= wb_count;
+                frb_pc <= rb_pc; frb_va <= rb_va; frb_pa <= rb_pa;
+                frb_base <= rb_base; frb_count <= rb_count;
+                fz0_index <= z0_index; fz0_value <= z0_value; fz0_src <= z0_src;
+                fz0_src_addr <= z0_src_addr; fz0_pc <= z0_pc; fz0_count <= z0_count;
                 fe0v0 <= e0v0; fe0v1 <= e0v1; fe0v2 <= e0v2; fe0v3 <= e0v3;
                 fe0w0 <= e0w0; fe0w1 <= e0w1; fe0w2 <= e0w2; fe0w3 <= e0w3;
                 fe0p0 <= e0p0; fe0p1 <= e0p1; fe0p2 <= e0p2; fe0p3 <= e0p3;
@@ -943,8 +1056,9 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     //      reaches the terminal - it prints through a JSR to virtual 0x07cc,
     //      which lands in low RAM that nothing ever writes - so silence there
     //      means nothing and this counter is the only honest answer.
-    //   2  how many PSRAM accesses the CPU has made. Zero means it has never
-    //      addressed it, which is a different fault from wrong data coming back.
+    //   2  page table entries written as zero when their index was not zero. This
+    //      is live rather than frozen so it can be compared between a build with
+    //      the PSRAM on the bus and one without.
     //   3  the last physical address accessed, low half
     //   4  {the compare failed at all, PSRAM accesses that gave up waiting -
     //      any at all is a fault - the address's high bits, the byte there}
@@ -952,13 +1066,39 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // past fifteen is not worth a whole word of the dump.
     wire [3:0] timeouts_shown = (dbg_psram_timeouts > 16'd15)
                                 ? 4'hf : dbg_psram_timeouts[3:0];
-    wire [79:0] dump_payload = (PSRAM_SELFTEST != 0) ?
+    // Once the compare has failed there is one question worth the whole dump: which
+    // pair of bytes differed, and where they were read from. f0 to f3 are the last
+    // four reads out of the buffer page, frozen at the failure, as {address, value} -
+    // diag's copy lives at physical 0x100 and its reference at 0x200, so the pair
+    // names both the offset that mismatched and what each side held. The dump marks
+    // this form with a C so it can be told from the running summary.
+    wire [79:0] fail_payload = { f3, f2, f1, f0, 5'b0, fail_base };
+
+    // The last PSRAM access before the failure: the instruction, the virtual address
+    // it asked for, the physical address that came out and the map it went through.
+    // The last bus read the microcode actually consumed that went through a map
+    // other than 0, and how many there have been.
+    wire [79:0] psram_payload = { frb_pc, frb_va, frb_pa, frb_base, frb_count,
+                                  10'b0 };
+
+    // The last page table entry written as zero when its index was not zero, with
+    // the buffer byte the load had just read.
+    wire [79:0] wrongmap_payload = { fz0_index, fz0_src_addr, fz0_src, fz0_pc,
+                                     fz0_count, 22'b0 };
+
+
+    // The PSRAM self test's own result, on its own dump form. It used to replace the
+    // summary in a PSRAM_SELFTEST build, which made the two builds report different
+    // things and cost two rounds of misreading one as the other while comparing them.
+    wire [79:0] selftest_payload =
         { sdr_state, psram_stage, psram_done, psram_pass, sdr_match, 2'b0,
-          sdr_nonff, sdr_echo, psram_read0, psram_read1 }
-      : { sdr_state, 4'b0, psram_select, busy, read, write,
+          sdr_nonff, sdr_echo, psram_read0, psram_read1 };
+
+    wire [79:0] dump_payload =
+        { sdr_state, 4'b0, psram_select, busy, read, write,
             dbg_bus_state, dbg_bus_need, 1'b0,
           pass_count,
-          dbg_psram_accesses,
+          z0_count,
           dbg_psram_addr[15:0],
           compare_failed, timeouts_shown, dbg_psram_addr[18:16], dbg_psram_data };
 
@@ -1008,7 +1148,29 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         end
     end
 
-    StatusDump dump(clock, ~btn2 | dump_request, fault_caught ? "F" : "L", dump_payload,
+    // One dump carries 80 bits, and after a failure there are two things worth
+    // knowing, so alternate. The marker letter says which one arrived. This has to
+    // sit below dump_active_d rather than with the other failure state: iverilog
+    // will not take a declaration after its use, and this file has been bitten by
+    // that several times.
+    reg [1:0] dump_form;
+    initial dump_form = 0;
+    always @(posedge clock) begin
+        if (reset) dump_form <= 0;
+        else if (dump_active && !dump_active_d)
+            dump_form <= (dump_form == 2'd2) ? 2'd0 : dump_form + 1;
+    end
+
+    StatusDump dump(clock, ~btn2 | dump_request,
+                    compare_failed ? (dump_form == 2'd0 ? "C"
+                                    : dump_form == 2'd1 ? "P" : "W")
+                                   : (dump_form == 2'd1 ? "S"
+                                    : fault_caught ? "F" : "L"),
+                    compare_failed ? (dump_form == 2'd0 ? fail_payload
+                                    : dump_form == 2'd1 ? psram_payload
+                                    : wrongmap_payload)
+                                   : (dump_form == 2'd1 ? selftest_payload
+                                                        : dump_payload),
                     dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
 

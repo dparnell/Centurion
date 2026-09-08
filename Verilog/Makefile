@@ -31,7 +31,7 @@ $(PROJ).fs: $(PROJ)_pnr.json
 load: $(PROJ).fs
 	openFPGALoader -b ${BOARD} $(PROJ).fs -f
 
-test: CPU6TestBench TopTestBench DiagTestBench PsramTB
+test: CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp PsramTB
@@ -55,6 +55,15 @@ CPU6TestBench: *.v
 # The PSRAM PHY against a behavioural HyperRAM die. This proves the plumbing only -
 # the model has no timing - but it is the difference between finding a byte pairing
 # bug here and finding it with a three minute build-load-capture cycle on the board.
+# Runs diag's mapping RAM test in simulation until its compare fails. Slow - the
+# failure is thousands of passes in - but it stops exactly there, which is the one
+# thing the board cannot do.
+mapfail: MapFailTB
+	vvp MapFailTB
+
+MapFailTB: *.v
+	iverilog -o MapFailTB MapFailTB.v
+
 psramtest: PsramTB
 	vvp PsramTB
 
@@ -62,6 +71,6 @@ PsramTB: *.v
 	iverilog -o PsramTB PsramTB.v
 
 clean:
-	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench DiagTestBench PsramTB
+	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB
 
-.PHONY: all prog clean test diagtest psramtest
+.PHONY: all prog clean test diagtest psramtest mapfail
