@@ -1,5 +1,6 @@
 `include "CPU6.v"
 `include "StatusDump.v"
+`include "DiagBoard.v"
 `include "psram_controller.v"
 `include "BoardMemory.v"
 `include "LEDPanel.v"
@@ -67,19 +68,23 @@ endmodule
  * device drives data_r2c.
  */
 module AddressDecode(input wire [18:0] address,
-    output wire mux_select, output wire ram_select);
+    output wire mux_select, output wire diag_select, output wire ram_select);
 
     // MUX serial board, 16 registers. This matches the Diag MUX addresses used by
     // CPU6TestBench.v (status 0x3f200, data 0x3f201) and by programs/hellorld.txt.
     assign mux_select = (address & 19'h7fff0) == 19'h3f200;
 
+    // The Diag board: hex display, decimal points and DIP switches at 0x3f100.
+    assign diag_select = (address & 19'h7ffe0) == 19'h3f100;
+
     // The block RAM answers everything else. It aliases its 256 bytes across the
     // whole address space, which is what lets the reset vector fetch land on the
     // start of the loaded program.
-    assign ram_select = ~mux_select;
+    assign ram_select = ~(mux_select | diag_select);
 endmodule
 
-module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx);
+module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d)
+                 (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx);
     reg reset;
     // reset_btn is a mechanical input with no relation to the clock, and it feeds the
     // reset of the whole core, so sample it through a synchroniser rather than directly.
@@ -183,12 +188,13 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // Simulation resolved the undriven outputs as z and let the RAM value through, but
     // yosys reported a driver-driver conflict, resolved it to a constant and dropped
     // ram_cells entirely, so on hardware the CPU only ever read 'x' (decoded as HLT).
-    wire mux_select, ram_select;
-    wire [7:0] ram_data, mux_data;
+    wire mux_select, diag_select, ram_select;
+    wire [7:0] ram_data, mux_data, diag_data;
 
-    AddressDecode decode(addressBus, mux_select, ram_select);
+    AddressDecode decode(addressBus, mux_select, diag_select, ram_select);
 
-    assign data_r2c = mux_select ? mux_data : ram_data;
+    assign data_r2c = mux_select  ? mux_data :
+                      diag_select ? diag_data : ram_data;
 
     // M13 bit 7, from the core back to the serial board so it can drop its request.
     wire interrupt_ack;
@@ -209,6 +215,15 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
     BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
+    // The Diag board. Its DIP switches choose what diag does out of reset; see
+    // DiagBoard.v for the settings. 0x1d is the auxiliary test menu and 0x1a is TOS,
+    // the machine code monitor.
+    wire [7:0] diag_hex;
+    wire [3:0] diag_points;
+    wire diag_blank;
+    DiagBoard diag(clock, cpu_en, diag_select, addressBus[4:0], writeEnBus, data_c2r,
+                   DIAG_DIP_SWITCHES, diag_data, diag_hex, diag_points, diag_blank);
+
     MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, interrupt_ack, mux_data, int_reqn, irq_number, dbg_byte_ready, dbg_rx_byte);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,

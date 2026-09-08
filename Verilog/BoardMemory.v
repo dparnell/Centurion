@@ -65,7 +65,6 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
     assign data_out = (address == 19'h3fd00) ? 8'h71 :   // reset vector, JMP 8001
                       (address == 19'h3fd01) ? 8'h80 :
                       (address == 19'h3fd02) ? 8'h01 :
-                      (address == 19'h3f110) ? 8'h0d :   // Diag board DIP switches
                       rom_select              ? rom_q :
                       ram_select              ? ram_q :
                       low_ram_select          ? low_ram_q : 8'h00;
