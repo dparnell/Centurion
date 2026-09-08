@@ -134,38 +134,24 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     /*
      * The bottom of physical memory is the CPU's own state rather than the bus:
      * 0x000 to 0x0ff is the register file. 0x100 to 0x1ff is NOT: it is ordinary RAM.
-     *
-     * diag loads the whole mapping RAM by writing 0x100 to 0x1ff as ordinary memory,
-     * eight 32 byte blocks, one per table. Without this window those writes went out to
-     * the bus, the board's low RAM absorbed them, and the mapping never changed, so the
-     * mapping RAM test relocated itself through a translation that had not moved and
-     * ran off into empty memory.
-     *
-     * The select needs the translated address, so it cannot also supply the index or the
-     * read would feed itself. The index comes straight from the untranslated address
-     * instead, which is the same 8 bits and has no such loop.
      */
 
-    // The mapping RAM is also reachable as memory at physical 0x100 to 0x1ff. The
-    // reference manual says that range is ordinary RAM and that software reaches the
-    // page RAM only through the PAGE instruction, and removing this window on that
-    // basis looked right: instrumentation showed it substituting the table's own
-    // contents for RAM from pass 1 of the mapping test. But it broke diag's CPU
-    // instruction test, which aborts immediately without it and leaves diag showing a
-    // menu with its CPU-6 entries missing. Whatever the manual means, the machine
-    // depends on this, so it stays until that is understood.
-    wire [7:0] map_window_index = memory_address[7:0];
-    wire [7:0] map_window_out = { page_table_hi[map_window_index], page_table_lo[map_window_index] };
-    wire map_window = page_table_out == 8'h00 && memory_address[10:8] == 3'b001;
-
-    // Register space read mux. The mapping RAM window is write only: a read of
-    // 0x100..0x1ff comes from memory, not from the table.
+    // There is no memory mapped window onto the mapping RAM. The reference manual says
+    // physical 0x100..0x1ff is ordinary RAM and that software reaches the page file only
+    // through the PAGE instruction, and that is what the microcode does: the store reads
+    // an entry onto the DP bus with d2d3 == 8 and the load writes one with k11 == 5, both
+    // indexed by { page_table_base, memory_address[15:11] }.
     //
-    // With the window answering reads too, the PAGE load could never load anything. It
-    // reads its source at 0x100+i, the window handed back entry i instead of memory, and
-    // the instruction became a copy of the table onto itself. Measured on hardware, all
-    // 15951 non-identity writes to the table came from the store at 0x8ed9 through the
-    // window and none from the load, which is backwards.
+    // A window used to live here and it corrupted the table. k11 == 7 is the bus write
+    // strobe, not a mapping RAM select, so every ordinary store whose address fell in
+    // 0x100..0x1ff wrote the page file as well as memory. Tracing one PAGE store showed
+    // the pair on every byte: a bogus "window" write of the entry followed by the real
+    // bus write of the same byte to 0x00100. That is why diag's mapping test failed with
+    // table entry 0 stuck at 00 while its reference copy expected 01 - the snapshot
+    // buffer diag keeps at 0x100 lives at exactly the addresses the window claimed.
+
+    // Register space read mux. Addresses with virtual_address[18:8] == 0 are the CPU's
+    // own register space and are read back internally rather than from the bus.
     wire [7:0] dataInCPU = virtual_address[18:8] == 0 ? dataOutBus : dataInBus;
 
     /*
@@ -289,19 +275,14 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign dbg_page_table_out = page_table_out;
     assign dbg_entry0 = { page_table_hi[{page_table_base, 5'b00000}],
                           page_table_lo[{page_table_base, 5'b00000}] };
-    wire e0_win = enable && reset == 0 && k11 == 7 && map_window
-                  && map_window_index == { page_table_base, 5'b00000 };
-    wire e0_uc  = enable && reset == 0 && k11 == 5
-                  && page_address == { page_table_base, 5'b00000 };
-    assign dbg_e0_write = e0_win | e0_uc;
-    assign dbg_e0_value = e0_win ? FBus : result_register;
-    assign dbg_e0_via_window = e0_win;
-    wire pt_win = enable && reset == 0 && k11 == 7 && map_window;
     wire pt_uc  = enable && reset == 0 && k11 == 5;
-    assign dbg_pt_write = pt_win | pt_uc;
-    assign dbg_pt_index = pt_win ? map_window_index : page_address;
-    assign dbg_pt_value = pt_win ? FBus : result_register;
-    assign dbg_pt_via_window = pt_win;
+    assign dbg_e0_write = pt_uc && page_address == { page_table_base, 5'b00000 };
+    assign dbg_e0_value = result_register;
+    assign dbg_e0_via_window = 1'b0;
+    assign dbg_pt_write = pt_uc;
+    assign dbg_pt_index = page_address;
+    assign dbg_pt_value = result_register;
+    assign dbg_pt_via_window = 1'b0;
     assign dbg_e7 = e7;
     assign dbg_data_in = dataInCPU;
     assign interrupt_ack = m13[7];
@@ -698,10 +679,6 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
         if (ptinit_write) begin
             page_table_lo[ptinit_addr] <= ptinit_data[3:0];
             page_table_hi[ptinit_addr] <= ptinit_data[7:4];
-        end else if (enable && reset == 0 && k11 == 7 && map_window) begin
-            // A bus write into the mapping RAM window.
-            page_table_lo[map_window_index] <= FBus[3:0];
-            page_table_hi[map_window_index] <= FBus[7:4];
         end else if (enable && reset == 0 && k11 == 5) begin
             page_table_lo[page_address] <= result_register[3:0];
             page_table_hi[page_address] <= result_register[7:4];
