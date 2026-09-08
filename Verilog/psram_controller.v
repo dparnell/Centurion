@@ -32,7 +32,12 @@ module PsramController #(
     output [1:0] O_psram_ck,
     inout [1:0] IO_psram_rwds,
     inout [15:0] IO_psram_dq,
-    output [1:0] O_psram_cs_n
+    output [1:0] O_psram_cs_n,
+
+    // Debug taps added for bring-up on the Tang Nano 9K. Hierarchical references
+    // into a module work in simulation and silently capture nothing on hardware, so
+    // anything the top level needs has to be a real port.
+    output wire [2:0] dbg_state, output wire dbg_rst_done, output wire [4:0] dbg_cycles
 );
 
 reg [2:0] state;
@@ -59,6 +64,9 @@ wire rwds_in_ris, rwds_in_fal;
 reg additional_latency;
 
 assign busy = (state != IDLE_ST);
+assign dbg_state = state;
+assign dbg_rst_done = rst_done;
+assign dbg_cycles = cycles_sr[4:0];
 
 localparam [3:0] CR_LATENCY = LATENCY == 3 ? 4'b1110 :
                               LATENCY == 4 ? 4'b1111 :
@@ -160,7 +168,12 @@ always @(posedge clk) begin
     cfg_now     <= rst_done & ~rst_done_p1;// Rising Edge Detect
 
     if (rst_cnt != INIT_TIME) begin      // count to 160 us
-        rst_cnt  <= rst_cnt[14:0] + 1;
+        // Was rst_cnt[14:0] + 1, which hardcodes the width this counter happens to
+        // have at 81MHz. rst_cnt is [$clog2(INIT_TIME+1):0], so at 27MHz INIT_TIME is
+        // 4320 and the register is only 14 bits wide - bit 14 does not exist, the
+        // count never reaches INIT_TIME, rst_done never rises and the controller sits
+        // in INIT_ST for ever with busy stuck high.
+        rst_cnt  <= rst_cnt + 1;
         rst_done <= 0;
         cfg_busy <= 1;
     end else begin
