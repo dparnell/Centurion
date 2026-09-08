@@ -43,12 +43,18 @@ module PsramBus(
     output reg [15:0] dbg_accesses,
     output reg [18:0] dbg_last_addr,
     output reg [7:0] dbg_last_data,
+    output reg [15:0] dbg_timeouts,
+    // What the bridge was doing when it last gave up: {busy, state}. That says
+    // whether the controller never accepted the request or never finished it.
+    output reg [2:0] dbg_timeout_where,
     // Live state, so a dump taken at any moment says what the bridge is doing
     // rather than only what it did when it last gave up.
     output wire [1:0] dbg_state,
     output wire dbg_need
 );
-
+    // How long to wait for the controller before giving up on an access. A read is
+    // about 88 clocks, so this is fifty times longer than anything healthy.
+    localparam [12:0] TIMEOUT = 13'd4095;
     localparam S_IDLE = 0, S_REQ = 1, S_WAIT = 2;
     reg [1:0] state;
 
@@ -57,12 +63,14 @@ module PsramBus(
     reg cache_valid;
     reg wr_done;                         // this CPU cycle's write has been made
     reg is_read_acc;                     // the access in flight is a read
+    reg [12:0] elapsed;                  // clocks spent on the access in flight
 
     initial begin
         state = S_IDLE; cache_addr = 0; cache_word = 0; cache_valid = 0;
         wr_done = 0; is_read_acc = 0;
         read = 0; write = 0; byte_write = 0; addr = 0; din = 0;
-        dbg_accesses = 0; dbg_last_addr = 0; dbg_last_data = 0;
+        dbg_accesses = 0; dbg_last_addr = 0; dbg_last_data = 0; dbg_timeouts = 0;
+        dbg_timeout_where = 0; elapsed = 0;
     end
 
     // Nothing is asked of the memory while the core is in reset. The core needs
@@ -104,8 +112,38 @@ module PsramBus(
         wr_done <= 0;
         read <= 0;
         write <= 0;
+        elapsed <= 0;
       end else begin
         if (cpu_en_out) wr_done <= 0;    // the core moves on to the next cycle
+
+        // A memory that stops answering must not be able to wedge the machine.
+        // The core is held still by withholding its clock enable, so anything
+        // that leaves `need' asserted for ever is a permanent stall - and a
+        // permanent stall is not merely slow, it is silent: the watchdog blinks
+        // the LEDs, diag stops printing, and even the status dump goes away,
+        // because the request for one is noticed by logic that only advances on
+        // the core's enable. There is then nothing left to ask what went wrong.
+        //
+        // So time the whole of `need', not just an access in flight. Waiting in
+        // S_IDLE for a controller that never becomes idle stalls exactly as hard
+        // as an access that never finishes, and the first version of this timer
+        // only covered the second case.
+        if (need) elapsed <= elapsed + 1;
+        else elapsed <= 0;
+
+        if (need && elapsed == TIMEOUT) begin
+            dbg_timeouts <= dbg_timeouts + 1;
+            dbg_timeout_where <= { busy, state };
+            read <= 0;
+            write <= 0;
+            // Satisfy the cycle from the live request rather than the registered
+            // one: the timeout can fire before anything was ever latched.
+            cache_word <= 16'hffff;
+            cache_addr <= address[18:1];
+            cache_valid <= want_read;
+            wr_done <= want_write;
+            state <= S_IDLE;
+        end else
 
         case (state)
             // Only start when the controller is actually idle. It is not idle for

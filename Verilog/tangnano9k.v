@@ -259,7 +259,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [21:0] bus_addr;
     wire [15:0] bus_din;
     wire [7:0] psram_data;
-    wire [15:0] dbg_psram_accesses;
+    wire [15:0] dbg_psram_accesses, dbg_psram_timeouts;
+    wire [2:0] dbg_psram_where;
     wire [1:0] dbg_bus_state;
     wire dbg_bus_need;
     wire [18:0] dbg_psram_addr;
@@ -317,7 +318,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .read(bus_read), .write(bus_write), .byte_write(bus_byte_write),
         .addr(bus_addr), .din(bus_din), .dout(dout), .busy(busy),
         .dbg_accesses(dbg_psram_accesses), .dbg_last_addr(dbg_psram_addr),
-        .dbg_last_data(dbg_psram_data), .dbg_state(dbg_bus_state),
+        .dbg_last_data(dbg_psram_data), .dbg_timeouts(dbg_psram_timeouts),
+        .dbg_timeout_where(dbg_psram_where), .dbg_state(dbg_bus_state),
         .dbg_need(dbg_bus_need));
 
     BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
@@ -944,7 +946,12 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     //   2  how many PSRAM accesses the CPU has made. Zero means it has never
     //      addressed it, which is a different fault from wrong data coming back.
     //   3  the last physical address accessed, low half
-    //   4  {the compare failed at all, the address's high bits, the byte there}
+    //   4  {the compare failed at all, PSRAM accesses that gave up waiting -
+    //      any at all is a fault - the address's high bits, the byte there}
+    // Saturated to a nibble: any timeout at all is a fault, so the exact count
+    // past fifteen is not worth a whole word of the dump.
+    wire [3:0] timeouts_shown = (dbg_psram_timeouts > 16'd15)
+                                ? 4'hf : dbg_psram_timeouts[3:0];
     wire [79:0] dump_payload = (PSRAM_SELFTEST != 0) ?
         { sdr_state, psram_stage, psram_done, psram_pass, sdr_match, 2'b0,
           sdr_nonff, sdr_echo, psram_read0, psram_read1 }
@@ -953,7 +960,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
           pass_count,
           dbg_psram_accesses,
           dbg_psram_addr[15:0],
-          compare_failed, 4'b0, dbg_psram_addr[18:16], dbg_psram_data };
+          compare_failed, timeouts_shown, dbg_psram_addr[18:16], dbg_psram_data };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
