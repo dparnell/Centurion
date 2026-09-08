@@ -107,7 +107,9 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // to the CPU. See PsramTest.v.
                     parameter PSRAM_SELFTEST = 0,
                     // Testbench use only; see PsramBus.v.
-                    parameter SPACING = 1)
+                    parameter SPACING = 1,
+                    // Which program the ROM holds; see BoardMemory.v.
+                    parameter PROGRAM = "programs/diag.txt")
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -324,7 +326,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .dbg_timeout_where(dbg_psram_where), .dbg_state(dbg_bus_state),
         .dbg_need(dbg_bus_need));
 
-    BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
+    BoardMemory #(.PROGRAM(PROGRAM)) ram(
+        clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
     // The Diag board. Its DIP switches choose what diag does out of reset; see
     // DiagBoard.v for the settings. 0x1d is the auxiliary test menu and 0x1a is TOS,

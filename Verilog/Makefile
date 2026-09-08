@@ -64,6 +64,20 @@ mapfail: MapFailTB
 MapFailTB: *.v
 	iverilog -o MapFailTB MapFailTB.v
 
+# Assemble a program and run it on the whole simulated board, talking to it over
+# the serial line. This is the loop for writing machine code for this machine:
+# "make run SRC=forth.s IN=tests/forth_basic.txt".
+SRC ?= forth.s
+IN ?=
+FOR ?= 300
+run: ProgramTB
+	python3 Assemble.py $(SRC) programs/$(basename $(notdir $(SRC))).txt
+	vvp ProgramTB +prog=programs/$(basename $(notdir $(SRC))).txt \
+	     $(if $(IN),+in=$(IN),) +for=$(FOR)
+
+ProgramTB: *.v
+	iverilog -o ProgramTB ProgramTB.v
+
 psramtest: PsramTB
 	vvp PsramTB
 
@@ -73,4 +87,4 @@ PsramTB: *.v
 clean:
 	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB
 
-.PHONY: all prog clean test diagtest psramtest mapfail
+.PHONY: all prog clean test diagtest psramtest mapfail run

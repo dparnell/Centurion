@@ -27,6 +27,7 @@ Syntax
         .ascii  "text"           bytes, no terminator
         .asciiz "text"           bytes, NUL terminated
         .space 32                that many zero bytes
+        .code                    a code field pointing at the code after it
         .align 2                 pad to a multiple
 
 Operands
@@ -334,9 +335,17 @@ class Assembler:
     def encode(self, mnemonic, arg, here, size_only=False):
         mn = mnemonic.upper()
         if mn in EXTENDED:
-            vals = [self.value(a, not size_only) & 0xff
-                    for a in arg.split(',') if a.strip()]
-            return bytes([EXTENDED[mn]]) + bytes(vals)
+            args = [a for a in arg.split(',') if a.strip()]
+            out = bytearray([EXTENDED[mn]])
+            for n, a in enumerate(args):
+                v = self.value(a, not size_only)
+                # PAGE and DMA end with the memory address the block move
+                # reads or writes, which is a word.
+                if mn in ('PAGE', 'DMA') and n == 2:
+                    out += bytes([(v >> 8) & 0xff, v & 0xff])
+                else:
+                    out.append(v & 0xff)
+            return bytes(out)
         if mn not in OPCODES:
             raise AsmError("unknown instruction: %s" % mnemonic)
         forms = {m: (w, op) for m, w, op in OPCODES[mn]}
@@ -374,7 +383,9 @@ class Assembler:
         return bytes([forms[mode][1]]) + extra
 
     # ---- the two passes ----------------------------------------------
-    LINE_RE = re.compile(r'^\s*(?:(\w+):)?\s*(\S+)?\s*(.*)$')
+    # A label may end with a colon, or be followed directly by .equ, which is
+    # how constants read most naturally.
+    LINE_RE = re.compile(r'^\s*(?:(\w+)(?::|(?=\s+\.equ\b)))?\s*(\S+)?\s*(.*)$')
 
     def line_bytes(self, label, opc, arg, here, size_only):
         if opc is None:
@@ -400,6 +411,11 @@ class Assembler:
             return bytes(unquote(arg.strip()))
         if o == '.asciiz':
             return bytes(unquote(arg.strip())) + b'\x00'
+        if o == '.code':
+            # A primitive's code field holds the address of its machine code,
+            # which follows immediately. Writing that as a literal would mean
+            # naming every primitive twice.
+            return bytes([((here + 2) >> 8) & 0xff, (here + 2) & 0xff])
         if o in ('.space', '.ds'):
             return bytes(self.value(arg, not size_only))
         if o == '.align':

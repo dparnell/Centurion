@@ -17,7 +17,12 @@
  * stable for a whole CPU cycle, so the data has settled long before the enabled edge
  * at the end of it. Only the writes are gated, so one bus cycle writes once.
  */
-module BoardMemory(input wire clock, input wire enable, input wire [18:0] address,
+module BoardMemory #(
+    // Which program the ROM holds. Overridable so that a testbench or a build
+    // can run something other than diag without editing this file; "make
+    // PROGRAM=programs/forth.txt" and the +prog= plusarg below both work.
+    parameter PROGRAM = "programs/diag.txt"
+) (input wire clock, input wire enable, input wire [18:0] address,
     input wire write_en, input wire [7:0] data_in, output wire [7:0] data_out);
 
     reg [7:0] rom_cells[0:8191];
@@ -30,11 +35,14 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
     // parity, one stop bit, so a terminal has to be set to that rather than to the
     // channel's 9600 7E1 power on default.
     integer i;
+    reg [8*64:1] progfile;
     initial begin
-        $readmemh("programs/diag.txt", rom_cells);        // 19200 7N1
+        $readmemh(PROGRAM, rom_cells);                    // diag is 19200 7N1
         $readmemh("roms/BootROM.txt", boot_cells);
-        // $readmemh("programs/serial.txt", rom_cells);   // 9600 7E1
-        // $readmemh("programs/blink.txt", rom_cells);
+        // A simulation can point this somewhere else without a rebuild, which
+        // is what makes assembling a program and running it a one second loop.
+        if ($value$plusargs("prog=%s", progfile))
+            $readmemh(progfile, rom_cells);
         for (i = 0; i < 8192; i = i + 1) ram_cells[i] = 8'h00;
         for (i = 0; i < 4096; i = i + 1) low_ram_cells[i] = 8'h00;
     end
