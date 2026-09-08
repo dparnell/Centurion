@@ -13,3 +13,4 @@ DiagTestBench
 *.json
 PsramTB
 MapFailTB
+opcodes.yaml

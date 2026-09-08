@@ -32,7 +32,7 @@ def load_opcodes(path):
 
 # operand bytes by addressing mode
 FIXED = {'impl': 0, 'implr': 0, 'dir': 2, 'ind': 2, 'pco': 1, 'pcoi': 1,
-         'idx': 1, 'rr': 1, 'rc': 1}
+         'idx': 1, 'rr': 1, 'rc': 1, 'rrs': 1, 'rrsr': 1, 'rrx': 1}
 
 def length(ops, mem, i):
     """Total instruction length in bytes, or None if not decodable."""
@@ -49,7 +49,19 @@ def length(ops, mem, i):
         return 2                        # register mask
     if ext in ('big', 'rii', 'xio'):
         return 2                        # not fully known
-    return 1 + operand_bytes(op)
+    n = 1 + operand_bytes(op)
+    # The register-indexed mode carries a displacement byte when bit 3 of its
+    # mode nibble is set. Missing that makes the disassembly misalign from
+    # there on, which is the failure this file's header warns about.
+    if eff_mode(op) == 'idx' and i + 1 < len(mem) and (mem[i+1] & 8):
+        n += 1
+    # The register-register-extended mode carries a 16 bit operand as well
+    # whenever the low bits of its two register nibbles differ.
+    if eff_mode(op) == 'rrx' and i + 1 < len(mem):
+        b = mem[i+1]
+        if ((b >> 4) & 1) or (b & 1):
+            n += 2
+    return n
 
 IMPLICIT = ('impl', 'implr', 'implr_dir', None)
 
@@ -85,11 +97,31 @@ def text(ops, mem, i, addr):
     elif mode in ('pco', 'pcoi'):
         d = b[1] - 256 if b[1] > 127 else b[1]
         arg = '%s%04x' % ('@' if mode == 'pcoi' else '', (addr + n + d) & 0xffff)
-    elif mode in ('idx', 'rr', 'rc') and n > 1:
+    elif mode == 'idx' and n > 1:
+        arg = idx_text(b[1], b[2] if n > 2 else None)
+    elif mode in ('rr', 'rc', 'rrs', 'rrsr', 'rrx') and n > 1:
         arg = '%02x' % b[1]
     elif n > 1:
         arg = ' '.join('%02x' % x for x in b[1:])
     return ('%-5s %s' % (mn, arg)).rstrip(), n
+
+WORD_REG = ['A', '?', 'B', '?', 'X', '?', 'Y', '?',
+            'Z', '?', 'S', '?', 'C', '?', 'P', '?']
+
+def idx_text(b, disp):
+    """The register indexed mode: [reg], [reg++], [--reg], with an optional
+    displacement and an optional extra level of indirection."""
+    r = WORD_REG[b >> 4]
+    # Bits 1:0 are 0 plain, 1 step after, 2 step before. Both bits set is a
+    # fourth thing that the emulator does not name either, so say so rather
+    # than rendering it as one of the two, which is what this used to do.
+    if (b & 3) == 3: r = '?3' + r
+    elif b & 2: r = '--' + r
+    elif b & 1: r = r + '++'
+    if b & 8 and disp is not None:
+        d = disp - 256 if disp > 127 else disp
+        r += ('+$%02x' % d) if d >= 0 else ('-$%02x' % -d)
+    return ('[[%s]]' if b & 4 else '[%s]') % r
 
 def run(ops, mem, base, start, end, stop_at=None):
     a = start
