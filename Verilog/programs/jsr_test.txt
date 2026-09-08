@@ -9,8 +9,8 @@
 // did not decode. Setting S here is therefore the point of the test, not
 // boilerplate: with S left at 0 the push goes to 0x3fffe, in the I/O space.
 //
-// The leading NOPs are load bearing. With a three byte instruction first, its
-// operand bytes are executed instead; hellorld.txt and bnz_test.txt open with
+// The leading NOPs are load bearing: the reset vector is JMP 0x8001, so the
+// byte at 0x8000 is never executed. hellorld.txt and bnz_test.txt open with
 // NOPs for the same reason.
 01 // NOP
 01 // NOP
