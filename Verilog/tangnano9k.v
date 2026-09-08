@@ -277,6 +277,15 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // Writes whose value is not the entry's own identity value. If diag's test pattern
     // ever reaches the table, it shows up here; if this stays empty, the pattern never
     // gets written at all.
+    // Every write to table index 0x00 exactly, which is map 0 page 0: the entry diag's
+    // compare fails on. Value, instruction and path for the last three, frozen at the
+    // failure.
+    reg [7:0] z_v0, z_v1, z_v2;
+    reg [15:0] z_p0, z_p1, z_p2;
+    reg z_w0, z_w1, z_w2;
+    reg [7:0] fz_v0, fz_v1, fz_v2;
+    reg [15:0] fz_p0, fz_p1, fz_p2;
+    reg fz_w0, fz_w1, fz_w2;
     reg [7:0] ni_i0, ni_i1, ni_i2, ni_v0, ni_v1, ni_v2;
     reg [15:0] ni_pc, ni_count;
     reg [7:0] fni_i0, fni_i1, fni_i2, fni_v0, fni_v1, fni_v2;
@@ -305,6 +314,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         fe0v0=0; fe0v1=0; fe0v2=0; fe0v3=0; fe0w0=0; fe0w1=0; fe0w2=0; fe0w3=0;
         e0p0=0; e0p1=0; e0p2=0; e0p3=0; fe0p0=0; fe0p1=0; fe0p2=0; fe0p3=0;
         rd0=0; rd1=0; rd2=0; rd3=0; f0=0; f1=0; f2=0; f3=0;
+        z_v0=0; z_v1=0; z_v2=0; z_p0=0; z_p1=0; z_p2=0; z_w0=0; z_w1=0; z_w2=0;
+        fz_v0=0; fz_v1=0; fz_v2=0; fz_p0=0; fz_p1=0; fz_p2=0; fz_w0=0; fz_w1=0; fz_w2=0;
         ni_i0=0; ni_i1=0; ni_i2=0; ni_v0=0; ni_v1=0; ni_v2=0; ni_pc=0; ni_count=0;
         fni_i0=0; fni_i1=0; fni_i2=0; fni_v0=0; fni_v1=0; fni_v2=0; fni_pc=0; fni_count=0;
         last_buf = 0; last_ref = 0; fail_buf = 0; fail_ref = 0;
@@ -346,6 +357,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             fe0v0<=0; fe0v1<=0; fe0v2<=0; fe0v3<=0; fe0w0<=0; fe0w1<=0; fe0w2<=0; fe0w3<=0;
             e0p0<=0; e0p1<=0; e0p2<=0; e0p3<=0; fe0p0<=0; fe0p1<=0; fe0p2<=0; fe0p3<=0;
             rd0<=0; rd1<=0; rd2<=0; rd3<=0; f0<=0; f1<=0; f2<=0; f3<=0;
+            z_v0<=0; z_v1<=0; z_v2<=0; z_p0<=0; z_p1<=0; z_p2<=0; z_w0<=0; z_w1<=0; z_w2<=0;
+            fz_v0<=0; fz_v1<=0; fz_v2<=0; fz_p0<=0; fz_p1<=0; fz_p2<=0; fz_w0<=0; fz_w1<=0; fz_w2<=0;
             ni_i0<=0; ni_i1<=0; ni_i2<=0; ni_v0<=0; ni_v1<=0; ni_v2<=0; ni_pc<=0; ni_count<=0;
             fni_i0<=0; fni_i1<=0; fni_i2<=0; fni_v0<=0; fni_v1<=0; fni_v2<=0; fni_pc<=0; fni_count<=0;
             last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
@@ -360,6 +373,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             && addressBus[18:10] == 9'd0 && addressBus[9:8] != 2'b00) begin
             rd3 <= rd2; rd2 <= rd1; rd1 <= rd0;
             rd0 <= { addressBus[9:0], dbg_data_in };
+        end
+        if (cpu_en && !compare_failed && dbg_pt_write && dbg_pt_index == 8'h00) begin
+            z_v2 <= z_v1; z_v1 <= z_v0; z_v0 <= dbg_pt_value;
+            z_p2 <= z_p1; z_p1 <= z_p0; z_p0 <= pc_live0;
+            z_w2 <= z_w1; z_w1 <= z_w0; z_w0 <= dbg_pt_via_window;
         end
         if (cpu_en && !compare_failed && dbg_pt_write && dbg_pt_value != dbg_pt_index) begin
             ni_i2 <= ni_i1; ni_i1 <= ni_i0; ni_i0 <= dbg_pt_index;
@@ -408,7 +426,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 fni_v0 <= ni_v0; fni_v1 <= ni_v1; fni_v2 <= ni_v2;
                 fni_pc <= ni_pc; fni_count <= ni_count;
                 f0 <= rd0; f1 <= rd1; f2 <= rd2; f3 <= rd3;
-                f0 <= rd0; f1 <= rd1; f2 <= rd2; f3 <= rd3;
+                fz_v0 <= z_v0; fz_v1 <= z_v1; fz_v2 <= z_v2;
+                fz_p0 <= z_p0; fz_p1 <= z_p1; fz_p2 <= z_p2;
+                fz_w0 <= z_w0; fz_w1 <= z_w1; fz_w2 <= z_w2;
                 fentry0 <= dbg_entry0;
             end
             if (!fault_caught) begin
@@ -461,7 +481,9 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         // then the four via-window flags and the failure flag
         // three most recent non-identity table writes as {entry, value}, newest first,
         // then the instruction that did the newest, then how many there have been
-        ? { f3, f2, f1, f0, fail_pass[15:8] }   // last four compare reads, then pass hi
+        // the last three writes to table index 0x00, newest first: instruction, value,
+        // and the path bits
+        ? { fz_p0, fz_v0, fz_p1, fz_v1, fz_p2, fz_v2, 5'b0, fz_w2, fz_w1, fz_w0 }
         : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
             dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
 
