@@ -23,6 +23,11 @@ module IDDR(input CLK, input D, output Q0, output Q1);
     assign Q0 = D; assign Q1 = D;
 endmodule
 module BUFG(input I, output O); assign O = I; endmodule
+module IOBUF(output O, inout IO, input I, input OEN);
+    assign IO = OEN ? 1'bz : I;
+    assign O = IO;
+endmodule
+
 
 `include "tangnano9k.v"
 
