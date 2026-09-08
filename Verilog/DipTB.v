@@ -43,7 +43,7 @@ module BUFG(input I, output O); assign O = I; endmodule
  */
 module DipTB;
     parameter [7:0] DIP = 8'h1a;
-    parameter [8*8:1] KEYS = "";
+    parameter [8*8:1] KEYS = "M";
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
