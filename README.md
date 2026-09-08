@@ -40,6 +40,11 @@ make          # synthesise
 make load     # program the attached board with openFPGALoader
 ```
 
+The Diag board's DIP switches choose what the machine does out of reset, and
+are set at build time: `make DIP=1a` builds for TOS, the machine code monitor,
+and the default `1d` gives the diagnostic test menu. `Verilog/DiagBoard.v`
+lists the rest of the settings.
+
 Pin assignments are in `Verilog/tangnano9k.cst`. Everything is clocked from the
 27 MHz input pin as a single clock domain; the core is gated down to the
 original CPU6's 5 MHz by a clock enable rather than by a divided clock, because
