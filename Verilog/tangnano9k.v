@@ -2,7 +2,10 @@
 `include "StatusDump.v"
 `include "DiagBoard.v"
 `include "PsramTest.v"
-`include "psram_controller.v"
+`include "PsramSdr.v"
+// psram_controller.v is no longer built: it drives the bus through apicula's
+// ODDR/IDDR, which is exactly what does not work here. Kept in the tree for
+// reference, and because its four implicit declaration warnings are noise.
 `include "BoardMemory.v"
 `include "LEDPanel.v"
 `include "mux.v"
@@ -93,10 +96,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                   output [1:0] O_psram_cs_n, output [1:0] O_psram_reset_n,
                   inout [1:0] IO_psram_rwds, inout [15:0] IO_psram_dq);
 
-    // The controller drives CK and CS_n; the die also needs its reset released. The
-    // complementary clock is left alone: an ODDR output has to reach an IOB directly,
-    // and fanning it into an inverter as well makes nextpnr fail to pack the IO logic.
-    assign O_psram_reset_n = 2'b11;
+    // PsramSdr drives all of these itself, including RESET#, which it pulses low at
+    // start up the way the part wants rather than simply tying it high.
 
     reg reset;
     // reset_btn is a mechanical input with no relation to the clock, and it feeds the
@@ -169,61 +170,6 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     //
     // apycula cannot pack this PLL when nextpnr places it on the left of the die;
     // tools/sitecustomize.py patches around that from the Makefile.
-    // The PSRAM clock. 81MHz is the only speed the upstream controller was ever built
-    // at, and it is also the fastest a read fits inside one 200ns CPU bus cycle; lower
-    // speeds need the CPU stalled but give the interface far more timing margin, which
-    // is what matters while the data path is still wrong. Change all three together.
-    localparam PSRAM_FREQ = 27_000_000;
-    localparam PSRAM_FBDIV = 0;
-    localparam PSRAM_ODIV = 16;
-    localparam LATENCY = 3;
-    localparam PSRAM_DIE = 0;
-    wire ram_clk, ram_clk_p;
-
-    Gowin_rPLL #(.FBDIV(PSRAM_FBDIV), .ODIV(PSRAM_ODIV)) pll(
-        .clkout(ram_clk),        // the PSRAM clock
-        .clkoutp(ram_clk_p),     // the same, shifted 90 degrees, for driving CK
-        .clkin(in_clk)           // 27MHz system clock
-    );
-
-    // Memory Controller ---------------------------
-    // Driven for now by a bring-up self test rather than by the CPU: there is no
-    // HyperRAM model here, so only hardware can say whether the controller talks to
-    // the part, and proving that on its own comes before wiring it to the bus.
-    wire read, write, byte_write;
-    wire [21:0] address;
-    wire [15:0] din;
-    wire [15:0] dout;
-
-    wire psram_done, psram_pass;
-    wire [15:0] psram_got, psram_want;
-    wire [21:0] psram_failed_at;
-    wire [2:0] psram_stage, psram_index;
-    wire psram_saw_idle;
-    wire [15:0] psram_cycles, psram_read0, psram_read1;
-    PsramTest psram_test(ram_clk, reset_btn, read, write, byte_write, address, din,
-                         dout, busy, psram_done, psram_pass,
-                         psram_got, psram_want, psram_failed_at,
-                         psram_stage, psram_index, psram_saw_idle, psram_cycles,
-                         psram_read0, psram_read1);
-
-
-    wire [2:0] ctrl_state;
-    wire ctrl_rst_done;
-    wire [4:0] ctrl_cycles;
-    wire [15:0] ctrl_dq_echo, ctrl_dq_float;
-    wire ctrl_released;
-    PsramController #(
-        .FREQ(PSRAM_FREQ), .LATENCY(LATENCY), .DIE(PSRAM_DIE)
-    ) mem_ctrl (
-        .clk(ram_clk), .clk_p(ram_clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
-        .addr(address), .din(din), .dout(dout), .busy(busy),
-        .O_psram_ck(O_psram_ck), .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
-        .O_psram_cs_n(O_psram_cs_n), .O_psram_ck_n(O_psram_ck_n),
-        .dbg_state(ctrl_state), .dbg_rst_done(ctrl_rst_done), .dbg_cycles(ctrl_cycles),
-        .dbg_dq_echo(ctrl_dq_echo), .dbg_released(ctrl_released), .dbg_dq_float(ctrl_dq_float)
-    );
-
     // The CPU runs directly from the 27MHz input pin, which arrives on a real global
     // clock network. It used to run from Divide4 through a BUFG, but a fabric driven
     // global is exactly what went wrong on hardware: the watchdog reported the divided
@@ -231,16 +177,51 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // Timing closes at about 44MHz for this domain, so 27MHz has plenty of margin.
     // The core itself is slowed to the original 5MHz by ClockEnable below rather than
     // by a second clock.
+    //
+    // This has to be declared before anything uses it. Deleting it by accident, while
+    // the PSRAM block below was being rewritten, made yosys declare `clock' implicitly
+    // at its first use - an undriven net - which stopped the whole design's clock and
+    // silently optimised the CPU away to 15 LUTs. The only outward sign was the
+    // watchdog's crash blink on the LEDs, and the only sign in the log was one
+    // "Identifier is implicitly declared" warning.
     wire clock = in_clk;
 
-    // The test runs in the 81MHz domain and its results stop changing once it is
-    // done, so one synchroniser on `done` is enough to make the rest safe to read.
-    reg psram_done_s1, psram_done_s2;
-    initial begin psram_done_s1 = 0; psram_done_s2 = 0; end
-    always @(posedge clock) begin
-        psram_done_s1 <= psram_done;
-        psram_done_s2 <= psram_done_s1;
-    end
+    // The PSRAM runs from the board clock with no PLL at all: PsramSdr builds its
+    // 6.75MHz bus clock from four phases of the 27MHz clock in fabric, because
+    // apicula's ODDR/IDDR cannot be used here. That keeps the whole design in one
+    // clock domain and sidesteps the apicula PLL packing bug as a bonus.
+    wire read, write, byte_write;
+    wire [21:0] address;
+    wire [15:0] din;
+    wire [15:0] dout;
+    wire busy;
+    wire [3:0] sdr_state;
+    wire [4:0] sdr_match;
+    wire [15:0] sdr_first, sdr_echo, sdr_nonff;
+
+    PsramSdr psram(
+        .clk(clock), .resetn(reset_btn),
+        .read(read), .write(write), .addr(address), .din(din),
+        .byte_write(byte_write), .dout(dout), .busy(busy),
+        .O_psram_ck(O_psram_ck), .O_psram_ck_n(O_psram_ck_n),
+        .O_psram_cs_n(O_psram_cs_n), .O_psram_reset_n(O_psram_reset_n),
+        .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
+        .dbg_state(sdr_state), .dbg_match(sdr_match), .dbg_first(sdr_first),
+        .dbg_nonff(sdr_nonff), .dbg_ca_echo(sdr_echo));
+
+    wire psram_done, psram_pass;
+    wire [15:0] psram_got, psram_want;
+    wire [21:0] psram_failed_at;
+    wire [2:0] psram_stage, psram_index;
+    wire psram_saw_idle;
+    wire [15:0] psram_cycles, psram_read0, psram_read1;
+    PsramTest psram_test(clock, reset_btn, read, write, byte_write, address, din,
+                         dout, busy, psram_done, psram_pass,
+                         psram_got, psram_want, psram_failed_at,
+                         psram_stage, psram_index, psram_saw_idle, psram_cycles,
+                         psram_read0, psram_read1);
+
+    wire psram_done_s2 = psram_done;   // one clock domain now
 
     // Peripheral read bus ---------------------------
     // Every readable peripheral drives its own data_out, and this module picks one.
@@ -866,25 +847,25 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     //   2  fetches of 0x8fa6, where the branch goes when taken
     //   3  {byte at 0x07dd, byte at 0x07de} as last read
     //   4  passes completed
-    // PSRAM bring-up result. See PsramTest.v.
-    //   0  {done, pass}                 3  address of the first mismatch, low half
-    //   1  the word read back           4  its high bits
-    //   2  the word expected
-    // Exactly 80 bits: 7 + 1 + 3 + 3 + 1 + 1, then four 16 bit words. Counting this
-    // wrongly once already shifted a whole dump by a byte and produced nonsense.
-    //   0  {saw_idle, stage, index, done, pass}   3  first mismatching address, low
-    //   1  the word read back                     4  its high bits
-    //   2  the word expected
-    //   0  {saw_idle, busy, write, read, stage, index, done, pass}
-    //   1  cycles waiting in the current step   3  word read back
-    //   2  the controller's dout               4  word expected
-    //   0  {saw_idle, busy, write, read, controller state, test stage, done, pass}
-    //   1  cycles waiting            3  word read back
-    //   2  {rst_done, cycles_sr}     4  word expected
+    // PSRAM bring-up result. See PsramTest.v and PsramSdr.v.
+    //
+    // Exactly 80 bits, as five 16 bit words. Counting this wrongly once already
+    // shifted a whole dump by a byte and produced nonsense, so count it again
+    // after any change: 4 + 3 + 1 + 1 + 5 + 2 padding is the first word.
+    //
+    //   0  {PsramSdr state, test stage, done, pass, scan match index}
+    //   1  the scan window: one bit per CK after the command, set where the bus
+    //      was not idle high. The first set bit is the read latency, whatever
+    //      the data there turns out to be, so this reads the part's latency off
+    //      the board rather than taking the datasheet's word for it.
+    //   2  the command loopback, which is a000 if the pins are really driven
+    //   3  the word read back from address 0, which should be 5aa5
+    //   4  the word read back from address 2, which should be 5aa7. Two
+    //      different values rules out a read path that returns the same thing
+    //      whatever was written.
     wire [79:0] dump_payload =
-        { 4'b0, psram_saw_idle, busy, write, read, ctrl_state, psram_stage,
-          psram_done_s2, psram_pass,
-          15'b0, ctrl_released, 10'b0, ctrl_rst_done, ctrl_cycles, ctrl_dq_float, ctrl_dq_echo };
+        { sdr_state, psram_stage, psram_done_s2, psram_pass, sdr_match, 2'b0,
+          sdr_nonff, sdr_echo, psram_read0, psram_read1 };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
