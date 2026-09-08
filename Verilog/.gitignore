@@ -10,4 +10,5 @@ DiagTestBench
 *.bin
 *.rpt
 *.fs
-*.jsonPsramTB
+*.json
+PsramTB
