@@ -469,23 +469,28 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (dbg_byte_ready && !byte_ready_d) rx_count <= rx_count + 1;
     end
 
-    // live pc, live pc, frozen pc, {serial board mapping, page table base},
-    // {byteReady, last received byte}
-    wire [79:0] dump_payload = fault_caught
-        // Live program counter pair, the pass the test has reached, the pass any compare
-        // failure happened on, and entry 0 with a flag saying whether it failed at all.
-        // The ring of compare reads has served its purpose and is dropped: without a
-        // live PC in here there is no way to tell a running test from a hung machine.
-        // last four writes to entry 0, oldest first, then their paths and the flag
-        // the instruction addresses of the last four writes to entry 0, oldest first,
-        // then the four via-window flags and the failure flag
-        // three most recent non-identity table writes as {entry, value}, newest first,
-        // then the instruction that did the newest, then how many there have been
-        // the last three writes to table index 0x00, newest first: instruction, value,
-        // and the path bits
-        ? { fz_p0, fz_v0, fz_p1, fz_v1, fz_p2, fz_v2, 5'b0, fz_w2, fz_w1, fz_w0 }
-        : { pc_live0, pc_live1, 5'b0, dbg_uc_address, last_io_page, 5'b0,
-            dbg_page_table_base, 7'b0, dbg_byte_ready, dbg_rx_byte };
+    // Verdict for diag's mapping RAM test, and deliberately not routed through diag's
+    // own output. The serial text is not a reliable oracle here: the banner and the
+    // verdict arrive long after the event, so "nothing was printed" cannot be read as
+    // "nothing went wrong". Believing it once cost a wrong conclusion. These five
+    // words come straight off the core.
+    //
+    // Before the failure, live state so a running test can be told from a hung one:
+    //
+    //   0  live program counter          3  passes completed so far
+    //   1  microcode address             4  0000
+    //   2  passes completed so far
+    //
+    // After it, the compare that failed. f0 is the last byte diag's compare read out
+    // of physical 0x100..0x3ff and f1 the one before, which is the mismatching pair:
+    //
+    //   0  address of the newest read    3  the pass it failed on
+    //   1  {newest byte, previous byte}  4  0001
+    //   2  address of the previous read
+    wire [79:0] dump_payload = compare_failed
+        ? { 6'b0, f0[17:8], f0[7:0], f1[7:0], 6'b0, f1[17:8], fail_pass,
+            15'b0, compare_failed }
+        : { pc_live0, 5'b0, dbg_uc_address, pass_count, pass_count, 16'b0 };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
@@ -495,14 +500,18 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // idle prompt and eat diag's own output, including any verdict it managed to print.
     // Waiting for a failure and then giving the machine three seconds to say whatever
     // it is going to say keeps the dump out of the way.
-    // Sending 0x00 down the serial line asks for one status dump. That is better than
+    // Sending 0x02 down the serial line asks for one status dump. That is better than
     // any automatic trigger: the dump takes the UART pin away from the machine, so
     // anything that fires on its own eventually eats diag's own output. This way the
     // dump only ever happens when it has been asked for, and exactly one line comes
-    // back per request. 0x7f rather than 0xff because the channel is running seven data
-    // bits, so the eighth never arrives. NUL rather than DEL because DEL is wanted
-    // for line editing. This whole trigger is scaffolding and should come out once the
-    // machine is being driven by something other than a debugger.
+    // back per request. Not 0xff, because the channel is running seven data bits and
+    // the eighth never arrives. Not 0x7f either, because DEL is wanted for line
+    // editing. It was NUL for a while and NUL is a bad choice: at 7N1 a zero byte is a
+    // start bit followed by seven zero data bits, which is eight low bit times and
+    // close enough to a break that the receiver often does not frame it. Dumps went
+    // missing at random until the character was changed. This whole trigger is
+    // scaffolding and should come out once the machine is being driven by something
+    // other than a debugger.
     //
     // The request is cleared as the dump starts, not when it ends: StatusDump does
     // "running <= trigger" at the end of a line, so running never drops between lines
@@ -519,7 +528,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         end else begin
             if (dump_active)
                 dump_request <= 0;   // consumed as the line starts
-            else if (dbg_byte_ready && !rx_ready_d && dbg_rx_byte == 8'h00)
+            else if (dbg_byte_ready && !rx_ready_d && dbg_rx_byte == 8'h02)
                 dump_request <= 1;
         end
     end
