@@ -31,6 +31,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     output wire [15:0] dbg_memory_address, output wire [10:0] dbg_uc_address,
     output wire [2:0] dbg_page_table_base, output wire [7:0] dbg_page_table_out,
     output wire [3:0] dbg_d2d3,
+    output wire [7:0] dbg_f11,
     // e7 == 3 is where a bus read is latched, and dataInCPU is the byte latched. These
     // are brought out as ports because the top level needs them for instrumentation and
     // a hierarchical reference into the core is not synthesisable.
@@ -207,6 +208,8 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     //   M13  0,1 DMA              2 timer (RTC) enable   4 run/halt front panel light
     //        5 timer reset        6 ABT front panel light 7 interrupt acknowledge
     reg [7:0] f11;
+    // Up/down direction for the MAR and work AR, the two 74LS669 counter pairs.
+    wire count_up = f11[3];
     reg [7:0] m13;
     // Defined before the first reset: f11[3] now selects the address step direction, and
     // an X there propagates straight into the address registers.
@@ -275,6 +278,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     assign dbg_page_table_base = page_table_base;
     assign dbg_page_table_out = page_table_out;
     assign dbg_d2d3 = d2d3;
+    assign dbg_f11 = f11;
     assign dbg_entry0 = { page_table_hi[{page_table_base, 5'b00000}],
                           page_table_lo[{page_table_base, 5'b00000}] };
     wire pt_uc  = enable && reset == 0 && k11 == 5;
@@ -629,15 +633,13 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                             work_address[15:8] <= memory_address[15:8];
                         end
                     end
-                // The MAR and work AR are 74LS669s on the real board, which are up/down
-                // counters, so a direction control exists somewhere, and the wiki names
-                // F11 bit 3 for it. Driving these two from that bit is wrong though:
-                // with it clear meaning count down, diag's menu comes back with its
-                // first three entries missing and the rest renumbered, so the text is
-                // being read from the wrong address. With it set meaning count down the
-                // machine hangs outright. Whatever the bit controls, it is not these.
-                4: work_address <= work_address + 1; // WAR increment
-                5: memory_address <= memory_address + 1; // MAR increment
+                // The MAR and work AR are 74LS669s, which are up/down counters, and the
+                // direction is F11 bit 3 - the same addressable latch whose bit 0 is the
+                // interrupt enable. Meisaka's emulator calls the latch busctl and reads
+                // the direction as (busctl & 8), counting down when it is clear, which
+                // is what a stack push needs.
+                4: work_address <= count_up ? work_address + 1 : work_address - 1;
+                5: memory_address <= count_up ? memory_address + 1 : memory_address - 1;
                 6: ; // Select FBus source (combinational)
                 7: swap_register <= { DPBus[3:0], DPBus[7:4] };
             endcase

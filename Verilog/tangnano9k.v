@@ -118,6 +118,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg byte_ready_d;
     wire [2:0] dbg_page_table_base;
     wire [3:0] dbg_d2d3;
+    wire [7:0] dbg_f11;
     wire [7:0] dbg_page_table_out;
     wire [1:0] dbg_e7;
     wire [7:0] dbg_data_in;
@@ -213,7 +214,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
-              dbg_d2d3,
+              dbg_d2d3, dbg_f11,
               dbg_e7, dbg_data_in, dbg_entry0,
               dbg_e0_write, dbg_e0_value, dbg_e0_via_window,
               dbg_pt_write, dbg_pt_index, dbg_pt_value, dbg_pt_via_window, interrupt_ack);
@@ -790,9 +791,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     //   2  fetches of 0x8fa6, where the branch goes when taken
     //   3  {byte at 0x07dd, byte at 0x07de} as last read
     //   4  passes completed
-    //   0..3  the four instructions fetched after the loop exit at 0x8ea4
-    //   4     passes completed
-    wire [79:0] dump_payload = { e0_, e1_, e2_, e3_, pass_count };
+    //   0  live program counter        3  passes completed
+    //   1  the one before it            4  {F11 latch, first fetch after the loop exit}
+    //   2  microcode address
+    wire [79:0] dump_payload =
+        { pc_live0, pc_live1, 5'b0, dbg_uc_address, pass_count, dbg_f11, e0_[7:0] };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
