@@ -210,6 +210,9 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     reg [7:0] f11;
     // Up/down direction for the MAR and work AR, the two 74LS669 counter pairs.
     wire count_up = f11[3];
+    // Set by reset and cleared the first time the status source at d2d3 == 11 is read,
+    // which is how the microcode learns it has just come out of reset.
+    reg resetting;
     reg [7:0] m13;
     // Defined before the first reset: f11[3] now selects the address step direction, and
     // an X there propagates straight into the address registers.
@@ -508,16 +511,23 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             5: DPBus = reg_ram_data_out;
             6: DPBus = { ~memory_address[15:12], memory_address[11:8] };
             7: DPBus = memory_address[7:0];
-            8: DPBus = page_table_out; // read the mapping RAM back, translated address hi
+            // The mapping RAM read back. This is not the raw entry: the physical page
+            // number is the entry's low seven bits plus a synthesised top bit that is
+            // set when bits 6:4 are all ones, which is how a page reaches the I/O
+            // region. Meisaka's emulator computes exactly this and calls it pgaddr.
+            // The entry's own bit 7 is the write-tracked flag and reaches the DP bus
+            // through d2d3 == 11 instead.
+            8: DPBus = { page_table_out[6:4] == 3'b111, page_table_out[6:0] };
             9: DPBus = { ~condition_codes[0], ~condition_codes[1], ~condition_codes[2], ~condition_codes[3], 4'b0000 }; // low nibble is sense switches
             10: DPBus = bus_read;
-            // The PAGE store assembles each byte from two sources: d2d3 == 8 gives the
-            // entry's seven address bits, and the microcode at 488 computes ~D and
-            // shifts bit 0 of the result into the top of the byte. That bit is the
-            // page's write-tracked flag, which the reference manual describes as bit 7
-            // of an entry and which is not part of the physical address. The stub here
-            // held bit 0 at 1, so every byte the store wrote came out with bit 7 clear.
-            11: DPBus = { 7'b0000111, ~page_table_out[7] };
+            // Machine status. From Meisaka's emulator: the current level in the high
+            // nibble, the DMA interrupt in bit 3, a constant one in bit 2, a
+            // reset-just-happened flag in bit 1 that clears when it is read, and the
+            // page's write-tracked flag inverted in bit 0. This used to be a constant
+            // 0x0e with only bit 0 real, which left the DMA and reset bits stuck high.
+            // The PAGE store shifts bit 0 into the top of each byte it writes.
+            11: DPBus = { interrupt_level, 1'b0 /* no DMA yet */, 1'b1,
+                          resetting, ~page_table_out[7] };
             12: ; // read switch 2 other half of dip switches and condition codes?
             13: DPBus = constant;
             14: ;
@@ -539,6 +549,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // data the reset is covered by normal setup and hold analysis.
     always @(posedge clock) begin
         if (reset == 1) begin
+            resetting <= 1;
             work_address <= 0;
             memory_address <= 0;
             register_index <= 0;
@@ -622,6 +633,8 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             endcase
 
             // 74LS138
+            if (d2d3 == 11) resetting <= 0;
+
             case (h11)
                 0: ;
                 1: ; // Begin bus read cycle

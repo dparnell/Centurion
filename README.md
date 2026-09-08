@@ -94,9 +94,11 @@ Below is the CPU data path with enables for busses and registers. The enables ar
 ## Status
 
 The machine boots the original diagnostic ROM on a Tang Nano 9K with a serial
-console. diag's CPU instruction test (menu entry 01) passes, printing
-`*** PASS ***`. Its mapping RAM test (entry 02) runs its full sweep without a
-comparison failure; it does not yet print a verdict of its own.
+console, and both of diag's CPU tests pass: the CPU instruction test (menu
+entry 01) and the CPU-6 mapping RAM test (entry 02) each print `*** PASS ***`.
+Both are soak tests that run until interrupted; entry 02 checks for the exit
+key only at the end of a round of 65536 passes, so its verdict can take a
+minute or so to appear after Control-C.
 
 All CPU6 instruction tests in the local testbench pass. Interrupts are enabled,
 requested and acknowledged. The MMU is implemented, including the mapping RAM.

@@ -835,6 +835,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 dump_request <= 0;   // consumed as the line starts
             else if (dbg_byte_ready && !rx_ready_d && dbg_rx_byte == 8'h02)
                 dump_request <= 1;
+            // A level triggered fallback was tried here, so that a machine which has
+            // stopped reading the data register could still be asked for a dump. It
+            // takes the UART pin away from the MUX permanently as soon as a trigger
+            // byte is left sitting in the receiver, and the machine then looks dead
+            // when it is running perfectly well. Do not add one.
         end
     end
 
