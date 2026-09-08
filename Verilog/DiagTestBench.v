@@ -30,6 +30,7 @@ endmodule
 
 
 `include "tangnano9k.v"
+`include "HyperRamModel.v"
 
 /**
  * Boots diag on the real top level, waits for its prompt, types a test number over the
@@ -49,7 +50,17 @@ module DiagTestTB;
     wire uart_tx;
     reg  uart_rx = 1;
 
-    tangnano9k dut(in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
+    
+    // The embedded HyperRAM, which now backs most of the machine's 256K of
+    // physical memory. ADDR_BITS is 18 because that is all the CPU6 has.
+    wire [1:0] psram_ck, psram_ck_n, psram_cs_n, psram_reset_n;
+    wire [1:0] psram_rwds;
+    wire [15:0] psram_dq;
+    HyperRamModel #(.ADDR_BITS(18)) die(
+        .ck(psram_ck[0]), .cs_n(psram_cs_n[0]), .resetn(psram_reset_n[0]),
+        .rwds(psram_rwds[0]), .dq(psram_dq[7:0]));
+
+    tangnano9k dut(in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx, psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq);
 
     // diag reconfigures the channel to 19200 7N1
     localparam BITP = 27_000_000/19200 + 1;
