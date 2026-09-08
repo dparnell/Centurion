@@ -1,0 +1,25 @@
+// DCX counts a 16 bit register down to zero and BNZ leaves the loop when it
+// gets there. Three stars means DCX set the zero flag on exactly the right
+// iteration. Written while chasing diag's mapping RAM test, whose outer loop
+// is a DCX/BNZ pair; see CLAUDE.md for the 16 bit values that still fail.
+60 // LDXW #0003
+00
+03
+80 // LDAL '*'
+2a
+a1 // STAL #f201  (print)
+f2
+01
+3f // DCX
+15 // BNZ -6, back to the store
+fa
+80 // LDAL '\n'
+0a
+a1 // STAL #f201
+f2
+01
+80 // LDAL #01
+01
+a1 // STAL #f900  (sim_end)
+f9
+00

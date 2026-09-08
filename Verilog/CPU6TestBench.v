@@ -113,6 +113,11 @@ module CPU6TestBench;
         sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
         wait(sim_end == 1);
 
+        $readmemh("programs/dcx_test.txt", ram.rom_cells);
+        $write("dcx_test: ");
+        sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
+        wait(sim_end == 1);
+
         // $readmemh("programs/diag.txt", ram.rom_cells);
         // sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0;
         // #17000000 $finish;

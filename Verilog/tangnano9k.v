@@ -117,6 +117,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     reg [15:0] rx_count;
     reg byte_ready_d;
     wire [2:0] dbg_page_table_base;
+    wire [3:0] dbg_d2d3;
     wire [7:0] dbg_page_table_out;
     wire [1:0] dbg_e7;
     wire [7:0] dbg_data_in;
@@ -212,6 +213,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
+              dbg_d2d3,
               dbg_e7, dbg_data_in, dbg_entry0,
               dbg_e0_write, dbg_e0_value, dbg_e0_via_window,
               dbg_pt_write, dbg_pt_index, dbg_pt_value, dbg_pt_via_window, interrupt_ack);
@@ -254,6 +256,70 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // its reference at 0x200..0x2ff and branches on the first difference, so the last
     // low address it touched before branching names the entry that mismatched.
     reg [9:0] last_low_addr;
+    // The one question the compare mismatch leaves open: at buffer offset 0 the PAGE
+    // store wrote 00 where diag's reference holds 01. Either the store read the entry
+    // wrongly, or the load never wrote 01 into it. Recording the byte the store put at
+    // physical 0x100 together with the table entry it came from separates the two.
+    reg [7:0] wr100_val, wr100_e0, wr200_val;
+    reg [7:0] fwr100_val, fwr100_e0, fwr200_val;
+    // Who writes the reference. Physical 0x200 offset 0 holds 01 at the failure while
+    // everything on the store's side of the compare says 00, so the byte has to be
+    // arriving from an instruction other than the one assumed.
+    reg [15:0] wr100_pc, wr200_pc, wr200_count;
+    reg [15:0] fwr100_pc, fwr200_pc, fwr200_count;
+    // Which parts of diag's loop actually execute. The last three writes to table
+    // index 0 all came from 0x8f04 and index 0 is written exactly once per pass, so
+    // the load at 0x8ed1 - same map, same count, only a different source address -
+    // appears never to write it. Count the fetches and find out whether it runs.
+    reg [15:0] n_8ea7, n_8ec4, n_8ecc, n_8ed1, n_8f04;
+    reg [15:0] fn_8ea7, fn_8ec4, fn_8ecc, fn_8ed1, fn_8f04;
+    // The loop is: poke, load the whole table from 0x100, store it back to 0x100,
+    // compare 0x100 against 0x200. So the value the table should end up holding at
+    // index 0 arrives as a byte written to physical 0x100. Record every write there
+    // that is not zero: if there are none, diag never poked the buffer and expects the
+    // 01 to come from somewhere else entirely.
+    reg [15:0] nzb_pc, nzb_count;
+    reg [7:0]  nzb_val;
+    reg [9:0]  nzb_addr, fnzb_addr;
+    // Physical 0x200 - the first byte of diag's reference - is written exactly twice
+    // in a whole run. Record both, with the pass each happened on. If the second is at
+    // pass 57345 then diag is changing its expectation there and the table is supposed
+    // to follow; if both are at the start then the reference has read 01 all along and
+    // the compare should have failed on pass 1, which would mean the mismatching pair
+    // has been misread.
+    // diag pokes one byte per pass: LALY reads it through Y, INAL increments it, then
+    // SALY writes it back through Y and SALZ mirrors it through Z. One of those two
+    // stores is not landing where diag means it to. Record the physical address and
+    // value of each.
+    reg [15:0] saly_addr, salz_addr, fsaly_addr, fsalz_addr;
+    reg [15:0] saly_va, salz_va, fsaly_va, fsalz_va;
+    reg [7:0]  saly_val, salz_val, fsaly_val, fsalz_val;
+    // Y walks one byte per pass over a large region, and the compare only covers the
+    // 256 bytes at 0x200. Recording where the walk starts and which way it steps says
+    // why the compare survives 57344 passes and then does not.
+    reg [15:0] y_at1, y_at2, y_at3;
+    reg [15:0] fy_at1, fy_at2, fy_at3;
+    reg [15:0] w2p1, w2p2;
+    reg [7:0]  w2v1, w2v2;
+    reg [15:0] fw2p1, fw2p2;
+    reg [7:0]  fw2v1, fw2v2;
+    reg [15:0] fnzb_pc, fnzb_count;
+    reg [7:0]  fnzb_val, fld_src;
+    reg [7:0]  ld_src, last_rd_1xx;
+    // Table index 0x00 is map 0 page 0, the entry the compare mismatches on. Count
+    // every write to it, and separately remember the last write that put a non-zero
+    // value there. diag's reference says the entry should read 01; if nothing ever
+    // writes 01 into it then the 01 in the reference came from somewhere else and the
+    // store's indexing is wrong, not the load's.
+    // What the PAGE store actually reads. d2d3 == 8 puts a table entry on the DP bus;
+    // record the index and value each time, then freeze whatever was read last when
+    // the store writes buffer offset 0 at physical 0x100. That says which entry the
+    // first byte of diag's snapshot really came from.
+    reg [7:0] sr_index, sr_value, fsr_index, fsr_value;
+    reg [15:0] idx0_count, nz0_count, nz0_pc;
+    reg [7:0]  nz0_val;
+    reg [15:0] fidx0_count, fnz0_count, fnz0_pc;
+    reg [7:0]  fnz0_val;
     reg [9:0] fail_addr;
     // Both of diag's verdict messages are printed by a JSR to virtual 0x07cc, and
     // nothing has ever come out of it. Capture what that address resolved to the first
@@ -362,6 +428,26 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             ni_i0<=0; ni_i1<=0; ni_i2<=0; ni_v0<=0; ni_v1<=0; ni_v2<=0; ni_pc<=0; ni_count<=0;
             fni_i0<=0; fni_i1<=0; fni_i2<=0; fni_v0<=0; fni_v1<=0; fni_v2<=0; fni_pc<=0; fni_count<=0;
             last_buf <= 0; last_ref <= 0; fail_buf <= 0; fail_ref <= 0;
+            wr100_val <= 0; wr100_e0 <= 0; wr200_val <= 0;
+            fwr100_val <= 0; fwr100_e0 <= 0; fwr200_val <= 0;
+            sr_index <= 0; sr_value <= 0; fsr_index <= 0; fsr_value <= 0;
+            nzb_pc <= 0; nzb_count <= 0; nzb_val <= 0;
+            nzb_addr <= 0; fnzb_addr <= 0;
+            saly_addr <= 0; salz_addr <= 0; fsaly_addr <= 0; fsalz_addr <= 0;
+            saly_va <= 0; salz_va <= 0; fsaly_va <= 0; fsalz_va <= 0;
+            y_at1 <= 0; y_at2 <= 0; y_at3 <= 0;
+            fy_at1 <= 0; fy_at2 <= 0; fy_at3 <= 0;
+            saly_val <= 0; salz_val <= 0; fsaly_val <= 0; fsalz_val <= 0;
+            w2p1 <= 0; w2p2 <= 0; w2v1 <= 0; w2v2 <= 0;
+            fw2p1 <= 0; fw2p2 <= 0; fw2v1 <= 0; fw2v2 <= 0;
+            fnzb_pc <= 0; fnzb_count <= 0; fnzb_val <= 0; fld_src <= 0;
+            ld_src <= 0; last_rd_1xx <= 0;
+            n_8ea7 <= 0; n_8ec4 <= 0; n_8ecc <= 0; n_8ed1 <= 0; n_8f04 <= 0;
+            fn_8ea7 <= 0; fn_8ec4 <= 0; fn_8ecc <= 0; fn_8ed1 <= 0; fn_8f04 <= 0;
+            wr100_pc <= 0; wr200_pc <= 0; wr200_count <= 0;
+            fwr100_pc <= 0; fwr200_pc <= 0; fwr200_count <= 0;
+            idx0_count <= 0; nz0_count <= 0; nz0_pc <= 0; nz0_val <= 0;
+            fidx0_count <= 0; fnz0_count <= 0; fnz0_pc <= 0; fnz0_val <= 0;
             rd0 <= 0; rd1 <= 0; rd2 <= 0; rd3 <= 0;
             f0 <= 0; f1 <= 0; f2 <= 0; f3 <= 0; fentry0 <= 0;
             fault_caught <= 0;
@@ -375,6 +461,12 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             rd0 <= { addressBus[9:0], dbg_data_in };
         end
         if (cpu_en && !compare_failed && dbg_pt_write && dbg_pt_index == 8'h00) begin
+            idx0_count <= idx0_count + 1;
+            if (dbg_pt_value != 8'h00) begin
+                nz0_count <= nz0_count + 1;
+                nz0_pc <= pc_live0;
+                nz0_val <= dbg_pt_value;
+            end
             z_v2 <= z_v1; z_v1 <= z_v0; z_v0 <= dbg_pt_value;
             z_p2 <= z_p1; z_p1 <= z_p0; z_p0 <= pc_live0;
             z_w2 <= z_w1; z_w1 <= z_w0; z_w0 <= dbg_pt_via_window;
@@ -393,6 +485,61 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
         if (cpu_en && !compare_failed && addressBus[18:10] == 9'd0)
             last_low_addr <= addressBus[9:0];
 
+        // Every byte the CPU reads out of the buffer page, and the one that was in
+        // hand when the table's index 0 was last written.
+        if (cpu_en && !compare_failed && dbg_e7 == 3 && addressBus[18:8] == 11'h001)
+            last_rd_1xx <= dbg_data_in;
+        if (cpu_en && !compare_failed && dbg_pt_write && dbg_pt_index == 8'h00)
+            ld_src <= last_rd_1xx;
+
+        // Widened from physical 0x100 to the whole buffer region. Nothing ever wrote a
+        // non-zero byte to 0x100 itself, so diag's poke of the pattern is landing at
+        // some other address and this says which.
+        if (cpu_en && !compare_failed && writeEnBus
+            && addressBus[18:10] == 9'd0 && addressBus[9:8] != 2'b00
+            && data_c2r != 8'h00) begin
+            nzb_pc <= pc_live0;
+            nzb_val <= data_c2r;
+            nzb_addr <= addressBus[9:0];
+            nzb_count <= nzb_count + 1;
+        end
+
+        if (cpu_en && !compare_failed && dbg_d2d3 == 4'd8) begin
+            sr_index <= dbg_pt_index;
+            sr_value <= dbg_page_table_out;
+        end
+
+        if (cpu_en && !compare_failed && writeEnBus && pc_live0 == 16'h8e8a) begin
+            saly_addr <= addressBus[15:0];
+            saly_va   <= dbg_memory_address;
+            saly_val  <= data_c2r;
+            if (pass_count == 16'd1) y_at1 <= dbg_memory_address;
+            if (pass_count == 16'd2) y_at2 <= dbg_memory_address;
+            if (pass_count == 16'd3) y_at3 <= dbg_memory_address;
+        end
+        if (cpu_en && !compare_failed && writeEnBus && pc_live0 == 16'h8e8b) begin
+            salz_addr <= addressBus[15:0];
+            salz_va   <= dbg_memory_address;
+            salz_val  <= data_c2r;
+        end
+
+        if (cpu_en && !compare_failed && writeEnBus) begin
+            if (addressBus == 19'h00100) begin
+                wr100_val <= data_c2r;
+                wr100_e0  <= dbg_entry0;
+                wr100_pc  <= pc_live0;
+                fsr_index <= sr_index;
+                fsr_value <= sr_value;
+            end
+            if (addressBus == 19'h00200) begin
+                wr200_val   <= data_c2r;
+                wr200_pc    <= pc_live0;
+                wr200_count <= wr200_count + 1;
+                w2p2 <= w2p1; w2v2 <= w2v1;
+                w2p1 <= pass_count; w2v1 <= data_c2r;
+            end
+        end
+
         // Keep the last four bytes read out of the compare's buffers, address and value
         // together, and freeze them when it branches. Guessing which pair matters has
         // not worked: watching only 0x1xx against 0x2xx produced nothing, and there is a
@@ -410,6 +557,16 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             pc_live0 <= dbg_memory_address;
             pc_live1 <= pc_live0;
             if (dbg_memory_address == DIAG_LOOP_TOP) pass_count <= pass_count + 1;
+            if (!compare_failed) begin
+                // 8e9d INRW Y and 8ea1 DCX are the outer loop; 8ea4 POP is the exit
+                // past the BNZ at 8ea2. The outer loop should run 224 times, once per
+                // byte of the table image from 0x120 to 0x1ff.
+                if (dbg_memory_address == 16'h8e99) n_8ea7 <= n_8ea7 + 1;
+                if (dbg_memory_address == 16'h8e9d) n_8ec4 <= n_8ec4 + 1;
+                if (dbg_memory_address == 16'h8ea1) n_8ecc <= n_8ecc + 1;
+                if (dbg_memory_address == 16'h8ea2) n_8ed1 <= n_8ed1 + 1;
+                if (dbg_memory_address == 16'h8ea4) n_8f04 <= n_8f04 + 1;
+            end
             if (dbg_memory_address == DIAG_PRINT && !print_seen) begin
                 print_seen <= 1;
                 print_entry <= dbg_page_table_out;
@@ -430,6 +587,23 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
                 fz_p0 <= z_p0; fz_p1 <= z_p1; fz_p2 <= z_p2;
                 fz_w0 <= z_w0; fz_w1 <= z_w1; fz_w2 <= z_w2;
                 fentry0 <= dbg_entry0;
+                fwr100_val <= wr100_val; fwr100_e0 <= wr100_e0;
+                fwr200_val <= wr200_val;
+                fnzb_pc <= nzb_pc; fnzb_val <= nzb_val; fnzb_count <= nzb_count;
+                fnzb_addr <= nzb_addr;
+                fy_at1 <= y_at1; fy_at2 <= y_at2; fy_at3 <= y_at3;
+                fsaly_va <= saly_va; fsalz_va <= salz_va;
+                fsaly_addr <= saly_addr; fsaly_val <= saly_val;
+                fsalz_addr <= salz_addr; fsalz_val <= salz_val;
+                fw2p1 <= w2p1; fw2v1 <= w2v1;
+                fw2p2 <= w2p2; fw2v2 <= w2v2;
+                fld_src <= ld_src;
+                fn_8ea7 <= n_8ea7; fn_8ec4 <= n_8ec4; fn_8ecc <= n_8ecc;
+                fn_8ed1 <= n_8ed1; fn_8f04 <= n_8f04;
+                fwr100_pc <= wr100_pc; fwr200_pc <= wr200_pc;
+                fwr200_count <= wr200_count;
+                fidx0_count <= idx0_count; fnz0_count <= nz0_count;
+                fnz0_pc <= nz0_pc; fnz0_val <= nz0_val;
             end
             if (!fault_caught) begin
                 pc_hist0 <= dbg_memory_address;
@@ -487,9 +661,97 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     //   0  address of the newest read    3  the pass it failed on
     //   1  {newest byte, previous byte}  4  0001
     //   2  address of the previous read
+    // After the failure: the last three writes to table index 0x00, newest first, as
+    // the instruction that did the write and the value it wrote. Index 0 is map 0
+    // page 0, the entry the compare mismatches on.
+    //
+    //   0  instruction of the newest write   3  value of the previous write
+    //   1  value of the newest write         4  value of the one before that
+    //   2  instruction of the previous write
+    // After the failure: the last three table writes whose value was not the entry's
+    // own index, newest first, and how many such writes there have been. An identity
+    // write tells us nothing; these are the test's pattern going in.
+    //
+    //   0  instruction of the newest      3  {index, value} of the third newest
+    //   1  {index, value} of the newest   4  count of non-identity writes
+    //   2  {index, value} of the previous
+    // After the failure:
+    //
+    //   0  byte the store last wrote to physical 0x100 (buffer offset 0)
+    //   1  table entry 0 of the running map at that moment
+    //   2  byte last written to physical 0x200 (reference offset 0)
+    //   3  the pass it failed on
+    //   4  table entry 0 frozen at the failure
+    //
+    // If word 1 already reads 00 the load never put 01 in the entry; if it reads 01
+    // while word 0 reads 00 the store's read path is at fault.
+    // After the failure:
+    //
+    //   0  instruction of the last write that put a non-zero value in table index 0
+    //   1  the value that write put there
+    //   2  how many non-zero writes to index 0 there have been
+    //   3  how many writes to index 0 there have been at all
+    //   4  the pass it failed on
+    // After the failure, the store's own view of buffer offset 0:
+    //
+    //   0  table index the store last read before writing physical 0x100
+    //   1  the entry value it read there
+    //   2  the byte it actually wrote to physical 0x100
+    //   3  the byte at physical 0x200, which is what diag expects
+    //   4  the pass it failed on
+    // After the failure, who wrote each side of the mismatching pair:
+    //
+    //   0  instruction that last wrote physical 0x200, the reference
+    //   1  {byte it wrote there, byte last written to physical 0x100}
+    //   2  how many writes to physical 0x200 there have been
+    //   3  instruction that last wrote physical 0x100, the buffer
+    //   4  the pass it failed on
+    // After the failure, how often each part of diag's loop ran, against a pass count
+    // of 57345:
+    //
+    //   0  8ea7  store map 0 -> 0x300     3  8ed1  load map 0 <- 0x300
+    //   1  8ec4  MVF                      4  8f04  load map 0 <- 0x100
+    //   2  8ecc  store map 1 -> 0x300
+    // After the failure:
+    //
+    //   0  instruction of the last non-zero write to physical 0x100, the buffer
+    //   1  {value it wrote, byte in hand when table index 0 was last written}
+    //   2  how many non-zero writes to physical 0x100 there have been
+    //   3  {value last written to table index 0, byte last written to 0x200}
+    //   4  the pass it failed on
+    // After the failure, the last non-zero byte written anywhere in the buffer region
+    // physical 0x100..0x3ff:
+    //
+    //   0  the instruction that wrote it     3  how many such writes there have been
+    //   1  the physical address it wrote     4  the pass it failed on
+    //   2  {the value, value last written to table index 0}
+    // After the failure, both writes physical 0x200 ever received:
+    //
+    //   0  the pass the newest happened on   3  {value of the older}
+    //   1  {value of the newest}             4  the pass it failed on
+    //   2  the pass the older happened on
+    // After the failure, where diag's two pokes actually went:
+    //
+    //   0  physical address SALY last wrote     3  {value SALZ wrote}
+    //   1  {value SALY wrote}                   4  the pass it failed on
+    //   2  physical address SALZ last wrote
+    // After the failure, diag's two pokes as asked for and as delivered:
+    //
+    //   0  virtual address SALY used      3  physical address SALZ reached
+    //   1  physical address SALY reached  4  the pass it failed on
+    //   2  virtual address SALZ used
+    // After the failure, where diag's walking pointer Y was on the first three passes
+    // and on the last:
+    //
+    //   0  Y on pass 1     2  Y on pass 3        4  the pass it failed on
+    //   1  Y on pass 2     3  Y at the failure
+    // After the failure, how many times each step of diag's loops ran:
+    //
+    //   0  8e99 DCR, the inner counter    3  8ea2 BNZ, the outer test
+    //   1  8e9d INRW Y, the outer step    4  8ea4 POP, the exit
+    //   2  8ea1 DCX, the outer counter
     wire [79:0] dump_payload = compare_failed
-        ? { 6'b0, f0[17:8], f0[7:0], f1[7:0], 6'b0, f1[17:8], fail_pass,
-            15'b0, compare_failed }
+        ? { fn_8ea7, fn_8ec4, fn_8ecc, fn_8ed1, fn_8f04 }
         : { pc_live0, 5'b0, dbg_uc_address, pass_count, pass_count, 16'b0 };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
