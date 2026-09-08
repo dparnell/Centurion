@@ -12,6 +12,9 @@
 
 module PsramController #(
     parameter FREQ=81_000_000,// Actual clk frequency, to time 150us initialization delay
+    parameter DIE=0,          // which of the two dies in the package to talk to:
+                              // die 0 is CK/CS_n[0], RWDS[0] and DQ[7:0], die 1 is
+                              // the [1] half and DQ[15:8]. Upstream only ever used 0.
     parameter LATENCY=3       // tACC (Initial Latency) in W955D8MBYA datasheet:
                               // 3 (max 83Mhz), 4 (max 104Mhz), 5 (max 133Mhz) or 6 (max 166Mhz)
 ) (
@@ -200,11 +203,12 @@ wire dq_oen_tbuf[7:0];
 ODDR oddr_cs_n(
     .CLK(clk), .D0(ram_cs_n), .D1(ram_cs_n), .Q0(cs_n_tbuf)
 );
-assign O_psram_cs_n[0] = cs_n_tbuf;
+assign O_psram_cs_n[DIE]   = cs_n_tbuf;
+assign O_psram_cs_n[1-DIE] = 1'b1;
 ODDR oddr_rwds(
     .CLK(clk), .D0(rwds_out_ris), .D1(rwds_out_fal), .TX(rwds_oen), .Q0(rwds_tbuf), .Q1(rwds_oen_tbuf)
 );
-assign IO_psram_rwds[0] = rwds_oen_tbuf ? 1'bz : rwds_tbuf;
+assign IO_psram_rwds[DIE] = rwds_oen_tbuf ? 1'bz : rwds_tbuf;
 
 genvar i1;
 generate
@@ -212,14 +216,15 @@ generate
         ODDR oddr_dq_i1(
 .CLK(clk), .D0(dq_out_ris[i1]), .D1(dq_out_fal[i1]), .TX(dq_oen), .Q0(dq_out_tbuf[i1]), .Q1(dq_oen_tbuf[i1])
         );
-        assign IO_psram_dq[i1] = dq_oen_tbuf[i1] ? 1'bz : dq_out_tbuf[i1];
+        assign IO_psram_dq[DIE*8+i1] = dq_oen_tbuf[i1] ? 1'bz : dq_out_tbuf[i1];
     end
 endgenerate
 // Note: ck uses phase-shifted clock clk_p
 ODDR oddr_ck(
     .CLK(clk_p), .D0(ck_e_p), .D1(1'b0), .Q0(ck_tbuf)
 );
-assign O_psram_ck[0] = ck_tbuf;
+assign O_psram_ck[DIE]   = ck_tbuf;
+assign O_psram_ck[1-DIE] = 1'b0;
 
 // The complementary clock. The die is clocked differentially, and leaving CK# to
 // float is enough on its own to stop it responding. It has to come from its own ODDR
@@ -229,15 +234,8 @@ assign O_psram_ck[0] = ck_tbuf;
 ODDR oddr_ck_n(
     .CLK(clk_p), .D0(~ck_e_p), .D1(1'b1), .Q0(ck_n_tbuf)
 );
-assign O_psram_ck_n[0] = ck_n_tbuf;
-assign O_psram_ck_n[1] = 1'b1;
-
-// The package holds two dies sharing one DQ bus and this controller only uses the
-// first, so it left the second's clock and chip select undriven. Floating, die 1 can
-// select itself and drive the bus against die 0, and every read comes back as the
-// same constant whatever was written. Hold it deselected and its clock quiet.
-assign O_psram_cs_n[1] = 1'b1;
-assign O_psram_ck[1]   = 1'b0;
+assign O_psram_ck_n[DIE]   = ck_n_tbuf;
+assign O_psram_ck_n[1-DIE] = 1'b1;
 
 
 // Loopback tap. Accumulates every sample the input path takes while our own drivers
@@ -252,13 +250,13 @@ end
 
 // Tristate DDR input
 IDDR iddr_rwds(
-    .CLK(clk), .D(IO_psram_rwds[0]), .Q0(rwds_in_ris), .Q1(rwds_in_fal)
+    .CLK(clk), .D(IO_psram_rwds[DIE]), .Q0(rwds_in_ris), .Q1(rwds_in_fal)
 );
 genvar i2;
 generate
     for (i2=0; i2<=7; i2=i2+1) begin: gen_i2
         IDDR iddr_dq_i2(
-            .CLK(clk), .D(IO_psram_dq[i2]), .Q0(dq_in_ris[i2]), .Q1(dq_in_fal[i2])
+            .CLK(clk), .D(IO_psram_dq[DIE*8+i2]), .Q0(dq_in_ris[i2]), .Q1(dq_in_fal[i2])
         );
     end
 endgenerate

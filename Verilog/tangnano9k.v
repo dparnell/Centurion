@@ -177,6 +177,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     localparam PSRAM_FBDIV = 0;
     localparam PSRAM_ODIV = 16;
     localparam LATENCY = 3;
+    localparam PSRAM_DIE = 0;
     wire ram_clk, ram_clk_p;
 
     Gowin_rPLL #(.FBDIV(PSRAM_FBDIV), .ODIV(PSRAM_ODIV)) pll(
@@ -212,7 +213,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [4:0] ctrl_cycles;
     wire [15:0] ctrl_dq_echo;
     PsramController #(
-        .FREQ(PSRAM_FREQ), .LATENCY(LATENCY)
+        .FREQ(PSRAM_FREQ), .LATENCY(LATENCY), .DIE(PSRAM_DIE)
     ) mem_ctrl (
         .clk(ram_clk), .clk_p(ram_clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
         .addr(address), .din(din), .dout(dout), .busy(busy),
