@@ -1,0 +1,214 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01           ; never executed; the reset vector jumps to 8001
+80  // 8001  start:  LDAB #$c4           ; 19200 baud, 7 data bits, no parity
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #STACK          ; JSR pushes the old X here; without this every
+c0
+00
+5f  // 8009  XAS                 ; call returns to nowhere
+90  // 800a  LDA #table
+80
+65
+5c  // 800d  XAY
+95  // 800e  LDA [Y++]
+61
+79  // 8010  JSR putax
+80
+7e
+95  // 8013  LDA [Y++]
+61
+79  // 8015  JSR putax
+80
+7e
+79  // 8018  JSR crlf
+80
+b9
+90  // 801b  LDA #$c800
+c8
+00
+5e  // 801e  XAZ
+90  // 801f  LDA #$1122
+11
+22
+b5  // 8022  STA [--Z]
+82
+90  // 8024  LDA #$3344
+33
+44
+b5  // 8027  STA [--Z]
+82
+95  // 8029  LDA [Z++]
+81
+79  // 802b  JSR putax
+80
+7e
+95  // 802e  LDA [Z++]
+81
+79  // 8030  JSR putax
+80
+7e
+79  // 8033  JSR crlf
+80
+b9
+90  // 8036  LDA #thread
+80
+4a
+5c  // 8039  XAY
+65  // 803a  LDX [Y++]
+61
+75  // 803c  JMP [[X]]
+44
+79  // 803e  done:   JSR crlf
+80
+b9
+90  // 8041  LDA #$0001
+00
+01
+b1  // 8044  STA $f900           ; the testbench stops on this
+f9
+00
+71  // 8047  halt:   JMP halt
+80
+47
+80  // 804a  thread: .word cfa1, cfa2
+4e
+80
+50
+80  // 804e  cfa1:   .word code1
+52
+80  // 8050  cfa2:   .word code2
+5c
+90  // 8052  code1:  LDA #'1'
+00
+31
+79  // 8055  JSR putc
+80
+69
+65  // 8058  LDX [Y++]
+61
+75  // 805a  JMP [[X]]
+44
+90  // 805c  code2:  LDA #'2'
+00
+32
+79  // 805f  JSR putc
+80
+69
+71  // 8062  JMP done
+80
+3e
+ab  // 8065  table:  .word $abcd, $1234
+cd
+12
+34
+a1  // 8069  putc:   STAB pcsave
+b0
+04
+81  // 806c  pc1:    LDAB CTRL
+f2
+00
+2d  // 806f  SLAB                ; bit 1 is "transmitter idle"; shift it up to the
+2d  // 8070  SLAB                ; sign so a branch can test it
+2d  // 8071  SLAB
+2d  // 8072  SLAB
+2d  // 8073  SLAB
+2d  // 8074  SLAB
+17  // 8075  BP pc1
+f5
+81  // 8077  LDAB pcsave
+b0
+04
+a1  // 807a  STAB TXDATA
+f2
+01
+09  // 807d  RSR
+b1  // 807e  putax:  STA scr2            ; print A as four hex digits
+b0
+02
+3c  // 8081  SRA
+3c  // 8082  SRA
+3c  // 8083  SRA
+3c  // 8084  SRA
+3c  // 8085  SRA
+3c  // 8086  SRA
+3c  // 8087  SRA
+3c  // 8088  SRA
+79  // 8089  JSR puthex          ; the high byte is now in the low half of A
+80
+98
+91  // 808c  LDA scr2
+b0
+02
+79  // 808f  JSR puthex
+80
+98
+90  // 8092  LDA #' '
+00
+20
+71  // 8095  JMP putc
+80
+69
+a1  // 8098  puthex: STAB scr1           ; print the low half of A as two hex digits
+b0
+00
+2c  // 809b  SRAB
+2c  // 809c  SRAB
+2c  // 809d  SRAB
+2c  // 809e  SRAB
+d0  // 809f  LDB #$000f
+00
+0f
+5a  // 80a2  NAB                 ; B = B and A, so B is the high nibble, masked
+79  // 80a3  JSR putnib
+80
+b0
+81  // 80a6  LDAB scr1
+b0
+00
+d0  // 80a9  LDB #$000f
+00
+0f
+5a  // 80ac  NAB
+71  // 80ad  JMP putnib
+80
+b0
+90  // 80b0  putnib: LDA #digits         ; B is 0..15
+80
+c5
+58  // 80b3  AAB                 ; B = B + A
+85  // 80b4  LDAB [B]
+20
+71  // 80b6  JMP putc
+80
+69
+90  // 80b9  crlf:   LDA #13
+00
+0d
+79  // 80bc  JSR putc
+80
+69
+90  // 80bf  LDA #10
+00
+0a
+71  // 80c2  JMP putc
+80
+69
+30  // 80c5  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46
