@@ -105,7 +105,9 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     parameter [3:0] SENSE_SWITCHES = 4'b0001,
                     // Run the PSRAM's own self test instead of giving the memory
                     // to the CPU. See PsramTest.v.
-                    parameter PSRAM_SELFTEST = 0)
+                    parameter PSRAM_SELFTEST = 0,
+                    // Testbench use only; see PsramBus.v.
+                    parameter SPACING = 1)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -311,7 +313,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // core sees a long bus cycle rather than a stall it has to understand.
     ClockEnable cpu_clock_enable(clock, cpu_en_free);
 
-    PsramBus psram_bus(
+    PsramBus #(.ENFORCE_SPACING(SPACING)) psram_bus(
         .clock(clock), .reset(reset), .cpu_en(cpu_en_free), .select(psram_select),
         .address(addressBus), .write_en(writeEnBus), .data_in(data_c2r),
         .data_out(psram_data), .cpu_en_out(cpu_en),

@@ -21,7 +21,12 @@
  * cached word patches it in place; a write anywhere else leaves it alone. If DMA
  * ever writes memory, this needs invalidating from that side too.
  */
-module PsramBus(
+module PsramBus #(
+    // Only ever cleared by a testbench, to show what the spacing guard below is
+    // for. With it off the core can be handed two enabled edges one board clock
+    // apart, which this design's block RAMs cannot survive.
+    parameter ENFORCE_SPACING = 1
+) (
     input wire clock,
     input wire reset,                    // the core's reset, which this follows
     input wire cpu_en,                   // ClockEnable's ungated output
@@ -93,12 +98,29 @@ module PsramBus(
     // waited for: at 5MHz in 27 the next one is only five clocks away, but an
     // access is nearer eighty, and simply masking the enable would hand the core
     // whichever pulse happened to land first after the stall ended.
+    //
+    // The spacing guard is not optional. This design has a hard floor of two board
+    // clocks between enabled cycles, because the microcode ROM, the register file
+    // and the board's memory are all block RAMs that read every clock and need one
+    // to settle. ClockEnable respects that on its own - five enables in twenty
+    // seven are never adjacent - but handing back a withheld pulse does not: the
+    // grant lands wherever the access happens to finish, and if that is one clock
+    // before ClockEnable's next pulse the core takes two enabled edges in a row and
+    // reads a block RAM that has not caught up. The result is one wrong byte, very
+    // occasionally, which in diag's mapping test arrives as a page table entry that
+    // reads back as zero - about one pass in four hundred, and only ever with the
+    // PSRAM on the bus, because without it nothing is ever withheld.
     reg owed;
-    initial owed = 0;
-    assign cpu_en_out = !need && (cpu_en || owed);
+    reg [1:0] since_en;
+    initial begin owed = 0; since_en = 2'd3; end
+    wire spaced = (since_en >= 2'd2) || (ENFORCE_SPACING == 0);
+    assign cpu_en_out = !need && spaced && (cpu_en || owed);
     always @(posedge clock) begin
-        if (cpu_en && need) owed <= 1;
-        else if (owed && !need) owed <= 0;
+        if (cpu_en_out) owed <= 0;
+        else if (cpu_en) owed <= 1;
+
+        if (cpu_en_out) since_en <= 0;
+        else if (since_en != 2'd3) since_en <= since_en + 1;
     end
 
     always @(posedge clock) begin

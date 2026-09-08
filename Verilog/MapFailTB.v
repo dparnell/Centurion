@@ -57,7 +57,15 @@ module MapFailTB;
         .ck(psram_ck[0]), .cs_n(psram_cs_n[0]), .resetn(psram_reset_n[0]),
         .rwds(psram_rwds[0]), .dq(psram_dq[7:0]));
 
-    tangnano9k dut(in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx,
+    // SPACING 0 turns off the guard in PsramBus, which is what makes the fault
+    // reproduce. Build with -DGUARDED to run the same testbench with it on.
+    `ifdef GUARDED
+        localparam SPACING = 1;
+    `else
+        localparam SPACING = 0;
+    `endif
+    tangnano9k #(.SPACING(SPACING)) dut(
+                   in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx,
                    psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq);
 
     // Still the documented minimum of two board clocks between enabled cycles, so

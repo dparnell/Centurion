@@ -101,6 +101,27 @@ module TopTB;
     end
     endtask
 
+    // The invariant the whole design rests on: at least two board clocks between
+    // enabled cycles. The microcode ROM, the register file and the board memory are
+    // block RAMs that read every clock and need one to settle, so two enabled edges
+    // in a row hand the core a stale byte. ClockEnable respects this on its own;
+    // PsramBus has to be made to, because it hands back a withheld enable wherever
+    // the memory access happens to finish. Without its guard this counts 14021
+    // violations in 160ms of MapFailTB.
+    integer adjacent_enables = 0;
+    reg cpu_en_d = 0;
+    always @(posedge dut.clock) begin
+        cpu_en_d <= dut.cpu_en;
+        if (dut.cpu_en && cpu_en_d) adjacent_enables = adjacent_enables + 1;
+    end
+    initial begin
+        #39000000;
+        if (adjacent_enables == 0)
+            $display("ok: no two enabled cycles were adjacent");
+        else
+            $display("FAIL: %0d pairs of adjacent enabled cycles", adjacent_enables);
+    end
+
     initial begin
         #40000000;                          // 40ms of the CPU driving the pin
         $display("uart_tx transitions in 40ms: %0d", edges);
