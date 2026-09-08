@@ -33,11 +33,16 @@ module PsramController #(
     inout [1:0] IO_psram_rwds,
     inout [15:0] IO_psram_dq,
     output [1:0] O_psram_cs_n,
+    output [1:0] O_psram_ck_n,
 
     // Debug taps added for bring-up on the Tang Nano 9K. Hierarchical references
     // into a module work in simulation and silently capture nothing on hardware, so
     // anything the top level needs has to be a real port.
-    output wire [2:0] dbg_state, output wire dbg_rst_done, output wire [4:0] dbg_cycles
+    output wire [2:0] dbg_state, output wire dbg_rst_done, output wire [4:0] dbg_cycles,
+    // What the DQ input path sees while the FPGA itself is driving the bus. If this
+    // does not echo the command bytes being driven out, the input path is broken
+    // independently of the memory, and nothing read back from the die means anything.
+    output reg [15:0] dbg_dq_echo
 );
 
 reg [2:0] state;
@@ -48,6 +53,7 @@ localparam [2:0] READ_ST = 3'd3;
 localparam [2:0] WRITE_ST = 3'd4;
 
 reg cfg_now, dq_oen, ram_cs_n, ck_e, ck_e_p;
+wire ck_n_tbuf;
 reg wait_for_rd_data;
 reg ub;                     // 1 for upper byte
 reg [15:0] w_din;
@@ -204,7 +210,7 @@ genvar i1;
 generate
     for (i1=0; i1<=7; i1=i1+1) begin: gen_i1
         ODDR oddr_dq_i1(
-            .CLK(clk), .D0(dq_out_ris[i1]), .D1(dq_out_fal[i1]), .TX(dq_oen), .Q0(dq_out_tbuf[i1]), .Q1(dq_oen_tbuf[i1])
+.CLK(clk), .D0(dq_out_ris[i1]), .D1(dq_out_fal[i1]), .TX(dq_oen), .Q0(dq_out_tbuf[i1]), .Q1(dq_oen_tbuf[i1])
         );
         assign IO_psram_dq[i1] = dq_oen_tbuf[i1] ? 1'bz : dq_out_tbuf[i1];
     end
@@ -215,6 +221,17 @@ ODDR oddr_ck(
 );
 assign O_psram_ck[0] = ck_tbuf;
 
+// The complementary clock. The die is clocked differentially, and leaving CK# to
+// float is enough on its own to stop it responding. It has to come from its own ODDR
+// with the data inverted, not from an inverter on this ODDR's output: an ODDR output
+// has to reach an IOB directly, and fanning it into an inverter as well makes nextpnr
+// fail an assertion while packing the IO logic.
+ODDR oddr_ck_n(
+    .CLK(clk_p), .D0(~ck_e_p), .D1(1'b1), .Q0(ck_n_tbuf)
+);
+assign O_psram_ck_n[0] = ck_n_tbuf;
+assign O_psram_ck_n[1] = 1'b1;
+
 // The package holds two dies sharing one DQ bus and this controller only uses the
 // first, so it left the second's clock and chip select undriven. Floating, die 1 can
 // select itself and drive the bus against die 0, and every read comes back as the
@@ -222,6 +239,16 @@ assign O_psram_ck[0] = ck_tbuf;
 assign O_psram_cs_n[1] = 1'b1;
 assign O_psram_ck[1]   = 1'b0;
 
+
+// Loopback tap. Accumulates every sample the input path takes while our own drivers
+// are enabled, rather than the last one - the command shifts out to zeros, so the
+// last cycle is legitimately zero and says nothing. If this stays all zeros then the
+// input path never sees the pins at all, and no value read back from the die means
+// anything.
+always @(posedge clk) begin
+    if (!resetn) dbg_dq_echo <= 0;
+    else if (!dq_oen) dbg_dq_echo <= dbg_dq_echo | {dq_in_ris, dq_in_fal};
+end
 
 // Tristate DDR input
 IDDR iddr_rwds(

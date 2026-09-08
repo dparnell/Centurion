@@ -89,7 +89,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
-                  output [1:0] O_psram_ck,
+                  output [1:0] O_psram_ck, output [1:0] O_psram_ck_n,
                   output [1:0] O_psram_cs_n, output [1:0] O_psram_reset_n,
                   inout [1:0] IO_psram_rwds, inout [15:0] IO_psram_dq);
 
@@ -169,12 +169,19 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     //
     // apycula cannot pack this PLL when nextpnr places it on the left of the die;
     // tools/sitecustomize.py patches around that from the Makefile.
+    // The PSRAM clock. 81MHz is the only speed the upstream controller was ever built
+    // at, and it is also the fastest a read fits inside one 200ns CPU bus cycle; lower
+    // speeds need the CPU stalled but give the interface far more timing margin, which
+    // is what matters while the data path is still wrong. Change all three together.
+    localparam PSRAM_FREQ = 27_000_000;
+    localparam PSRAM_FBDIV = 0;
+    localparam PSRAM_ODIV = 16;
     localparam LATENCY = 3;
     wire ram_clk, ram_clk_p;
 
-    Gowin_rPLL pll(
-        .clkout(ram_clk),        // 81MHz psram clock
-        .clkoutp(ram_clk_p),     // the same, shifted 90 degrees
+    Gowin_rPLL #(.FBDIV(PSRAM_FBDIV), .ODIV(PSRAM_ODIV)) pll(
+        .clkout(ram_clk),        // the PSRAM clock
+        .clkoutp(ram_clk_p),     // the same, shifted 90 degrees, for driving CK
         .clkin(in_clk)           // 27MHz system clock
     );
 
@@ -203,14 +210,16 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [2:0] ctrl_state;
     wire ctrl_rst_done;
     wire [4:0] ctrl_cycles;
+    wire [15:0] ctrl_dq_echo;
     PsramController #(
-        .FREQ(81_000_000), .LATENCY(LATENCY)
+        .FREQ(PSRAM_FREQ), .LATENCY(LATENCY)
     ) mem_ctrl (
         .clk(ram_clk), .clk_p(ram_clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
         .addr(address), .din(din), .dout(dout), .busy(busy),
         .O_psram_ck(O_psram_ck), .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
-        .O_psram_cs_n(O_psram_cs_n),
-        .dbg_state(ctrl_state), .dbg_rst_done(ctrl_rst_done), .dbg_cycles(ctrl_cycles)
+        .O_psram_cs_n(O_psram_cs_n), .O_psram_ck_n(O_psram_ck_n),
+        .dbg_state(ctrl_state), .dbg_rst_done(ctrl_rst_done), .dbg_cycles(ctrl_cycles),
+        .dbg_dq_echo(ctrl_dq_echo)
     );
 
     // The CPU runs directly from the 27MHz input pin, which arrives on a real global
@@ -873,7 +882,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [79:0] dump_payload =
         { 4'b0, psram_saw_idle, busy, write, read, ctrl_state, psram_stage,
           psram_done_s2, psram_pass,
-          psram_cycles, 10'b0, ctrl_rst_done, ctrl_cycles, psram_read0, psram_read1 };
+          psram_cycles, 10'b0, ctrl_rst_done, ctrl_cycles, psram_read0, ctrl_dq_echo };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
@@ -946,7 +955,16 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
 endmodule
 
 
-module Gowin_rPLL (clkout, clkoutp, clkin);
+// CLKOUT = CLKIN * (FBDIV_SEL+1) / (IDIV_SEL+1), and the VCO, which is CLKOUT *
+// ODIV_SEL, has to land between 400 and 1200MHz. CLKOUTP is the same clock shifted by
+// PSDA_SEL sixteenths of a period, so "0100" is the 90 degrees the PSRAM controller
+// wants for driving CK.
+//
+//   81MHz: FBDIV 2, ODIV 8      (VCO 648)
+//   54MHz: FBDIV 1, ODIV 12     (VCO 648)
+//   27MHz: FBDIV 0, ODIV 16     (VCO 432)
+module Gowin_rPLL #(parameter FBDIV = 2, parameter ODIV = 8)
+                   (clkout, clkoutp, clkin);
 
 output clkout;
 output clkoutp;
@@ -982,9 +1000,9 @@ rPLL rpll_inst (
 defparam rpll_inst.FCLKIN = "27";
 defparam rpll_inst.DYN_IDIV_SEL = "false";
 // 81 Mhz, LATENCY=3
-defparam rpll_inst.FBDIV_SEL = 2;
-defparam rpll_inst.IDIV_SEL = 0;       
-defparam rpll_inst.ODIV_SEL = 8;
+defparam rpll_inst.FBDIV_SEL = FBDIV;
+defparam rpll_inst.IDIV_SEL = 0;
+defparam rpll_inst.ODIV_SEL = ODIV;
 
 defparam rpll_inst.DYN_FBDIV_SEL = "false";
 defparam rpll_inst.DYN_ODIV_SEL = "false";
