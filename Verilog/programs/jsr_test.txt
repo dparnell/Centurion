@@ -1,0 +1,33 @@
+// JSR must not destroy X. Load X with 3, call a subroutine that returns at
+// once, then count X down printing a star per iteration. Three stars means the
+// call and return left X alone. This is the fault that makes diag's mapping
+// RAM test fail on pass 57345: its outer loop counter is X, the PAGE-load
+// subroutine it calls each pass zeroes it, and the loop then runs 224 times
+// instead of 32.
+60 // LDXW #0003
+00
+03
+7b // JSR +3, to the RSR below
+03
+71 // JMP 8009, over the subroutine
+80
+09
+09 // RSR
+80 // LDAL '*'
+2a
+a1 // STAL #f201  (print)
+f2
+01
+3f // DCX
+15 // BNZ -6, back to the store
+fa
+80 // LDAL '\n'
+0a
+a1 // STAL #f201
+f2
+01
+80 // LDAL #01
+01
+a1 // STAL #f900  (sim_end)
+f9
+00

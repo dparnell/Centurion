@@ -21,7 +21,7 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
     input wire write_en, input wire [7:0] data_in, output wire [7:0] data_out);
 
     reg [7:0] rom_cells[0:8191];
-    reg [7:0] ram_cells[0:4095];
+    reg [7:0] ram_cells[0:8191];
     reg [7:0] low_ram_cells[0:4095];
 
     // Any of the programs can go here; they are linked at 0x8000 and the reset vector
@@ -33,23 +33,29 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
         $readmemh("programs/diag.txt", rom_cells);        // 19200 7N1
         // $readmemh("programs/serial.txt", rom_cells);   // 9600 7E1
         // $readmemh("programs/blink.txt", rom_cells);
-        for (i = 0; i < 4096; i = i + 1) ram_cells[i] = 8'h00;
+        for (i = 0; i < 8192; i = i + 1) ram_cells[i] = 8'h00;
         for (i = 0; i < 4096; i = i + 1) low_ram_cells[i] = 8'h00;
     end
 
     wire rom_select     = address[18:13] == 4;
-    wire ram_select     = address[18:12] == 7'hb;
+    // 8K of RAM covering physical 0x0b000 to 0x0cfff. It has to reach 0x0c000 because
+    // that is where diag puts its stack, and a stack in unbacked memory is not a quiet
+    // failure: CPU6's JSR keeps the return address in X and pushes the *old* X, so with
+    // nothing to push to, every call returns with X set to zero. That is what made
+    // diag's mapping RAM test fail - its outer loop counts with X.
+    wire ram_select     = address[18:12] == 7'h0b || address[18:12] == 7'h0c;
+    wire [12:0] ram_addr = { address[12], address[11:0] };
     wire low_ram_select = address[18:12] == 0;
 
     reg [7:0] rom_q, ram_q, low_ram_q;
 
     always @(posedge clock) begin
         rom_q     <= rom_cells[address[12:0]];
-        ram_q     <= ram_cells[address[11:0]];
+        ram_q     <= ram_cells[ram_addr];
         low_ram_q <= low_ram_cells[address[11:0]];
 
         if (enable && write_en) begin
-            if (ram_select)     ram_cells[address[11:0]]     <= data_in;
+            if (ram_select)     ram_cells[ram_addr]          <= data_in;
             if (low_ram_select) low_ram_cells[address[11:0]] <= data_in;
         end
     end
