@@ -3,6 +3,7 @@
 `include "DiagBoard.v"
 `include "PsramTest.v"
 `include "PsramSdr.v"
+`include "PsramBus.v"
 // psram_controller.v is no longer built: it drives the bus through apicula's
 // ODDR/IDDR, which is exactly what does not work here. Kept in the tree for
 // reference, and because its four implicit declaration warnings are noise.
@@ -72,7 +73,8 @@ endmodule
  * device drives data_r2c.
  */
 module AddressDecode(input wire [18:0] address,
-    output wire mux_select, output wire diag_select, output wire ram_select);
+    output wire mux_select, output wire diag_select, output wire ram_select,
+    output wire psram_select);
 
     // MUX serial board, 16 registers. This matches the Diag MUX addresses used by
     // CPU6TestBench.v (status 0x3f200, data 0x3f201) and by programs/hellorld.txt.
@@ -81,14 +83,29 @@ module AddressDecode(input wire [18:0] address,
     // The Diag board: hex display, decimal points and DIP switches at 0x3f100.
     assign diag_select = (address & 19'h7ffe0) == 19'h3f100;
 
-    // The block RAM answers everything else. It aliases its 256 bytes across the
-    // whole address space, which is what lets the reset vector fetch land on the
-    // start of the loaded program.
+    // The block RAM regions, which must go on answering rather than being folded
+    // into the PSRAM: they are about fourteen times faster, and everything the
+    // machine runs today lives in them. These have to match BoardMemory.v.
+    wire rom_region      = address[18:13] == 6'd4;                 // 0x08000
+    wire ram_region      = address[18:12] == 7'h0b
+                         || address[18:12] == 7'h0c;               // 0x0b000
+    wire low_ram_region  = address[18:12] == 7'h00;                // 0x00000
+    wire boot_region     = address[18:9]  == 10'h1fe;              // 0x3fc00
     assign ram_select = ~(mux_select | diag_select);
+
+    // The PSRAM fills the rest of the machine's 256K of physical memory. The top
+    // 4K page is left alone entirely: that is the I/O page, and the boot PROM,
+    // the MUX and the Diag board all live in it.
+    wire io_page = address[18:12] == 7'h3f;
+    assign psram_select = ~(io_page | rom_region | ram_region | low_ram_region
+                          | boot_region) && address < 19'h40000;
 endmodule
 
 module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
-                    parameter [3:0] SENSE_SWITCHES = 4'b0001)
+                    parameter [3:0] SENSE_SWITCHES = 4'b0001,
+                    // Run the PSRAM's own self test instead of giving the memory
+                    // to the CPU. See PsramTest.v.
+                    parameter PSRAM_SELFTEST = 0)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -159,17 +176,6 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire instruction_start;
     wire cpu_alive;
 
-    // The PSRAM is not used, but the controller is kept so that its pins are driven
-    // to defined levels. Removing it left CS_n, CK and DQ floating at the PSRAM die,
-    // which is when diag's mapping RAM test went from failing sometimes to failing
-    // every time.
-    // The PSRAM controller runs from the PLL, which gives it both the 81MHz clock and
-    // the 90 degree shifted copy it needs to put CK's edges in the middle of each DDR
-    // data bit. Driving CK from the unshifted clock, or from its inverse, makes the
-    // part answer with wrong data - it is sampling at the transitions.
-    //
-    // apycula cannot pack this PLL when nextpnr places it on the left of the die;
-    // tools/sitecustomize.py patches around that from the Makefile.
     // The CPU runs directly from the 27MHz input pin, which arrives on a real global
     // clock network. It used to run from Divide4 through a BUFG, but a fabric driven
     // global is exactly what went wrong on hardware: the watchdog reported the divided
@@ -195,6 +201,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [15:0] din;
     wire [15:0] dout;
     wire busy;
+    // ClockEnable's output before the PSRAM has had a chance to hold it back.
     wire [3:0] sdr_state;
     wire [4:0] sdr_match;
     wire [15:0] sdr_first, sdr_echo, sdr_nonff;
@@ -209,19 +216,61 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .dbg_state(sdr_state), .dbg_match(sdr_match), .dbg_first(sdr_first),
         .dbg_nonff(sdr_nonff), .dbg_ca_echo(sdr_echo));
 
+    // The bring-up self test. Held in reset and disconnected from the bus unless
+    // PSRAM_SELFTEST is set, which is how to answer "is the memory itself still
+    // good" without having to reason about the CPU at the same time. Build it
+    // with "make PSRAM_SELFTEST=1"; the status dump then reports its result
+    // instead of the bus counters.
+    wire tst_read, tst_write, tst_byte_write;
+    wire [21:0] tst_addr;
+    wire [15:0] tst_din;
+    // The part needs 600us to come out of its own reset, and the core's power on
+    // reset is only 1024 clocks, so without this the CPU reaches the memory before
+    // the memory exists. That is not a slow start, it is a hang: the bridge holds
+    // the core's clock enable until the access completes, so the machine sits dead
+    // with the watchdog blinking and even the status dump gone, because the request
+    // for one is only noticed on an enabled cycle. Holding reset until the memory
+    // answers is what the real machine's power on sequence does anyway.
+    //
+    // This latches rather than following busy, which goes high on every access.
+    reg psram_ready;
+    initial psram_ready = 0;
+    always @(posedge clock) begin
+        if (!reset_btn_sync[2]) psram_ready <= 0;   // the button resets the part too
+        else if (!busy) psram_ready <= 1;
+    end
+
     wire psram_done, psram_pass;
     wire [15:0] psram_got, psram_want;
     wire [21:0] psram_failed_at;
     wire [2:0] psram_stage, psram_index;
     wire psram_saw_idle;
     wire [15:0] psram_cycles, psram_read0, psram_read1;
-    PsramTest psram_test(clock, reset_btn, read, write, byte_write, address, din,
+    PsramTest psram_test(clock, reset_btn & (PSRAM_SELFTEST != 0),
+                         tst_read, tst_write, tst_byte_write, tst_addr, tst_din,
                          dout, busy, psram_done, psram_pass,
                          psram_got, psram_want, psram_failed_at,
                          psram_stage, psram_index, psram_saw_idle, psram_cycles,
                          psram_read0, psram_read1);
 
-    wire psram_done_s2 = psram_done;   // one clock domain now
+    // The bus side. PsramBus owns the core's clock enable, because stalling the
+    // core is how a 2.8us memory access is made to fit in a bus cycle.
+    wire bus_read, bus_write, bus_byte_write;
+    wire [21:0] bus_addr;
+    wire [15:0] bus_din;
+    wire [7:0] psram_data;
+    wire [15:0] dbg_psram_accesses;
+    wire [1:0] dbg_bus_state;
+    wire dbg_bus_need;
+    wire [18:0] dbg_psram_addr;
+    wire [7:0] dbg_psram_data;
+    wire cpu_en_free, cpu_en;
+
+    assign read       = PSRAM_SELFTEST ? tst_read       : bus_read;
+    assign write      = PSRAM_SELFTEST ? tst_write      : bus_write;
+    assign byte_write = PSRAM_SELFTEST ? tst_byte_write : bus_byte_write;
+    assign address    = PSRAM_SELFTEST ? tst_addr       : bus_addr;
+    assign din        = PSRAM_SELFTEST ? tst_din        : bus_din;
 
     // Peripheral read bus ---------------------------
     // Every readable peripheral drives its own data_out, and this module picks one.
@@ -229,13 +278,19 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // Simulation resolved the undriven outputs as z and let the RAM value through, but
     // yosys reported a driver-driver conflict, resolved it to a constant and dropped
     // ram_cells entirely, so on hardware the CPU only ever read 'x' (decoded as HLT).
-    wire mux_select, diag_select, ram_select;
+    wire mux_select, diag_select, ram_select, psram_select_raw;
     wire [7:0] ram_data, mux_data, diag_data;
 
-    AddressDecode decode(addressBus, mux_select, diag_select, ram_select);
+    AddressDecode decode(addressBus, mux_select, diag_select, ram_select,
+                         psram_select_raw);
 
-    assign data_r2c = mux_select  ? mux_data :
-                      diag_select ? diag_data : ram_data;
+    // With the self test running the CPU must not touch the memory at all, or the
+    // two would fight over the controller and the core would stall for ever.
+    wire psram_select = psram_select_raw && (PSRAM_SELFTEST == 0);
+
+    assign data_r2c = mux_select   ? mux_data :
+                      diag_select  ? diag_data :
+                      psram_select ? psram_data : ram_data;
 
     // M13 bit 7, from the core back to the serial board so it can drop its request.
     wire interrupt_ack;
@@ -250,9 +305,20 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         if (ptinit_write) ptinit_addr <= ptinit_addr + 1;
     end
 
-    // The core is enabled 5 clocks in every 27, giving the original CPU6's 5MHz.
-    wire cpu_en;
-    ClockEnable cpu_clock_enable(clock, cpu_en);
+    // The core is enabled 5 clocks in every 27, giving the original CPU6's 5MHz -
+    // except that PsramBus withholds the enable while a PSRAM access runs, so the
+    // core sees a long bus cycle rather than a stall it has to understand.
+    ClockEnable cpu_clock_enable(clock, cpu_en_free);
+
+    PsramBus psram_bus(
+        .clock(clock), .reset(reset), .cpu_en(cpu_en_free), .select(psram_select),
+        .address(addressBus), .write_en(writeEnBus), .data_in(data_c2r),
+        .data_out(psram_data), .cpu_en_out(cpu_en),
+        .read(bus_read), .write(bus_write), .byte_write(bus_byte_write),
+        .addr(bus_addr), .din(bus_din), .dout(dout), .busy(busy),
+        .dbg_accesses(dbg_psram_accesses), .dbg_last_addr(dbg_psram_addr),
+        .dbg_last_data(dbg_psram_data), .dbg_state(dbg_bus_state),
+        .dbg_need(dbg_bus_need));
 
     BoardMemory ram(clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
@@ -853,6 +919,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // shifted a whole dump by a byte and produced nonsense, so count it again
     // after any change: 4 + 3 + 1 + 1 + 5 + 2 padding is the first word.
     //
+    // With PSRAM_SELFTEST set:
     //   0  {PsramSdr state, test stage, done, pass, scan match index}
     //   1  the scan window: one bit per CK after the command, set where the bus
     //      was not idle high. The first set bit is the read latency, whatever
@@ -863,9 +930,30 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     //   4  the word read back from address 2, which should be 5aa7. Two
     //      different values rules out a read path that returns the same thing
     //      whatever was written.
-    wire [79:0] dump_payload =
-        { sdr_state, psram_stage, psram_done_s2, psram_pass, sdr_match, 2'b0,
-          sdr_nonff, sdr_echo, psram_read0, psram_read1 };
+    // Otherwise, diag's verdict and the CPU's view of the memory together. Both
+    // have to be in the one dump: diag's mapping RAM test never prints a verdict,
+    // because it does that through a JSR to virtual 0x07cc which lands in low RAM
+    // that nothing ever writes, so silence on the terminal means nothing at all
+    // and the pass counters below are the only honest answer.
+    //   0  {PsramSdr state, 0000, this address is PSRAM, controller busy,
+    //      read, write, bridge state, bridge is stalling the core, 0}
+    //   1  passes of diag's mapping RAM loop completed. Its verdict never
+    //      reaches the terminal - it prints through a JSR to virtual 0x07cc,
+    //      which lands in low RAM that nothing ever writes - so silence there
+    //      means nothing and this counter is the only honest answer.
+    //   2  how many PSRAM accesses the CPU has made. Zero means it has never
+    //      addressed it, which is a different fault from wrong data coming back.
+    //   3  the last physical address accessed, low half
+    //   4  {the compare failed at all, the address's high bits, the byte there}
+    wire [79:0] dump_payload = (PSRAM_SELFTEST != 0) ?
+        { sdr_state, psram_stage, psram_done, psram_pass, sdr_match, 2'b0,
+          sdr_nonff, sdr_echo, psram_read0, psram_read1 }
+      : { sdr_state, 4'b0, psram_select, busy, read, write,
+            dbg_bus_state, dbg_bus_need, 1'b0,
+          pass_count,
+          dbg_psram_accesses,
+          dbg_psram_addr[15:0],
+          compare_failed, 4'b0, dbg_psram_addr[18:16], dbg_psram_data };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
@@ -926,12 +1014,14 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
 
 	always @ (posedge clock) begin
         reset_btn_sync <= { reset_btn_sync[1:0], reset_btn };
-        if (!por_done) begin
-            por_counter <= por_counter + 1;
+        if (!por_done || !psram_ready) begin
+            if (!por_done) por_counter <= por_counter + 1;
             reset <= 1;
-        end else if (cpu_en) begin
+        end else if (cpu_en_free) begin
             // Release reset only on an enabled cycle, so the core always leaves reset
             // on a CPU clock edge whatever phase the clock enable happens to be in.
+            // On the free running enable, not the one PsramBus gates: reset must not
+            // depend on a signal the memory can withhold.
             reset <= ~reset_btn_sync[2];
         end
     end

@@ -11,8 +11,13 @@ all: $(PROJ).fs
 # rest. Build a different setting with "make DIP=1a".
 DIP ?= 1d
 
+# Build the PSRAM's own bring-up self test instead of giving the memory to the CPU:
+# "make PSRAM_SELFTEST=1". The status dump then reports the self test's result rather
+# than the CPU's use of the memory. See PsramTest.v.
+PSRAM_SELFTEST ?= 0
+
 $(PROJ).json: $(PROJ).v roms/CodeROM.txt Makefile *.v
-	yosys -p 'read_verilog $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
+	yosys -p 'read_verilog $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) -set PSRAM_SELFTEST $(PSRAM_SELFTEST) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
 
 $(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
 	nextpnr-himbaechel --json $(PROJ).json --write $(PROJ)_pnr.json --freq 27 --device ${DEVICE} --vopt family=${FAMILY} --vopt cst=$(BOARD).cst
