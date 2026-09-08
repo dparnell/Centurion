@@ -25,6 +25,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // Page table initialiser. Only the write path is muxed: the read path is the
     // critical path of the whole design and must not gain a mux.
     input wire ptinit_write, input wire [7:0] ptinit_addr, input wire [7:0] ptinit_data,
+    input wire [3:0] sense_switches,
     // Page table initialiser. Only the write path is muxed: the read path is the
     // critical path of the whole design and must not gain a mux.
     // For the board level status dump: where the machine is, at both levels.
@@ -518,7 +519,12 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             // The entry's own bit 7 is the write-tracked flag and reaches the DP bus
             // through d2d3 == 11 instead.
             8: DPBus = { page_table_out[6:4] == 3'b111, page_table_out[6:0] };
-            9: DPBus = { ~condition_codes[0], ~condition_codes[1], ~condition_codes[2], ~condition_codes[3], 4'b0000 }; // low nibble is sense switches
+            // Condition codes in the top nibble, inverted, and the front panel sense
+            // switches in the low nibble, which are not. The bootstrap PROM's first
+            // instruction is BS1, testing sense switch 1 to decide whether the diag
+            // board takes over.
+            9: DPBus = { ~condition_codes[0], ~condition_codes[1], ~condition_codes[2],
+                         ~condition_codes[3], sense_switches };
             10: DPBus = bus_read;
             // Machine status. From Meisaka's emulator: the current level in the high
             // nibble, the DMA interrupt in bit 3, a constant one in bit 2, a

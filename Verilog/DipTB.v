@@ -43,7 +43,8 @@ module BUFG(input I, output O); assign O = I; endmodule
  */
 module DipTB;
     parameter [7:0] DIP = 8'h1a;
-    parameter [8*8:1] KEYS = "M";
+    parameter [8*8:1] KEYS = "";
+    parameter [3:0] SENSE = 4'b0001;
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
@@ -51,7 +52,7 @@ module DipTB;
     wire uart_tx;
     reg  uart_rx = 1;
 
-    tangnano9k #(.DIAG_DIP_SWITCHES(DIP)) dut(in_clk, reset_btn, btn2,
+    tangnano9k #(.DIAG_DIP_SWITCHES(DIP), .SENSE_SWITCHES(SENSE)) dut(in_clk, reset_btn, btn2,
                                               L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx);
     defparam dut.cpu_clock_enable.TICKS = 13;
 

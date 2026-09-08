@@ -83,7 +83,8 @@ module AddressDecode(input wire [18:0] address,
     assign ram_select = ~(mux_select | diag_select);
 endmodule
 
-module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d)
+module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
+                    parameter [3:0] SENSE_SWITCHES = 4'b0001)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx);
     reg reset;
     // reset_btn is a mechanical input with no relation to the clock, and it feeds the
@@ -227,7 +228,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d)
     MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, interrupt_ack, mux_data, int_reqn, irq_number, dbg_byte_ready, dbg_rx_byte);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
-              ptinit_write, ptinit_addr, ptinit_addr,
+              ptinit_write, ptinit_addr, ptinit_addr, SENSE_SWITCHES,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
               dbg_d2d3, dbg_f11,
               dbg_e7, dbg_data_in, dbg_entry0,

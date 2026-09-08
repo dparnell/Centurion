@@ -23,6 +23,7 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
     reg [7:0] rom_cells[0:8191];
     reg [7:0] ram_cells[0:8191];
     reg [7:0] low_ram_cells[0:4095];
+    reg [7:0] boot_cells[0:511];
 
     // Any of the programs can go here; they are linked at 0x8000 and the reset vector
     // above jumps to 0x8001. diag.txt reconfigures MUX 0 to 19200 baud, 7 data bits, no
@@ -31,6 +32,7 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
     integer i;
     initial begin
         $readmemh("programs/diag.txt", rom_cells);        // 19200 7N1
+        $readmemh("roms/BootROM.txt", boot_cells);
         // $readmemh("programs/serial.txt", rom_cells);   // 9600 7E1
         // $readmemh("programs/blink.txt", rom_cells);
         for (i = 0; i < 8192; i = i + 1) ram_cells[i] = 8'h00;
@@ -46,13 +48,17 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
     wire ram_select     = address[18:12] == 7'h0b || address[18:12] == 7'h0c;
     wire [12:0] ram_addr = { address[12], address[11:0] };
     wire low_ram_select = address[18:12] == 0;
+    // The bootstrap PROM, 512 bytes at 0x3fc00. The CPU resets into 0x3fd00, which
+    // is offset 0x100 of it.
+    wire boot_select    = address[18:9] == 10'h1fe;
 
-    reg [7:0] rom_q, ram_q, low_ram_q;
+    reg [7:0] rom_q, ram_q, low_ram_q, boot_q;
 
     always @(posedge clock) begin
         rom_q     <= rom_cells[address[12:0]];
         ram_q     <= ram_cells[ram_addr];
         low_ram_q <= low_ram_cells[address[11:0]];
+        boot_q    <= boot_cells[address[8:0]];
 
         if (enable && write_en) begin
             if (ram_select)     ram_cells[ram_addr]          <= data_in;
@@ -62,9 +68,7 @@ module BoardMemory(input wire clock, input wire enable, input wire [18:0] addres
 
     // The selects are combinational rather than registered alongside the data, which is
     // safe for the same reason the reads are: the address does not move within a cycle.
-    assign data_out = (address == 19'h3fd00) ? 8'h71 :   // reset vector, JMP 8001
-                      (address == 19'h3fd01) ? 8'h80 :
-                      (address == 19'h3fd02) ? 8'h01 :
+    assign data_out = boot_select             ? boot_q :
                       rom_select              ? rom_q :
                       ram_select              ? ram_q :
                       low_ram_select          ? low_ram_q : 8'h00;

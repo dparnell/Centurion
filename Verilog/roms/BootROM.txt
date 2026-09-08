@@ -1,0 +1,47 @@
+// The Centurion bootstrap PROM, 512 bytes at physical 0x3fc00.
+//
+// The CPU comes out of reset fetching from 0x3fd00, which is offset 0x100 here
+// and holds JMP 0xfc00 - virtual 0xfc00 translating, through the top page of
+// the map, back to the start of this ROM. It then tests sense switch 1 with
+// BS1: set, it jumps to 0x8001 and the diag board takes over; clear, it
+// configures the MUX and boots from disk.
+//
+// Recovered from the boot PROM image embedded in Meisaka's emulator, in
+// Emulators/Meisaka_Ren/Centurion_files/cen.js in the Nakazoto
+// CenturionComputer repository. It is stored there base64 encoded and with a
+// scrambled address map; the loader inverts the address and permutes its bits
+// by remap = [0,1,2,3,4,8,5,6,7], so image[a] = raw[remap(a ^ 511)]. This file
+// is the descrambled result, in plain address order.
+
+1a 02 73 03 71 80 01 80 c5 a1 f2 00 80 8c a1 f2   // 000
+01 0e 0e 90 10 00 5f 7b 79 c4 bd 00 7b 72 c0 c6   // 010
+49 e5 a2 14 0a c0 c3 49 14 05 c0 c8 49 15 50 7b   // 020
+72 c0 50 40 31 16 48 c5 a1 16 7f 18 7f c0 03 49   // 030
+18 3d d0 0f 00 f5 a2 32 20 f5 a2 c0 88 e5 a2 d0   // 040
+83 00 f5 a2 d0 81 00 06 27 30 29 17 fb f5 a2 2f   // 050
+14 2f 06 2f a0 90 ff f6 2f 02 7b 22 43 90 01 00   // 060
+2f 00 90 f0 ff 2f 02 7b 15 45 15 03 71 01 03 7b   // 070
+11 8d 8a c5 d2 d2 cf d2 8d 8a 00 07 73 85 73 73   // 080
+73 11 81 f2 00 2c 2c 11 f9 85 41 15 01 09 a1 f2   // 090
+01 73 ef 84 ee 2c 11 fb 84 f5 c0 80 43 31 c0 e0   // 0a0
+49 16 04 c0 df 42 31 a4 e6 09 73 62 73 02 73 bf   // 0b0
+c0 07 49 18 ba a1 f1 40 94 2d d0 00 10 5a 14 af   // 0c0
+3a b1 f1 41 7b 3b 03 94 1e d0 04 00 5a 15 a0 d0   // 0d0
+00 20 5a 14 f2 2f 04 2f 06 90 01 00 2f 00 90 ea   // 0e0
+1f 2f 02 7b 1c 00 81 f1 44 15 84 71 01 03 7b 2f   // 0f0
+71 fc 00 85 41 a1 f8 00 81 f8 01 29 15 fa 84 f6   // 100
+09 85 41 a1 f1 48 84 df 2c 10 fb 09 73 a0 a5 a2   // 110
+90 1f 40 5e 90 81 00 b5 81 80 84 a5 81 85 a1 14   // 120
+04 c0 0f 40 31 a5 81 80 83 a5 81 3a b5 81 80 85   // 130
+a5 81 2a a5 81 d0 01 90 f5 81 28 c0 0e 49 15 f3   // 140
+80 ff a5 81 80 08 7b 4e 80 41 a1 f8 08 0e 2a a1   // 150
+f8 08 0e a1 f8 08 0e 90 1f 40 2f 00 51 80 3b 2f   // 160
+02 2f 34 2f 06 80 43 a1 f8 08 0e 0e 7b 20 73 02   // 170
+73 9a 90 01 00 2f 00 90 ea 1f 2f 02 2f 34 2f 06   // 180
+80 45 a1 f8 08 80 08 7b 0d 7b 03 71 01 03 81 f8   // 190
+08 15 01 09 73 da c1 f8 09 4a 15 fa 09 8c 00 8b   // 1a0
+00 95 41 b3 03 79 4c 93 47 be 6d a2 32 40 79 4c   // 1b0
+e7 4d 14 2a c0 8d 49 14 25 c0 b0 49 16 25 80 09   // 1c0
+41 31 19 0e 80 11 41 31 16 19 c0 05 49 18 14 c0   // 1d0
+0a 48 80 04 07 37 40 29 18 fa 40 35 73 d0 55 40   // 1e0
+65 a1 09 65 a1 73 be d5 41 7d 80 0c d0 4b 65 f5   // 1f0
