@@ -94,14 +94,20 @@ Below is the CPU data path with enables for busses and registers. The enables ar
 ## Status
 
 The machine boots the original diagnostic ROM on a Tang Nano 9K with a serial
-console, and diag's CPU instruction test (menu entry 01) passes.
+console. diag's CPU instruction test (menu entry 01) passes, printing
+`*** PASS ***`. Its mapping RAM test (entry 02) runs its full sweep without a
+comparison failure; it does not yet print a verdict of its own.
 
 All CPU6 instruction tests in the local testbench pass. Interrupts are enabled,
-requested and acknowledged. The MMU is implemented, including the mapping RAM,
-though diag's mapping RAM test (entry 02) still fails on one entry. DMA is not
-implemented, so the disk controller tests cannot run yet; see
+requested and acknowledged. The MMU is implemented, including the mapping RAM.
+DMA is not implemented, so the disk controller tests cannot run yet; see
 [docs/sd-card-disk-images.md](docs/sd-card-disk-images.md) for how disk images
 might eventually be served from the board's SD card.
+
+The board answers 8K of RAM at physical `0x0b000`, which has to reach `0x0c000`
+because that is where diag puts its stack. CPU6's `JSR` keeps the return
+address in `X` and pushes the *old* `X`, so a stack in unbacked memory is not a
+quiet failure: every call returns with `X` set to zero.
 
 ### Links
 
