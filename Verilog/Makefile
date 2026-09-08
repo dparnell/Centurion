@@ -26,9 +26,10 @@ $(PROJ).fs: $(PROJ)_pnr.json
 load: $(PROJ).fs
 	openFPGALoader -b ${BOARD} $(PROJ).fs -f
 
-test: CPU6TestBench TopTestBench DiagTestBench
+test: CPU6TestBench TopTestBench DiagTestBench PsramTB
 	vvp CPU6TestBench
 	vvp TopTestBench
+	vvp PsramTB
 
 # Simulates the real top level, including the LEDs and the UART pin, with stubs for
 # the Gowin hard blocks. The other testbenches build their own replica of the board.
@@ -46,7 +47,16 @@ DiagTestBench: *.v
 CPU6TestBench: *.v
 	iverilog -o CPU6TestBench CPU6TestBench.v
 
-clean:
-	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench DiagTestBench
+# The PSRAM PHY against a behavioural HyperRAM die. This proves the plumbing only -
+# the model has no timing - but it is the difference between finding a byte pairing
+# bug here and finding it with a three minute build-load-capture cycle on the board.
+psramtest: PsramTB
+	vvp PsramTB
 
-.PHONY: all prog clean test diagtest
+PsramTB: *.v
+	iverilog -o PsramTB PsramTB.v
+
+clean:
+	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench DiagTestBench PsramTB
+
+.PHONY: all prog clean test diagtest psramtest
