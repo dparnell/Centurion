@@ -271,6 +271,12 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // index 0 all came from 0x8f04 and index 0 is written exactly once per pass, so
     // the load at 0x8ed1 - same map, same count, only a different source address -
     // appears never to write it. Count the fetches and find out whether it runs.
+    // Characters the CPU hands to the MUX data register. diag's output arrives at the
+    // terminal in bursts that line up with keystrokes rather than with the machine
+    // reaching the code that prints, and this separates the two possible causes: if
+    // this count runs ahead of what the host receives the MUX is not sending, and if it
+    // does not move then diag never wrote the characters at all.
+    reg [15:0] tx_chars;
     reg [15:0] n_8ea7, n_8ec4, n_8ecc, n_8ed1, n_8f04;
     reg [15:0] fn_8ea7, fn_8ec4, fn_8ecc, fn_8ed1, fn_8f04;
     // The loop is: poke, load the whole table from 0x100, store it back to 0x100,
@@ -442,6 +448,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             fw2p1 <= 0; fw2p2 <= 0; fw2v1 <= 0; fw2v2 <= 0;
             fnzb_pc <= 0; fnzb_count <= 0; fnzb_val <= 0; fld_src <= 0;
             ld_src <= 0; last_rd_1xx <= 0;
+            tx_chars <= 0;
             n_8ea7 <= 0; n_8ec4 <= 0; n_8ecc <= 0; n_8ed1 <= 0; n_8f04 <= 0;
             fn_8ea7 <= 0; fn_8ec4 <= 0; fn_8ecc <= 0; fn_8ed1 <= 0; fn_8f04 <= 0;
             wr100_pc <= 0; wr200_pc <= 0; wr200_count <= 0;
@@ -503,6 +510,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             nzb_addr <= addressBus[9:0];
             nzb_count <= nzb_count + 1;
         end
+
+        if (uart_written) tx_chars <= tx_chars + 1;
 
         if (cpu_en && !compare_failed && dbg_d2d3 == 4'd8) begin
             sr_index <= dbg_pt_index;
@@ -750,9 +759,11 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     //   0  8e99 DCR, the inner counter    3  8ea2 BNZ, the outer test
     //   1  8e9d INRW Y, the outer step    4  8ea4 POP, the exit
     //   2  8ea1 DCX, the outer counter
-    wire [79:0] dump_payload = compare_failed
-        ? { fn_8ea7, fn_8ec4, fn_8ecc, fn_8ed1, fn_8f04 }
-        : { pc_live0, 5'b0, dbg_uc_address, pass_count, pass_count, 16'b0 };
+    //   0  live program counter                3  passes completed
+    //   1  microcode address                    4  0001 if the compare has ever failed
+    //   2  characters handed to the MUX so far
+    wire [79:0] dump_payload =
+        { pc_live0, 5'b0, dbg_uc_address, tx_chars, pass_count, 15'b0, compare_failed };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
