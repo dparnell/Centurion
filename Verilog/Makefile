@@ -17,8 +17,10 @@ $(PROJ).json: $(PROJ).v roms/CodeROM.txt Makefile *.v
 $(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
 	nextpnr-himbaechel --json $(PROJ).json --write $(PROJ)_pnr.json --freq 27 --device ${DEVICE} --vopt family=${FAMILY} --vopt cst=$(BOARD).cst
 
+# PYTHONPATH pulls in tools/sitecustomize.py, which patches around an apycula bug
+# that otherwise stops the rPLL being packed. See that file for the details.
 $(PROJ).fs: $(PROJ)_pnr.json
-	gowin_pack -d ${FAMILY} -o $(PROJ).fs $(PROJ)_pnr.json
+	PYTHONPATH=$(CURDIR)/../tools gowin_pack -d ${FAMILY} -o $(PROJ).fs $(PROJ)_pnr.json
 
 # Program Board
 load: $(PROJ).fs

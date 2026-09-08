@@ -25,7 +25,11 @@ module PsramTest(input wire clk, input wire resetn,
     output wire [2:0] stage, output reg [2:0] index, output reg saw_idle,
     // How long the current step has been waiting. A saturating count, so a stuck
     // handshake shows up as a large number rather than a wrapped small one.
-    output reg [15:0] stage_cycles);
+    output reg [15:0] stage_cycles,
+    // The first two words read back, recorded unconditionally. If every read
+    // returns the same value regardless of what was written, the read path is not
+    // returning device data at all; if they differ, the write path is the suspect.
+    output reg [15:0] read0, output reg [15:0] read1);
 
     localparam N = 6;
 
@@ -55,6 +59,7 @@ module PsramTest(input wire clk, input wire resetn,
         read = 0; write = 0; byte_write = 0; addr = 0; din = 0;
         done = 0; pass = 1; got = 0; want = 0; failed_at = 0;
         state = S_INIT; i = 0; index = 0; saw_idle = 0; stage_cycles = 0;
+        read0 = 0; read1 = 0;
     end
 
     always @(posedge clk) begin
@@ -101,6 +106,8 @@ module PsramTest(input wire clk, input wire resetn,
                 end
 
                 S_RDONE: if (!busy) begin
+                    if (i == 0) read0 <= dout;
+                    if (i == 1) read1 <= dout;
                     if (dout != test_data(test_addr(i)) && pass) begin
                         pass <= 0;
                         got <= dout;

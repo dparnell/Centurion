@@ -161,26 +161,21 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // to defined levels. Removing it left CS_n, CK and DQ floating at the PSRAM die,
     // which is when diag's mapping RAM test went from failing sometimes to failing
     // every time.
-    // The controller runs from the 27MHz pin rather than from the PLL. Two reasons:
-    // it keeps the whole design in one clock domain, which this project has learned
-    // the hard way to insist on, and apycula's packer cannot emit fuses for the rPLL
-    // when nextpnr places it on the left of the die - get_pll_bels only assigns its
-    // offset for bel.x > 27, so the pack aborts with an unbound local. The PLL was
-    // instantiated before this and did no harm only because nothing used its output,
-    // so yosys removed it.
+    // The PSRAM controller runs from the PLL, which gives it both the 81MHz clock and
+    // the 90 degree shifted copy it needs to put CK's edges in the middle of each DDR
+    // data bit. Driving CK from the unshifted clock, or from its inverse, makes the
+    // part answer with wrong data - it is sampling at the transitions.
     //
-    // The cost is the phase shifted clock the controller wants for driving CK. At
-    // 27MHz there is no cheap way to make one without a PLL, so CK is driven from the
-    // same edge as the data. Whether the part tolerates that is a hardware question.
+    // apycula cannot pack this PLL when nextpnr places it on the left of the die;
+    // tools/sitecustomize.py patches around that from the Makefile.
     localparam LATENCY = 3;
-    wire ram_clk = clock;
-    // The controller wants this shifted 90 degrees from clk, to put CK's edges in the
-    // middle of each DDR data bit. Without a PLL there is no way to make that at
-    // 27MHz, so it is driven from clk itself. Both this and ~clock were measured on
-    // hardware and neither works: the part answers, but with wrong data (c400 and
-    // aaaa respectively where 5aa5 was written), which is what sampling at the data
-    // transitions looks like. This is the remaining blocker; see CLAUDE.md.
-    wire ram_clk_p = clock;
+    wire ram_clk, ram_clk_p;
+
+    Gowin_rPLL pll(
+        .clkout(ram_clk),        // 81MHz psram clock
+        .clkoutp(ram_clk_p),     // the same, shifted 90 degrees
+        .clkin(in_clk)           // 27MHz system clock
+    );
 
     // Memory Controller ---------------------------
     // Driven for now by a bring-up self test rather than by the CPU: there is no
@@ -196,15 +191,19 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [21:0] psram_failed_at;
     wire [2:0] psram_stage, psram_index;
     wire psram_saw_idle;
-    wire [15:0] psram_cycles;
+    wire [15:0] psram_cycles, psram_read0, psram_read1;
     PsramTest psram_test(ram_clk, reset_btn, read, write, byte_write, address, din,
                          dout, busy, psram_done, psram_pass,
                          psram_got, psram_want, psram_failed_at,
-                         psram_stage, psram_index, psram_saw_idle, psram_cycles);
+                         psram_stage, psram_index, psram_saw_idle, psram_cycles,
+                         psram_read0, psram_read1);
 
 
+    wire [2:0] ctrl_state;
+    wire ctrl_rst_done;
+    wire [4:0] ctrl_cycles;
     PsramController #(
-        .FREQ(27_000_000), .LATENCY(LATENCY)
+        .FREQ(81_000_000), .LATENCY(LATENCY)
     ) mem_ctrl (
         .clk(ram_clk), .clk_p(ram_clk_p), .resetn(reset_btn), .read(read), .write(write), .byte_write(byte_write),
         .addr(address), .din(din), .dout(dout), .busy(busy),
@@ -212,9 +211,6 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .O_psram_cs_n(O_psram_cs_n),
         .dbg_state(ctrl_state), .dbg_rst_done(ctrl_rst_done), .dbg_cycles(ctrl_cycles)
     );
-    wire [2:0] ctrl_state;
-    wire ctrl_rst_done;
-    wire [4:0] ctrl_cycles;
 
     // The CPU runs directly from the 27MHz input pin, which arrives on a real global
     // clock network. It used to run from Divide4 through a BUFG, but a fabric driven
@@ -876,7 +872,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [79:0] dump_payload =
         { 4'b0, psram_saw_idle, busy, write, read, ctrl_state, psram_stage,
           psram_done_s2, psram_pass,
-          psram_cycles, 10'b0, ctrl_rst_done, ctrl_cycles, psram_got, psram_want };
+          psram_cycles, 10'b0, ctrl_rst_done, ctrl_cycles, psram_read0, psram_read1 };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.

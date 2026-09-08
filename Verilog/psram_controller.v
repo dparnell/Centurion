@@ -65,7 +65,6 @@ reg additional_latency;
 
 assign busy = (state != IDLE_ST);
 assign dbg_state = state;
-assign dbg_rst_done = rst_done;
 assign dbg_cycles = cycles_sr[4:0];
 
 localparam [3:0] CR_LATENCY = LATENCY == 3 ? 4'b1110 :
@@ -162,6 +161,7 @@ end
 localparam INIT_TIME = FREQ / 1000 * 160 / 1000;
 reg  [$clog2(INIT_TIME+1):0]   rst_cnt;
 reg rst_done, rst_done_p1, cfg_busy;
+assign dbg_rst_done = rst_done;
   
 always @(posedge clk) begin
     rst_done_p1 <= rst_done;
