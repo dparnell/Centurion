@@ -277,6 +277,16 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     // this count runs ahead of what the host receives the MUX is not sending, and if it
     // does not move then diag never wrote the characters at all.
     reg [15:0] tx_chars;
+    // diag's mapping test finishes without printing *** PASS ***. That message is at
+    // 0x8f74 and is reached only if the BNZ at 0x8f72 falls through; taken, it goes to
+    // 0x8fa6. The branch is gated on a word LDBW reads from 0x07dd, which nothing in
+    // the ROM ever writes. Count the three fetches and capture what 0x07dd reads.
+    // Where the mapping test goes once its outer loop finally exits at 0x8ea4. The
+    // guesses made from a hand disassembly of 0x8f61..0x8f74 were wrong - none of that
+    // code is ever fetched - so record the next four instruction addresses instead.
+    reg [15:0] e0_, e1_, e2_, e3_;
+    reg [2:0]  ecnt;
+    reg        earm;
     reg [15:0] n_8ea7, n_8ec4, n_8ecc, n_8ed1, n_8f04;
     reg [15:0] fn_8ea7, fn_8ec4, fn_8ecc, fn_8ed1, fn_8f04;
     // The loop is: poke, load the whole table from 0x100, store it back to 0x100,
@@ -449,6 +459,7 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             fnzb_pc <= 0; fnzb_count <= 0; fnzb_val <= 0; fld_src <= 0;
             ld_src <= 0; last_rd_1xx <= 0;
             tx_chars <= 0;
+            e0_ <= 0; e1_ <= 0; e2_ <= 0; e3_ <= 0; ecnt <= 0; earm <= 0;
             n_8ea7 <= 0; n_8ec4 <= 0; n_8ecc <= 0; n_8ed1 <= 0; n_8f04 <= 0;
             fn_8ea7 <= 0; fn_8ec4 <= 0; fn_8ecc <= 0; fn_8ed1 <= 0; fn_8f04 <= 0;
             wr100_pc <= 0; wr200_pc <= 0; wr200_count <= 0;
@@ -513,6 +524,8 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
 
         if (uart_written) tx_chars <= tx_chars + 1;
 
+
+
         if (cpu_en && !compare_failed && dbg_d2d3 == 4'd8) begin
             sr_index <= dbg_pt_index;
             sr_value <= dbg_page_table_out;
@@ -566,6 +579,16 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
             pc_live0 <= dbg_memory_address;
             pc_live1 <= pc_live0;
             if (dbg_memory_address == DIAG_LOOP_TOP) pass_count <= pass_count + 1;
+            if (dbg_memory_address == 16'h8ea4 && !earm) earm <= 1;
+            else if (earm && ecnt != 3'd4) begin
+                ecnt <= ecnt + 1;
+                case (ecnt)
+                    0: e0_ <= dbg_memory_address;
+                    1: e1_ <= dbg_memory_address;
+                    2: e2_ <= dbg_memory_address;
+                    3: e3_ <= dbg_memory_address;
+                endcase
+            end
             if (!compare_failed) begin
                 // 8e9d INRW Y and 8ea1 DCX are the outer loop; 8ea4 POP is the exit
                 // past the BNZ at 8ea2. The outer loop should run 224 times, once per
@@ -762,8 +785,14 @@ module tangnano9k(input in_clk, input reset_btn, input btn2, output LED1, output
     //   0  live program counter                3  passes completed
     //   1  microcode address                    4  0001 if the compare has ever failed
     //   2  characters handed to the MUX so far
-    wire [79:0] dump_payload =
-        { pc_live0, 5'b0, dbg_uc_address, tx_chars, pass_count, 15'b0, compare_failed };
+    //   0  fetches of 0x8f72, the branch before *** PASS ***
+    //   1  fetches of 0x8f74, the PASS message itself
+    //   2  fetches of 0x8fa6, where the branch goes when taken
+    //   3  {byte at 0x07dd, byte at 0x07de} as last read
+    //   4  passes completed
+    //   0..3  the four instructions fetched after the loop exit at 0x8ea4
+    //   4     passes completed
+    wire [79:0] dump_payload = { e0_, e1_, e2_, e3_, pass_count };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
