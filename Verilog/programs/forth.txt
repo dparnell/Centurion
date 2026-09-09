@@ -20,8 +20,8 @@ b1  // 8011  STA HERE
 b0
 0a
 90  // 8014  LDA #lastword
-8e
-2b
+8f
+d2
 b1  // 8017  STA LATEST
 b0
 08
@@ -2414,7 +2414,7 @@ b0
 0f
 79  // 896d  JSR pr_entry
 8f
-64
+f4
 91  // 8970  LDA fp
 b0
 80
@@ -3939,69 +3939,213 @@ f4
 71  // 8f61  JMP NEXT
 80
 f0
-91  // 8f64  LDA fp
+8e  // 8f64  .word w_dotq-5
+2b
+03  // 8f66  .byte 3
+52  // 8f67  .ascii "ROT"
+4f
+54
+8f  // 8f6a  w_rot:  .code
+6c
+95  // 8f6c  LDA [Z]             ; ( a b c -- b c a ), so the third one comes up
+80
+b1  // 8f6e  STA rt1
+b0
+fe
+95  // 8f71  LDA [Z+$02]
+88
+02
+b1  // 8f74  STA rt2
+b1
+00
+95  // 8f77  LDA [Z+$04]
+88
+04
+b5  // 8f7a  STA [Z]
+80
+91  // 8f7c  LDA rt1
+b0
+fe
+b5  // 8f7f  STA [Z+$02]
+88
+02
+91  // 8f82  LDA rt2
+b1
+00
+b5  // 8f85  STA [Z+$04]
+88
+04
+71  // 8f88  JMP NEXT
+80
+f0
+8f  // 8f8b  .word w_rot-6
+64
+04  // 8f8d  .byte 4
+50  // 8f8e  .ascii "PICK"
+49
+43
+4b
+8f  // 8f92  w_pick: .code
+94
+f1  // 8f94  STB ipsave3         ; B is the instruction pointer
+b0
+da
+95  // 8f97  LDA [Z++]           ; how far down to reach: 0 PICK is DUP
+81
+3d  // 8f99  SLA                 ; the entries are words
+b1  // 8f9a  STA pktmp
+b0
+fc
+3a  // 8f9d  CLA                 ; there is no move out of Z, but it can be an
+51  // 8f9e  SUB Z,A             ; operand, and Z minus nothing is Z
+80
+d1  // 8fa0  LDB pktmp
+b0
+fc
+58  // 8fa3  AAB                 ; AAB leaves the sum in B
+f1  // 8fa4  STB scr1
+b0
+00
+91  // 8fa7  LDA scr1
+b0
+00
+5c  // 8faa  XAY
+95  // 8fab  LDA [Y]
+60
+b5  // 8fad  STA [--Z]
+82
+d1  // 8faf  LDB ipsave3
+b0
+da
+71  // 8fb2  JMP NEXT
+80
+f0
+8f  // 8fb5  .word w_pick-7
+8b
+01  // 8fb7  .byte 1
+2f  // 8fb8  .ascii "/"
+8f  // 8fb9  w_slash: .code
+bb
+f1  // 8fbb  STB ipsave3         ; B is the instruction pointer
+b0
+da
+95  // 8fbe  LDA [Z++]
+81
+b1  // 8fc0  STA dvsr
+b0
+fa
+95  // 8fc3  LDA [Z++]
+81
+d1  // 8fc5  LDB dvsr
+b0
+fa
+78  // 8fc8  DIV B,A
+20
+f5  // 8fca  STB [--Z]
+82
+d1  // 8fcc  LDB ipsave3
+b0
+da
+71  // 8fcf  JMP NEXT
+80
+f0
+8f  // 8fd2  .word w_slash-4
+b5
+04  // 8fd4  .byte 4
+2f  // 8fd5  .ascii "/MOD"
+4d
+4f
+44
+8f  // 8fd9  w_slashmod: .code
+db
+f1  // 8fdb  STB ipsave3         ; B is the instruction pointer
+b0
+da
+95  // 8fde  LDA [Z++]
+81
+b1  // 8fe0  STA dvsr
+b0
+fa
+95  // 8fe3  LDA [Z++]
+81
+d1  // 8fe5  LDB dvsr
+b0
+fa
+78  // 8fe8  DIV B,A
+20
+b5  // 8fea  STA [--Z]           ; ( n d -- rem quot ), the quotient on top
+82
+f5  // 8fec  STB [--Z]
+82
+d1  // 8fee  LDB ipsave3
+b0
+da
+71  // 8ff1  JMP NEXT
+80
+f0
+91  // 8ff4  LDA fp
 b0
 80
-5c  // 8f67  XAY
-85  // 8f68  LDAB [Y+$02]
+5c  // 8ff7  XAY
+85  // 8ff8  LDAB [Y+$02]
 68
 02
-d0  // 8f6b  LDB #$1f
+d0  // 8ffb  LDB #$1f
 00
 1f
-5a  // 8f6e  NAB
-f1  // 8f6f  STB flen2
+5a  // 8ffe  NAB
+f1  // 8fff  STB flen2
 b0
 84
-90  // 8f72  LDA #0
+90  // 9002  LDA #0
 00
 00
-b1  // 8f75  STA fi
+b1  // 9005  STA fi
 b0
 86
-91  // 8f78  pe1:    LDA fi
+91  // 9008  pe1:    LDA fi
 b0
 86
-d1  // 8f7b  LDB flen2
+d1  // 900b  LDB flen2
 b0
 84
-51  // 8f7e  SUB B,A
+51  // 900e  SUB B,A
 20
-14  // 8f80  BZ pe2
+14  // 9010  BZ pe2
 1e
-91  // 8f82  LDA fp
+91  // 9012  LDA fp
 b0
 80
-d1  // 8f85  LDB fi
+d1  // 9015  LDB fi
 b0
 86
-58  // 8f88  AAB
-f1  // 8f89  STB scr1
+58  // 9018  AAB
+f1  // 9019  STB scr1
 b0
 00
-91  // 8f8c  LDA scr1
+91  // 901c  LDA scr1
 b0
 00
-5c  // 8f8f  XAY
-85  // 8f90  LDAB [Y+$03]
+5c  // 901f  XAY
+85  // 9020  LDAB [Y+$03]
 68
 03
-79  // 8f93  JSR putc
+79  // 9023  JSR putc
 81
 19
-91  // 8f96  LDA fi
+91  // 9026  LDA fi
 b0
 86
-38  // 8f99  INA
-b1  // 8f9a  STA fi
+38  // 9029  INA
+b1  // 902a  STA fi
 b0
 86
-71  // 8f9d  JMP pe1
-8f
-78
-90  // 8fa0  pe2:    LDA #' '
+71  // 902d  JMP pe1
+90
+08
+90  // 9030  pe2:    LDA #' '
 00
 20
-71  // 8fa3  JMP putc
+71  // 9033  JMP putc
 81
 19

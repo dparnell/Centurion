@@ -946,6 +946,10 @@ dqlen   .equ VARS+$f2       ; and where to write that down
 dsn     .equ VARS+$f4       ; the inline string a compiled ." is printing
 dsi     .equ VARS+$f6
 dsptr   .equ VARS+$f8
+dvsr    .equ VARS+$fa       ; the divisor / and /MOD are working with
+pktmp   .equ VARS+$fc       ; how far down the stack PICK is reaching
+rt1     .equ VARS+$fe       ; ROT holds two of the three here
+rt2     .equ VARS+$100
 
 
 ; ---- the runtime halves of the control structures -------------------------
@@ -1945,7 +1949,75 @@ ds3:    LDA dsptr
         AAB                 ; AAB leaves the sum in B, which is the pointer
         JMP NEXT
 
-lastword .equ w_dotq-5
+        .word w_dotq-5
+        .byte 3
+        .ascii "ROT"
+w_rot:  .code
+        LDA [Z]             ; ( a b c -- b c a ), so the third one comes up
+        STA rt1
+        LDA [Z+$02]
+        STA rt2
+        LDA [Z+$04]
+        STA [Z]
+        LDA rt1
+        STA [Z+$02]
+        LDA rt2
+        STA [Z+$04]
+        JMP NEXT
+
+        .word w_rot-6
+        .byte 4
+        .ascii "PICK"
+w_pick: .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA [Z++]           ; how far down to reach: 0 PICK is DUP
+        SLA                 ; the entries are words
+        STA pktmp
+        CLA                 ; there is no move out of Z, but it can be an
+        SUB Z,A             ; operand, and Z minus nothing is Z
+        LDB pktmp
+        AAB                 ; AAB leaves the sum in B
+        STB scr1
+        LDA scr1
+        XAY
+        LDA [Y]
+        STA [--Z]
+        LDB ipsave3
+        JMP NEXT
+
+; DIV takes the dividend in A and the divisor in B, and leaves the remainder in
+; A and the quotient in B. Measured in probe19.s: diag never uses it, so there
+; was no worked example to copy.
+        .word w_pick-7
+        .byte 1
+        .ascii "/"
+w_slash: .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA [Z++]
+        STA dvsr
+        LDA [Z++]
+        LDB dvsr
+        DIV B,A
+        STB [--Z]
+        LDB ipsave3
+        JMP NEXT
+
+        .word w_slash-4
+        .byte 4
+        .ascii "/MOD"
+w_slashmod: .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA [Z++]
+        STA dvsr
+        LDA [Z++]
+        LDB dvsr
+        DIV B,A
+        STA [--Z]           ; ( n d -- rem quot ), the quotient on top
+        STB [--Z]
+        LDB ipsave3
+        JMP NEXT
+
+lastword .equ w_slashmod-7
 
 ; Print the dictionary entry at fp, followed by a space.
 pr_entry:
