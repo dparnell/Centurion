@@ -10,22 +10,92 @@ Below is a picure of CPU6 board. Notice the prominent [Am2900 series](https://en
 
 ![CPU6](https://github.com/Nakazoto/CenturionComputer/raw/main/Computer/CPU6%20Board/HiRes%20Photos/CPU6_HiRes_Scan_Front.jpg "CPU6")
 
+## Layout
+
+Everything is built from the `Verilog` directory, and all the `make` commands
+below are run from there.
+
+| | |
+|---|---|
+| `Verilog/` | the RTL, and the Makefile that drives everything |
+| `Verilog/asm/` | source for the programs that run on the machine, and the test scripts fed to them |
+| `Verilog/programs/` | assembled images, plus the original ROM dumps |
+| `Verilog/roms/` | the microcode and opcode map read off the real hardware |
+| `tools/` | the assembler, disassembler and the scripts that drive the board |
+
 ## Simulation
 
 The [Verilog](https://en.wikipedia.org/wiki/Verilog) implementation is simulated with [Icarus Verilog](http://iverilog.icarus.com/):
 
 ```
-cd Verilog
 make test
 ```
 
-That builds and runs two testbenches: `CPU6TestBench`, which runs a set of small
-hand-assembled programs against the core, and `TopTestBench`, which simulates
-the real synthesis top level including the UART pin and the Gowin hard blocks.
+That builds and runs three testbenches: `CPU6TestBench`, which runs a set of
+small programs against the core; `TopTestBench`, which simulates the real
+synthesis top level including the UART pin and the Gowin hard blocks; and
+`PsramTB`, which exercises the HyperRAM PHY against a behavioural die.
 
-A third, `make diagtest`, boots the original diagnostic ROM and types a test
-number over a simulated serial link. It is not part of `make test` because it
-simulates hundreds of milliseconds of a 27 MHz board and takes minutes.
+Two more are too slow to belong in `make test`, because they simulate hundreds
+of milliseconds of a 27 MHz board:
+
+```
+make diagtest    # boot the diagnostic ROM and type a test number at it
+make mapfail     # run diag's mapping RAM test until its compare fails
+make psramtest   # just the PSRAM PHY, on its own
+```
+
+### Running a program
+
+`make run` assembles a program, boots the whole simulated board with it, types
+an input file at it over the serial line and prints what comes back. This is
+the loop for writing anything for this machine - a second or so, against about
+three minutes to build, load and capture on real hardware.
+
+```
+make run SRC=asm/forth.s IN=asm/tests_create.f FOR=1400
+```
+
+| option | meaning |
+|---|---|
+| `SRC=` | the program to assemble and run, from `asm/` (default `asm/forth.s`) |
+| `IN=` | a file to type at it once it has finished printing (optional) |
+| `FOR=` | milliseconds of simulated board time to run for (default 300) |
+| `RUNARGS=` | extra plusargs, below |
+
+The simulated typist paces itself against the machine's own receiver rather
+than against a delay, so input is never typed over the top of a program that is
+still busy. Note that `FOR` is *simulated* time: a few hundred milliseconds is
+a few minutes of wall clock, and compiling one long FORTH definition takes over
+200 ms because every word on the line is a linear walk of the dictionary.
+
+The plusargs available through `RUNARGS` are worth knowing about when a
+simulated machine stops doing anything, because that is otherwise completely
+silent:
+
+| plusarg | what it prints |
+|---|---|
+| `+pctrace` | one line per instruction fetch, so a stopped machine can be told from a looping one |
+| `+psramtrace` | what the memory bridge, the microcode and the PHY were doing when no instruction was fetched for a long time, plus every bridge timeout |
+| `+typetrace` | every byte the testbench sends, interleaved with what the machine echoes |
+| `+rxtrace` | every read of the serial data register, with the program counter that caused it |
+| `+quiet` / `+hex` | suppress the machine's output, or show it as hex bytes |
+
+### Assembling on its own
+
+Programs are written in `asm/` and assembled into the `programs/*.txt` format
+that the ROM is loaded from:
+
+```
+make programs/forth.txt    # assemble one
+make programs              # assemble every asm/*.s, which checks they all still build
+```
+
+The assembler is [tools/Assemble.py](tools/Assemble.py). Its encodings are
+checked against real code rather than against a reading of the manual:
+`--roundtrip Verilog/programs/diag.txt 8000` disassembles the original
+diagnostic ROM, re-encodes every instruction in the form the ROM actually used
+and compares bytes. All 3812 instructions come back identical.
 
 ## Synthesis
 
@@ -34,16 +104,35 @@ The design targets a [Gowin GW1NR-9C](https://www.gowinsemi.com/en/product/detai
 open source [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) toolchain: yosys for
 synthesis, nextpnr-himbaechel for place and route, and gowin_pack for the bitstream.
 
+`make` on its own synthesises; the `load` targets below build and then program
+the attached board with openFPGALoader. There are three of them, because these
+are the three things the machine is usually wanted for:
+
 ```
-cd Verilog
-make          # synthesise
-make load     # program the attached board with openFPGALoader
+make load        # the diagnostic ROM, switches on the auxiliary test menu
+make load-tos    # the same ROM, switches set for TOS, the machine code monitor
+make load-forth  # the FORTH, assembled from asm/forth.s first
 ```
 
-The Diag board's DIP switches choose what the machine does out of reset, and
-are set at build time: `make DIP=1a` builds for TOS, the machine code monitor,
-and the default `1d` gives the diagnostic test menu. `Verilog/DiagBoard.v`
-lists the rest of the settings.
+Each is a normal build, so they can be combined with the options below or taken
+apart - `make load-forth` is just `make PROGRAM=programs/forth.txt load`.
+
+| option | meaning |
+|---|---|
+| `PROGRAM=` | which image the 8K ROM at `0x8000` holds (default `programs/diag.txt`) |
+| `DIP=` | the Diag board's DIP switches, which choose what the machine does out of reset |
+| `PSRAM_SELFTEST=1` | disconnect the memory from the CPU and run the PSRAM's own bring-up test instead |
+
+The DIP switches are set at build time because they are physical switches on
+the Diag board: `1d` is the diagnostic test menu, `1a` is TOS, `16` the serial
+board's interrupt test, `17`-`19` the disk tests. `Verilog/DiagBoard.v` lists
+the rest.
+
+What a bitstream was built with is not a file, so `make` cannot see it change
+when only an option differs. `build.stamp` records the three options above and
+forces a rebuild when any of them does, which is what stops `make load-forth`
+straight after `make load` from quietly programming the board with the previous
+build. An unchanged configuration is still a no-op.
 
 Pin assignments are in `Verilog/tangnano9k.cst`. Everything is clocked from the
 27 MHz input pin as a single clock domain; the core is gated down to the
@@ -59,15 +148,20 @@ Resource utilisation and timing:
 
 ```
 Info: Device utilisation:
-Info:                  IOB:      13/    276     4%
-Info:                 LUT4:    2766/   8640    32%
-Info:                  ALU:     392/   6480     6%
-Info:                  DFF:    1302/   6480    20%
-Info:            RAM16SDP4:     103/    270    38%
-Info:                BSRAM:      15/     26    57%
+Info:                  IOB:      21/    276     7%
+Info:                 LUT4:    3043/   8640    35%
+Info:            MUX2_LUT5:     246/   4320     5%
+Info:                  ALU:     548/   6480     8%
+Info:                  DFF:    1745/   6480    26%
+Info:            RAM16SDP4:      71/    270    26%
+Info:                BSRAM:      18/     26    69%
 
-Info: Max frequency for clock 'clock': 46.25 MHz (PASS at 27.00 MHz)
+Info: Max frequency for clock 'clock': 50.47 MHz (PASS at 27.00 MHz)
 ```
+
+That `IOB` row does not count `IOBUF` cells, so it reads as though every
+bidirectional pin has been dropped. The eighteen PSRAM data and strobe pins are
+placed; they simply are not in that total.
 
 The page table used to dominate the logic, taking roughly 4700 LUT4s because an
 asynchronous reset on its write port stopped yosys mapping it to memory at all.
@@ -111,8 +205,13 @@ DMA is not implemented, so the disk controller tests cannot run yet; see
 [docs/sd-card-disk-images.md](docs/sd-card-disk-images.md) for how disk images
 might eventually be served from the board's SD card.
 
-The board answers 8K of RAM at physical `0x0b000`, which has to reach `0x0c000`
-because that is where diag puts its stack. CPU6's `JSR` keeps the return
+The embedded HyperRAM is on the CPU's bus and backs everything the block RAM
+does not, so the machine has its full 256K of physical memory: the FORTH's own
+memory sizer walks the page table and finds 244K of it, which is all 128 pages
+bar the ROM and the I/O and boot pages.
+
+The board answers 8K of block RAM at physical `0x0b000`, which has to reach
+`0x0c000` because that is where diag puts its stack. CPU6's `JSR` keeps the return
 address in `X` and pushes the *old* `X`, so a stack in unbacked memory is not a
 quiet failure: every call returns with `X` set to zero.
 
