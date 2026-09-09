@@ -938,6 +938,14 @@ mulbit  .equ VARS+$e2       ; where a primitive parks the instruction pointer
 dvtmp   .equ VARS+$e4       ; the code field address a CREATEd word was entered with
 tkcfa   .equ VARS+$e6       ; what ' looked up
 pnch    .equ VARS+$e8       ; the character ( is scanning
+shcnt   .equ VARS+$ea       ; LSHIFT and RSHIFT
+shval   .equ VARS+$ec
+dqch    .equ VARS+$ee       ; the character ." is reading
+dqn     .equ VARS+$f0       ; how long its string is
+dqlen   .equ VARS+$f2       ; and where to write that down
+dsn     .equ VARS+$f4       ; the inline string a compiled ." is printing
+dsi     .equ VARS+$f6
+dsptr   .equ VARS+$f8
 
 
 ; ---- the runtime halves of the control structures -------------------------
@@ -1713,7 +1721,231 @@ w_fromr: .code
         STA [--Z]
         JMP NEXT
 
-lastword .equ w_fromr-5
+        .word w_fromr-5
+        .byte 2
+        .ascii "OR"
+w_or:   .code
+        STB ipsave3         ; B is the instruction pointer, and the load below
+        LDA [Z++]           ; is about to overwrite it
+        LDB [Z++]
+        ORI B,A             ; like SUB B,A, the answer lands in the second
+        STA [--Z]           ; operand rather than in B the way AAB and NAB do
+        LDB ipsave3
+        JMP NEXT
+
+        .word w_or-5
+        .byte 3
+        .ascii "XOR"
+w_xor:  .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA [Z++]
+        LDB [Z++]
+        ORE B,A             ; OR exclusive, and again the answer is in A
+        STA [--Z]
+        LDB ipsave3
+        JMP NEXT
+
+        .word w_xor-6
+        .byte 3
+        .ascii "NOT"
+w_not:  .code
+        LDA [Z++]
+        IVA
+        STA [--Z]
+        JMP NEXT
+
+; The shifts are done a bit at a time. SLR and SRR take a count, but it is one
+; less than the number of places they shift, and SRR propagates the sign, so
+; neither is the plain shift wanted here.
+        .word w_not-6
+        .byte 6
+        .ascii "LSHIFT"
+w_lshift: .code
+        LDA [Z++]           ; nothing here touches B, so the instruction
+        STA shcnt           ; pointer does not have to be parked
+        LDA [Z++]
+        STA shval
+ls1:    LDA shcnt
+        BZ ls2
+        LDA shval
+        SLA
+        STA shval
+        LDA shcnt
+        DCA
+        STA shcnt
+        JMP ls1
+ls2:    LDA shval
+        STA [--Z]
+        JMP NEXT
+
+        .word w_lshift-9
+        .byte 6
+        .ascii "RSHIFT"
+w_rshift: .code
+        STB ipsave3         ; B is the instruction pointer, and the masking
+        LDA [Z++]           ; below needs it
+        STA shcnt
+        LDA [Z++]
+        STA shval
+rs1:    LDA shcnt
+        BZ rs2
+        LDA shval
+        SRA
+        LDB #$7fff          ; SRA carries the sign down with it; RSHIFT is
+        NAB                 ; defined as the logical shift, so clear it again
+        STB shval
+        LDA shcnt
+        DCA
+        STA shcnt
+        JMP rs1
+rs2:    LDA shval
+        STA [--Z]
+        LDB ipsave3
+        JMP NEXT
+
+; ." prints the text up to the closing quote. Immediate, because while
+; compiling it has to lay the text down inside the definition rather than print
+; it there and then.
+        .word w_rshift-9
+        .byte $82
+        .byte $2e, $22      ; the name is ." - a quote inside a quoted string
+                            ; is not something this assembler can express
+w_dotq: .code
+        STB ipsave3         ; B is the instruction pointer
+        JSR dqskip          ; the space after ." belongs to the syntax
+        LDA STATE
+        BZ dq_now
+        JMP dq_comp
+dq_now: JSR dqnext          ; interpreting: print it as it is read
+        LDA dqch
+        BZ dq_end
+        JSR putc
+        JMP dq_now
+dq_end: LDB ipsave3
+        JMP NEXT
+
+dq_comp: LDA #r_dotstr      ; compiling: the runtime, then the text inline
+        JSR comma
+        LDA HERE
+        STA dqlen           ; the length goes here, once it is known
+        LDA #0
+        JSR comma
+        LDA #0
+        STA dqn
+dq_c1:  JSR dqnext
+        LDA dqch
+        BZ dq_c2
+        LDA HERE
+        XAY
+        LDAB dqch+1
+        STAB [Y]
+        LDA HERE
+        INA
+        STA HERE
+        LDA dqn
+        INA
+        STA dqn
+        JMP dq_c1
+dq_c2:  LDA dqn             ; pad to an even length: what follows the text is a
+        LDB #$0001          ; code field address, and NEXT reads words
+        NAB
+        STB scr1
+        LDA scr1
+        BZ dq_c3
+        LDA HERE
+        XAY
+        LDAB #0
+        STAB [Y]
+        LDA HERE
+        INA
+        STA HERE
+dq_c3:  LDA dqlen
+        XAY
+        LDA dqn
+        STA [Y]
+        LDB ipsave3
+        JMP NEXT
+
+; The next character of the string into dqch, or zero at the closing quote or
+; at the end of the line.
+dqnext: LDA TOIN
+        LDB TIBLEN
+        SUB B,A
+        BZ dqn0
+        JSR tibchar
+        STA dqch
+        LDA TOIN
+        INA
+        STA TOIN
+        LDA dqch
+        LDB #$22
+        SUB B,A
+        BZ dqn0
+        RSR
+dqn0:   LDA #0
+        STA dqch
+        RSR
+
+dqskip: LDA TOIN            ; step over one leading space, if there is one
+        LDB TIBLEN
+        SUB B,A
+        BZ dqs0
+        JSR tibchar
+        LDB #' '
+        SUB B,A
+        BNZ dqs0
+        LDA TOIN
+        INA
+        STA TOIN
+dqs0:   RSR
+
+; What a compiled ." runs. The instruction pointer is sitting on the length
+; word, with the text after it, so this prints the text and then leaves the
+; pointer on whatever follows.
+r_dotstr: .word rds_code
+rds_code: STB dsptr
+        LDA dsptr
+        XAY
+        LDA [Y]
+        STA dsn
+        LDA dsptr
+        INA
+        INA
+        STA dsptr
+        LDA #0
+        STA dsi
+ds1:    LDA dsi
+        LDB dsn
+        SUB B,A
+        BZ ds2
+        LDA dsptr
+        LDB dsi
+        AAB
+        STB scr1
+        LDA scr1
+        XAY
+        CLA
+        LDAB [Y]
+        JSR putc
+        LDA dsi
+        INA
+        STA dsi
+        JMP ds1
+ds2:    LDA dsn             ; the text was padded to an even length
+        LDB #$0001
+        NAB
+        STB scr1
+        LDA scr1
+        BZ ds3
+        LDA dsn
+        INA
+        STA dsn
+ds3:    LDA dsptr
+        LDB dsn
+        AAB                 ; AAB leaves the sum in B, which is the pointer
+        JMP NEXT
+
+lastword .equ w_dotq-5
 
 ; Print the dictionary entry at fp, followed by a space.
 pr_entry:

@@ -20,8 +20,8 @@ b1  // 8011  STA HERE
 b0
 0a
 90  // 8014  LDA #lastword
-8d
-6c
+8e
+2b
 b1  // 8017  STA LATEST
 b0
 08
@@ -2413,8 +2413,8 @@ b0
 14  // 896b  BZ ww2
 0f
 79  // 896d  JSR pr_entry
-8d
-7a
+8f
+64
 91  // 8970  LDA fp
 b0
 80
@@ -3449,69 +3449,559 @@ b5  // 8d75  STA [--Z]
 71  // 8d77  JMP NEXT
 80
 f0
-91  // 8d7a  LDA fp
+8d  // 8d7a  .word w_fromr-5
+6c
+02  // 8d7c  .byte 2
+4f  // 8d7d  .ascii "OR"
+52
+8d  // 8d7f  w_or:   .code
+81
+f1  // 8d81  STB ipsave3         ; B is the instruction pointer, and the load below
 b0
-80
-5c  // 8d7d  XAY
-85  // 8d7e  LDAB [Y+$02]
-68
-02
-d0  // 8d81  LDB #$1f
-00
-1f
-5a  // 8d84  NAB
-f1  // 8d85  STB flen2
-b0
-84
-90  // 8d88  LDA #0
-00
-00
-b1  // 8d8b  STA fi
-b0
-86
-91  // 8d8e  pe1:    LDA fi
-b0
-86
-d1  // 8d91  LDB flen2
-b0
-84
-51  // 8d94  SUB B,A
+da
+95  // 8d84  LDA [Z++]           ; is about to overwrite it
+81
+d5  // 8d86  LDB [Z++]
+81
+53  // 8d88  ORI B,A             ; like SUB B,A, the answer lands in the second
 20
-14  // 8d96  BZ pe2
-1e
-91  // 8d98  LDA fp
+b5  // 8d8a  STA [--Z]           ; operand rather than in B the way AAB and NAB do
+82
+d1  // 8d8c  LDB ipsave3
 b0
+da
+71  // 8d8f  JMP NEXT
 80
-d1  // 8d9b  LDB fi
+f0
+8d  // 8d92  .word w_or-5
+7a
+03  // 8d94  .byte 3
+58  // 8d95  .ascii "XOR"
+4f
+52
+8d  // 8d98  w_xor:  .code
+9a
+f1  // 8d9a  STB ipsave3         ; B is the instruction pointer
 b0
-86
-58  // 8d9e  AAB
-f1  // 8d9f  STB scr1
+da
+95  // 8d9d  LDA [Z++]
+81
+d5  // 8d9f  LDB [Z++]
+81
+54  // 8da1  ORE B,A             ; OR exclusive, and again the answer is in A
+20
+b5  // 8da3  STA [--Z]
+82
+d1  // 8da5  LDB ipsave3
 b0
-00
-91  // 8da2  LDA scr1
+da
+71  // 8da8  JMP NEXT
+80
+f0
+8d  // 8dab  .word w_xor-6
+92
+03  // 8dad  .byte 3
+4e  // 8dae  .ascii "NOT"
+4f
+54
+8d  // 8db1  w_not:  .code
+b3
+95  // 8db3  LDA [Z++]
+81
+3b  // 8db5  IVA
+b5  // 8db6  STA [--Z]
+82
+71  // 8db8  JMP NEXT
+80
+f0
+8d  // 8dbb  .word w_not-6
+ab
+06  // 8dbd  .byte 6
+4c  // 8dbe  .ascii "LSHIFT"
+53
+48
+49
+46
+54
+8d  // 8dc4  w_lshift: .code
+c6
+95  // 8dc6  LDA [Z++]           ; nothing here touches B, so the instruction
+81
+b1  // 8dc8  STA shcnt           ; pointer does not have to be parked
 b0
-00
-5c  // 8da5  XAY
-85  // 8da6  LDAB [Y+$03]
-68
+ea
+95  // 8dcb  LDA [Z++]
+81
+b1  // 8dcd  STA shval
+b0
+ec
+91  // 8dd0  ls1:    LDA shcnt
+b0
+ea
+14  // 8dd3  BZ ls2
+11
+91  // 8dd5  LDA shval
+b0
+ec
+3d  // 8dd8  SLA
+b1  // 8dd9  STA shval
+b0
+ec
+91  // 8ddc  LDA shcnt
+b0
+ea
+39  // 8ddf  DCA
+b1  // 8de0  STA shcnt
+b0
+ea
+71  // 8de3  JMP ls1
+8d
+d0
+91  // 8de6  ls2:    LDA shval
+b0
+ec
+b5  // 8de9  STA [--Z]
+82
+71  // 8deb  JMP NEXT
+80
+f0
+8d  // 8dee  .word w_lshift-9
+bb
+06  // 8df0  .byte 6
+52  // 8df1  .ascii "RSHIFT"
+53
+48
+49
+46
+54
+8d  // 8df7  w_rshift: .code
+f9
+f1  // 8df9  STB ipsave3         ; B is the instruction pointer, and the masking
+b0
+da
+95  // 8dfc  LDA [Z++]           ; below needs it
+81
+b1  // 8dfe  STA shcnt
+b0
+ea
+95  // 8e01  LDA [Z++]
+81
+b1  // 8e03  STA shval
+b0
+ec
+91  // 8e06  rs1:    LDA shcnt
+b0
+ea
+14  // 8e09  BZ rs2
+15
+91  // 8e0b  LDA shval
+b0
+ec
+3c  // 8e0e  SRA
+d0  // 8e0f  LDB #$7fff          ; SRA carries the sign down with it; RSHIFT is
+7f
+ff
+5a  // 8e12  NAB                 ; defined as the logical shift, so clear it again
+f1  // 8e13  STB shval
+b0
+ec
+91  // 8e16  LDA shcnt
+b0
+ea
+39  // 8e19  DCA
+b1  // 8e1a  STA shcnt
+b0
+ea
+71  // 8e1d  JMP rs1
+8e
+06
+91  // 8e20  rs2:    LDA shval
+b0
+ec
+b5  // 8e23  STA [--Z]
+82
+d1  // 8e25  LDB ipsave3
+b0
+da
+71  // 8e28  JMP NEXT
+80
+f0
+8d  // 8e2b  .word w_rshift-9
+ee
+82  // 8e2d  .byte $82
+2e  // 8e2e  .byte $2e, $22      ; the name is ." - a quote inside a quoted string
+22
+8e  // 8e30  w_dotq: .code
+32
+f1  // 8e32  STB ipsave3         ; B is the instruction pointer
+b0
+da
+79  // 8e35  JSR dqskip          ; the space after ." belongs to the syntax
+8e
+e4
+91  // 8e38  LDA STATE
+b0
+0c
+14  // 8e3b  BZ dq_now
 03
-79  // 8da9  JSR putc
+71  // 8e3d  JMP dq_comp
+8e
+54
+79  // 8e40  dq_now: JSR dqnext          ; interpreting: print it as it is read
+8e
+bb
+91  // 8e43  LDA dqch
+b0
+ee
+14  // 8e46  BZ dq_end
+06
+79  // 8e48  JSR putc
 81
 19
-91  // 8dac  LDA fi
-b0
-86
-38  // 8daf  INA
-b1  // 8db0  STA fi
-b0
-86
-71  // 8db3  JMP pe1
-8d
+71  // 8e4b  JMP dq_now
 8e
-90  // 8db6  pe2:    LDA #' '
+40
+d1  // 8e4e  dq_end: LDB ipsave3
+b0
+da
+71  // 8e51  JMP NEXT
+80
+f0
+90  // 8e54  dq_comp: LDA #r_dotstr      ; compiling: the runtime, then the text inline
+8f
+00
+79  // 8e57  JSR comma
+85
+8f
+91  // 8e5a  LDA HERE
+b0
+0a
+b1  // 8e5d  STA dqlen           ; the length goes here, once it is known
+b0
+f2
+90  // 8e60  LDA #0
+00
+00
+79  // 8e63  JSR comma
+85
+8f
+90  // 8e66  LDA #0
+00
+00
+b1  // 8e69  STA dqn
+b0
+f0
+79  // 8e6c  dq_c1:  JSR dqnext
+8e
+bb
+91  // 8e6f  LDA dqch
+b0
+ee
+14  // 8e72  BZ dq_c2
+1a
+91  // 8e74  LDA HERE
+b0
+0a
+5c  // 8e77  XAY
+81  // 8e78  LDAB dqch+1
+b0
+ef
+a5  // 8e7b  STAB [Y]
+60
+91  // 8e7d  LDA HERE
+b0
+0a
+38  // 8e80  INA
+b1  // 8e81  STA HERE
+b0
+0a
+91  // 8e84  LDA dqn
+b0
+f0
+38  // 8e87  INA
+b1  // 8e88  STA dqn
+b0
+f0
+71  // 8e8b  JMP dq_c1
+8e
+6c
+91  // 8e8e  dq_c2:  LDA dqn             ; pad to an even length: what follows the text is a
+b0
+f0
+d0  // 8e91  LDB #$0001          ; code field address, and NEXT reads words
+00
+01
+5a  // 8e94  NAB
+f1  // 8e95  STB scr1
+b0
+00
+91  // 8e98  LDA scr1
+b0
+00
+14  // 8e9b  BZ dq_c3
+0f
+91  // 8e9d  LDA HERE
+b0
+0a
+5c  // 8ea0  XAY
+80  // 8ea1  LDAB #0
+00
+a5  // 8ea3  STAB [Y]
+60
+91  // 8ea5  LDA HERE
+b0
+0a
+38  // 8ea8  INA
+b1  // 8ea9  STA HERE
+b0
+0a
+91  // 8eac  dq_c3:  LDA dqlen
+b0
+f2
+5c  // 8eaf  XAY
+91  // 8eb0  LDA dqn
+b0
+f0
+b5  // 8eb3  STA [Y]
+60
+d1  // 8eb5  LDB ipsave3
+b0
+da
+71  // 8eb8  JMP NEXT
+80
+f0
+91  // 8ebb  dqnext: LDA TOIN
+b0
+0e
+d1  // 8ebe  LDB TIBLEN
+b0
+10
+51  // 8ec1  SUB B,A
+20
+14  // 8ec3  BZ dqn0
+18
+79  // 8ec5  JSR tibchar
+82
+56
+b1  // 8ec8  STA dqch
+b0
+ee
+91  // 8ecb  LDA TOIN
+b0
+0e
+38  // 8ece  INA
+b1  // 8ecf  STA TOIN
+b0
+0e
+91  // 8ed2  LDA dqch
+b0
+ee
+d0  // 8ed5  LDB #$22
+00
+22
+51  // 8ed8  SUB B,A
+20
+14  // 8eda  BZ dqn0
+01
+09  // 8edc  RSR
+90  // 8edd  dqn0:   LDA #0
+00
+00
+b1  // 8ee0  STA dqch
+b0
+ee
+09  // 8ee3  RSR
+91  // 8ee4  dqskip: LDA TOIN            ; step over one leading space, if there is one
+b0
+0e
+d1  // 8ee7  LDB TIBLEN
+b0
+10
+51  // 8eea  SUB B,A
+20
+14  // 8eec  BZ dqs0
+11
+79  // 8eee  JSR tibchar
+82
+56
+d0  // 8ef1  LDB #' '
 00
 20
-71  // 8db9  JMP putc
+51  // 8ef4  SUB B,A
+20
+15  // 8ef6  BNZ dqs0
+07
+91  // 8ef8  LDA TOIN
+b0
+0e
+38  // 8efb  INA
+b1  // 8efc  STA TOIN
+b0
+0e
+09  // 8eff  dqs0:   RSR
+8f  // 8f00  r_dotstr: .word rds_code
+02
+f1  // 8f02  rds_code: STB dsptr
+b0
+f8
+91  // 8f05  LDA dsptr
+b0
+f8
+5c  // 8f08  XAY
+95  // 8f09  LDA [Y]
+60
+b1  // 8f0b  STA dsn
+b0
+f4
+91  // 8f0e  LDA dsptr
+b0
+f8
+38  // 8f11  INA
+38  // 8f12  INA
+b1  // 8f13  STA dsptr
+b0
+f8
+90  // 8f16  LDA #0
+00
+00
+b1  // 8f19  STA dsi
+b0
+f6
+91  // 8f1c  ds1:    LDA dsi
+b0
+f6
+d1  // 8f1f  LDB dsn
+b0
+f4
+51  // 8f22  SUB B,A
+20
+14  // 8f24  BZ ds2
+1e
+91  // 8f26  LDA dsptr
+b0
+f8
+d1  // 8f29  LDB dsi
+b0
+f6
+58  // 8f2c  AAB
+f1  // 8f2d  STB scr1
+b0
+00
+91  // 8f30  LDA scr1
+b0
+00
+5c  // 8f33  XAY
+3a  // 8f34  CLA
+85  // 8f35  LDAB [Y]
+60
+79  // 8f37  JSR putc
+81
+19
+91  // 8f3a  LDA dsi
+b0
+f6
+38  // 8f3d  INA
+b1  // 8f3e  STA dsi
+b0
+f6
+71  // 8f41  JMP ds1
+8f
+1c
+91  // 8f44  ds2:    LDA dsn             ; the text was padded to an even length
+b0
+f4
+d0  // 8f47  LDB #$0001
+00
+01
+5a  // 8f4a  NAB
+f1  // 8f4b  STB scr1
+b0
+00
+91  // 8f4e  LDA scr1
+b0
+00
+14  // 8f51  BZ ds3
+07
+91  // 8f53  LDA dsn
+b0
+f4
+38  // 8f56  INA
+b1  // 8f57  STA dsn
+b0
+f4
+91  // 8f5a  ds3:    LDA dsptr
+b0
+f8
+d1  // 8f5d  LDB dsn
+b0
+f4
+58  // 8f60  AAB                 ; AAB leaves the sum in B, which is the pointer
+71  // 8f61  JMP NEXT
+80
+f0
+91  // 8f64  LDA fp
+b0
+80
+5c  // 8f67  XAY
+85  // 8f68  LDAB [Y+$02]
+68
+02
+d0  // 8f6b  LDB #$1f
+00
+1f
+5a  // 8f6e  NAB
+f1  // 8f6f  STB flen2
+b0
+84
+90  // 8f72  LDA #0
+00
+00
+b1  // 8f75  STA fi
+b0
+86
+91  // 8f78  pe1:    LDA fi
+b0
+86
+d1  // 8f7b  LDB flen2
+b0
+84
+51  // 8f7e  SUB B,A
+20
+14  // 8f80  BZ pe2
+1e
+91  // 8f82  LDA fp
+b0
+80
+d1  // 8f85  LDB fi
+b0
+86
+58  // 8f88  AAB
+f1  // 8f89  STB scr1
+b0
+00
+91  // 8f8c  LDA scr1
+b0
+00
+5c  // 8f8f  XAY
+85  // 8f90  LDAB [Y+$03]
+68
+03
+79  // 8f93  JSR putc
+81
+19
+91  // 8f96  LDA fi
+b0
+86
+38  // 8f99  INA
+b1  // 8f9a  STA fi
+b0
+86
+71  // 8f9d  JMP pe1
+8f
+78
+90  // 8fa0  pe2:    LDA #' '
+00
+20
+71  // 8fa3  JMP putc
 81
 19
