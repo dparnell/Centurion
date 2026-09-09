@@ -176,6 +176,210 @@ that earlier target:
 
 ![Centurion1](images/cylon.gif "Running code")
 
+## The built-in FORTH
+
+[Verilog/asm/forth.s](Verilog/asm/forth.s) is an interactive FORTH written for
+this machine, in about 3.3K of the 8K ROM. It is an indirect threaded
+interpreter in the traditional style, and it uses the whole of the machine's
+memory rather than just the part that is directly addressable.
+
+### Getting to it
+
+On real hardware:
+
+```
+make load-forth
+picocom -b 19200 -d 7 -p n /dev/ttyUSB1
+```
+
+or in simulation, typing a file at it and printing what comes back:
+
+```
+make run SRC=asm/forth.s IN=asm/tests_create.f FOR=1400
+```
+
+Either way it counts the memory at start up and says what it found:
+
+```
+Centurion FORTH  244 K RAM
+```
+
+It reads a line at a time, echoes what you type, and answers `ok` when the line
+has run. A word it does not know is echoed back with a `?`.
+
+### The words
+
+| | |
+|---|---|
+| stack | `DUP` `DROP` `SWAP` `OVER` |
+| arithmetic | `+` `-` `*` `AND` |
+| comparison | `=` `<` `>` `0=` - signed, and true is all ones |
+| console | `.` `EMIT` `KEY` `CR` |
+| memory | `@` `!` `C@` `C!` `HERE` `,` `ALLOT` |
+| defining | `:` `;` `CREATE` `DOES>` `IMMEDIATE` `'` `EXECUTE` `LITERAL` `[` `]` |
+| control | `IF` `ELSE` `THEN` `BEGIN` `UNTIL` `AGAIN` `DO` `LOOP` `I` |
+| return stack | `>R` `R>` |
+| numbers | `HEX` `DECIMAL` `BASE` |
+| comments | `\` to the end of the line, `( ... )` inline |
+| the machine | `PAGES` `BANK!` `WORDS` |
+
+Both comment forms are immediate, so they work while compiling as well as
+while interpreting:
+
+```
+7 ( inline ) .                  7  ok
+: Y ( a comment while compiling ) 9 ;
+\ and the rest of this line is ignored
+```
+
+`WORDS` lists the dictionary, newest first.
+
+### The stack, and defining words
+
+Arguments come before the operator and results are left on the stack, so `.`
+prints and pops the top of it:
+
+```
+2 3 + .            5  ok
+```
+
+`:` and `;` add a word to the dictionary. The classic first example works here
+as it does anywhere:
+
+```
+: STAR 42 EMIT ;
+: BAR 5 0 DO STAR LOOP ;
+: F BAR CR STAR CR STAR CR BAR CR 5 0 DO STAR CR LOOP ;
+F
+```
+
+which draws
+
+```
+*****
+*
+*
+*****
+*
+*
+*
+*
+*
+```
+
+`DO` takes the limit and the starting index, so `5 0 DO ... LOOP` runs five
+times, and `I` is the index. `IF ELSE THEN` and `BEGIN ... UNTIL` work as
+usual; `BEGIN ... AGAIN` loops for ever.
+
+### Numbers
+
+`HEX` and `DECIMAL` switch the base for both reading and printing, and `BASE`
+is the variable behind them:
+
+```
+HEX FF . DECIMAL      FF  ok
+```
+
+Numbers are 16 bits. `.` prints signed in base ten and unsigned in any other
+base, so an address above `8000` reads as a negative number in decimal and as
+itself in hex.
+
+### Defining your own defining words
+
+`CREATE` makes a dictionary entry whose data follows it, and `DOES>` says what
+the words it makes should do when they run. Between them they are enough to
+build the words that most FORTHs have built in:
+
+```
+: CONSTANT CREATE , DOES> @ ;
+7 CONSTANT SEVEN
+SEVEN .                        7  ok
+
+: VARIABLE CREATE 0 , ;
+VARIABLE V   9 V !   V @ .     9  ok
+
+: ARRAY CREATE 2 * ALLOT DOES> SWAP 2 * + ;
+4 ARRAY A    11 0 A !   0 A @ .    11  ok
+```
+
+`>R` moves the top of the data stack to the return stack and `R>` brings it
+back, which is how a word gets at its second argument without a `ROT`:
+
+```
+: ROT3 >R SWAP R> ;
+```
+
+`'` (tick) reads the *next* word from the input and pushes its code field
+address - the token for that word. `EXECUTE` runs one:
+
+```
+6 ' SQ EXECUTE .              36  ok
+```
+
+and `,` compiles one into a definition, which is what makes a table of tokens
+worth having.
+
+`[` and `]` switch out of and back into compiling in the middle of a
+definition, and `LITERAL` carries a value computed in between back into the
+code being compiled:
+
+```
+: X [ 2 3 + ] LITERAL ;
+X .                            5  ok
+```
+
+X holds the constant 5: the addition happened once, while X was being defined.
+This is also how to get a token compiled rather than looked up at run time -
+`[ ' FOO ] LITERAL` is what other FORTHs spell `[']`.
+
+### The Centurion-specific part
+
+The machine addresses 64K but has 256K of physical memory behind an MMU, which
+maps thirty-two 2K virtual pages onto 2K physical pages. FORTH keeps virtual
+page 14 - `7000` to `77ff` - free as a window onto any physical page:
+
+| | |
+|---|---|
+| `PAGES` | how many 2K pages of physical memory were found at start up |
+| `BANK!` | takes a physical page number and maps it into the window at `7000` |
+
+So to write to somewhere in physical page 40, which no ordinary address can
+reach:
+
+```
+40 BANK!
+HEX 1234 7100 !  7100 @ .  DECIMAL
+```
+
+`PAGES` is how the banner's figure is arrived at - it is the count of pages
+that held a signature when it was written and read back at start up, so it
+reports memory the machine can actually use rather than memory it ought to
+have.
+
+The rest of the map: the dictionary grows up from `0200` towards `6f00`, and
+the stacks, the input buffer and the interpreter's own variables sit in the
+fast block RAM from `b000` up, because the board answers that far more quickly
+than it answers the HyperRAM.
+
+### What it does not have
+
+There is no `[']`, but it is not needed: `[ ' FOO ] LITERAL` does the same
+thing. There is no `SPACES`, no `."`, and no string words, so text is printed a
+character at a time with `EMIT`. Division is missing, as is `OR`. The console
+is seven bit, so no character above 127 survives the serial line.
+
+One limitation worth knowing before it bites. The return stack here carries
+more than usual: `DO` puts its loop control on it, entering a colon definition
+puts the caller's instruction pointer on it, and machine code helpers push
+their return addresses there too. `I` simply reads the top of it. So `I` inside
+a *called* word sees that word's return address rather than the caller's loop
+index, and `>R` inside a loop changes what `I` reads until the matching `R>`.
+
+For the same reason `>R` and `R>` have to balance within a definition -
+underneath whatever they push is the instruction pointer that `;` is about to
+pop. That is true of any FORTH, but here the consequence is a jump to whatever
+was pushed instead.
+
 ## Architecture
 
 The CPU6 is an interesting design. It is based on the [AMD Am2900](https://en.wikipedia.org/wiki/AMD_Am2900) family of bit slice devices. The entire CPU fits on a single board, using two Am2901s to make an 8-bit ALU. The control unit is [microcoded](https://en.wikipedia.org/wiki/Microcode), using 2 Am2909 microsequencers, and 1 Am2911 microsequencer with a 2048 word x 56-bit microprogram stored in seven EPROMs. It is typical of minicomputers of that era. Discrete CPUs based on the Am2900 family were soon superceded by fully integrated VLSI CPUs, such as the [Intel 8086](https://en.wikipedia.org/wiki/Intel_8086), [Motorola 68000](https://en.wikipedia.org/wiki/Motorola_68000), and numerous others.
