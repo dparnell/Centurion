@@ -41,8 +41,13 @@ module BoardMemory #(
         $readmemh("roms/BootROM.txt", boot_cells);
         // A simulation can point this somewhere else without a rebuild, which
         // is what makes assembling a program and running it a one second loop.
+        // Hidden from synthesis: yosys cannot resolve $value$plusargs while it
+        // re-elaborates this module, which is exactly what setting PROGRAM from
+        // the Makefile makes it do.
+`ifndef SYNTHESIS
         if ($value$plusargs("prog=%s", progfile))
             $readmemh(progfile, rom_cells);
+`endif
         for (i = 0; i < 8192; i = i + 1) ram_cells[i] = 8'h00;
         for (i = 0; i < 4096; i = i + 1) low_ram_cells[i] = 8'h00;
     end

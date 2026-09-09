@@ -16,8 +16,39 @@ DIP ?= 1d
 # than the CPU's use of the memory. See PsramTest.v.
 PSRAM_SELFTEST ?= 0
 
-$(PROJ).json: $(PROJ).v roms/CodeROM.txt Makefile *.v
-	yosys -p 'read_verilog $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) -set PSRAM_SELFTEST $(PSRAM_SELFTEST) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
+# Which program the ROM holds. The default is the real diag ROM, which is what
+# the machine boots from; the load-* targets below wrap up the usual choices.
+PROGRAM ?= programs/diag.txt
+
+# Assembling. "make programs/forth.txt" is enough, and both the synthesis and
+# the simulation paths go through this rule, so a stale image can never be built
+# into a bitstream or run by mistake. "make programs" assembles every source in
+# asm/, which is a quick check that they all still assemble.
+ASSEMBLER = ../tools/Assemble.py
+SOURCES := $(wildcard asm/*.s)
+IMAGES := $(patsubst asm/%.s,programs/%.txt,$(SOURCES))
+
+programs/%.txt: asm/%.s $(ASSEMBLER)
+	python3 $(ASSEMBLER) $< $@
+
+programs: $(IMAGES)
+
+# What the bitstream was built with is part of its identity, and none of it is a
+# file that make can compare timestamps on. Without this stamp, "make load-forth"
+# straight after "make load" would find tangnano9k.json up to date and program
+# the board with diag again - the wrong build, silently, which is the sort of
+# thing that costs an afternoon of debugging a machine that is not the one you
+# think you are looking at.
+CONFIG := PROGRAM=$(PROGRAM) DIP=$(DIP) PSRAM_SELFTEST=$(PSRAM_SELFTEST)
+build.stamp: FORCE
+	@echo '$(CONFIG)' | cmp -s - $@ || { echo '$(CONFIG)' > $@; echo "build config: $(CONFIG)"; }
+FORCE:
+
+# -DSYNTHESIS hides the +prog= plusarg in BoardMemory from yosys: it cannot
+# resolve $value$plusargs while re-elaborating that module, which is exactly what
+# setting PROGRAM here makes it do.
+$(PROJ).json: $(PROJ).v roms/CodeROM.txt Makefile *.v $(PROGRAM) build.stamp
+	yosys -p 'read_verilog -DSYNTHESIS $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) -set PROGRAM "$(PROGRAM)" -set PSRAM_SELFTEST $(PSRAM_SELFTEST) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
 
 $(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
 	nextpnr-himbaechel --json $(PROJ).json --write $(PROJ)_pnr.json --freq 27 --device ${DEVICE} --vopt family=${FAMILY} --vopt cst=$(BOARD).cst
@@ -27,9 +58,20 @@ $(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
 $(PROJ).fs: $(PROJ)_pnr.json
 	PYTHONPATH=$(CURDIR)/../tools gowin_pack -d ${FAMILY} -o $(PROJ).fs $(PROJ)_pnr.json
 
-# Program Board
+# Program Board. Three ways in, because these are the three things the machine
+# is usually wanted for:
+#   make load        the diag ROM, switches on the auxiliary test menu
+#   make load-tos    the same ROM, switches set for the TOS machine code monitor
+#   make load-forth  the FORTH, assembled from asm/forth.s first
+# Each rebuilds whatever the change of configuration invalidates; see build.stamp.
 load: $(PROJ).fs
 	openFPGALoader -b ${BOARD} $(PROJ).fs -f
+
+load-tos:
+	$(MAKE) DIP=1a load
+
+load-forth:
+	$(MAKE) PROGRAM=programs/forth.txt load
 
 test: CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB
 	vvp CPU6TestBench
@@ -71,8 +113,7 @@ MapFailTB: *.v
 SRC ?= asm/forth.s
 IN ?=
 FOR ?= 300
-run: ProgramTB
-	python3 ../tools/Assemble.py $(SRC) programs/$(basename $(notdir $(SRC))).txt
+run: ProgramTB programs/$(basename $(notdir $(SRC))).txt
 	vvp ProgramTB +prog=programs/$(basename $(notdir $(SRC))).txt \
 	     $(if $(IN),+in=$(IN),) +for=$(FOR) $(RUNARGS)
 
@@ -85,7 +126,10 @@ psramtest: PsramTB
 PsramTB: *.v
 	iverilog -o PsramTB PsramTB.v
 
+.PHONY: all programs load load-tos load-forth test diagtest mapfail run psramtest clean FORCE
+
 clean:
+	rm -f build.stamp
 	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB
 
 .PHONY: all prog clean test diagtest psramtest mapfail run
