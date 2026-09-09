@@ -40,7 +40,7 @@ module PsramBus #(
     // To PsramSdr.
     output reg read, output reg write, output reg byte_write,
     output reg [21:0] addr, output reg [15:0] din,
-    input wire [15:0] dout, input wire busy,
+    input wire [63:0] dout, input wire busy,
 
     // How many accesses have been made, and where the last one went. Zero
     // accesses means the CPU has never addressed the PSRAM at all, which is a
@@ -63,15 +63,20 @@ module PsramBus #(
     localparam S_IDLE = 0, S_REQ = 1, S_WAIT = 2;
     reg [1:0] state;
 
-    reg [17:0] cache_addr;               // the word address held below
-    reg [15:0] cache_word;
+    // One four word line, which is what PsramSdr brings back in a single burst.
+    // The latency is per access rather than per word, so the other three words
+    // are very nearly free, and anything walking memory in order - a block move,
+    // a dictionary search, code being read as data - then pays it once every
+    // eight bytes instead of every two.
+    reg [15:0] cache_addr;               // the line address held below
+    reg [63:0] cache_line;
     reg cache_valid;
     reg wr_done;                         // this CPU cycle's write has been made
     reg is_read_acc;                     // the access in flight is a read
     reg [12:0] elapsed;                  // clocks spent on the access in flight
 
     initial begin
-        state = S_IDLE; cache_addr = 0; cache_word = 0; cache_valid = 0;
+        state = S_IDLE; cache_addr = 0; cache_line = 0; cache_valid = 0;
         wr_done = 0; is_read_acc = 0;
         read = 0; write = 0; byte_write = 0; addr = 0; din = 0;
         dbg_accesses = 0; dbg_last_addr = 0; dbg_last_data = 0; dbg_timeouts = 0;
@@ -82,7 +87,7 @@ module PsramBus #(
     // its enable during reset - the sequence is counted in enabled cycles - so
     // stalling it there would be wrong as well as pointless.
     wire active = select && !reset;
-    wire hit = cache_valid && (cache_addr == address[18:1]);
+    wire hit = cache_valid && (cache_addr == address[18:3]);
     wire want_read  = active && !write_en && !hit;
     wire want_write = active &&  write_en && !wr_done;
     wire need = want_read || want_write;
@@ -91,6 +96,10 @@ module PsramBus #(
     assign dbg_need = need;
 
     // Byte A of a HyperBus word is the even byte, so it is the high half here.
+    wire [15:0] cache_word = (address[2:1] == 2'd0) ? cache_line[15:0]  :
+                             (address[2:1] == 2'd1) ? cache_line[31:16] :
+                             (address[2:1] == 2'd2) ? cache_line[47:32] :
+                                                      cache_line[63:48];
     assign data_out = address[0] ? cache_word[7:0] : cache_word[15:8];
 
     // The core's enable, withheld while an access runs and handed back after.
@@ -160,8 +169,8 @@ module PsramBus #(
             write <= 0;
             // Satisfy the cycle from the live request rather than the registered
             // one: the timeout can fire before anything was ever latched.
-            cache_word <= 16'hffff;
-            cache_addr <= address[18:1];
+            cache_line <= {64{1'b1}};
+            cache_addr <= address[18:3];
             cache_valid <= want_read;
             wr_done <= want_write;
             state <= S_IDLE;
@@ -178,7 +187,9 @@ module PsramBus #(
             // which is intermittent because it depends on whether the CPU reaches
             // PSRAM before the part has finished waking up.
             S_IDLE: if (need && !busy) begin
-                addr <= { 3'b0, address };
+                // A read fetches the whole line, so it asks for the start of it.
+                addr <= want_read ? { 3'b0, address[18:3], 3'b000 }
+                                  : { 3'b0, address };
                 din <= { 8'h00, data_in };
                 byte_write <= want_write;
                 read <= want_read;
@@ -197,19 +208,27 @@ module PsramBus #(
                 dbg_accesses <= dbg_accesses + 1;
                 dbg_last_addr <= addr[18:0];
                 if (is_read_acc) begin
-                    cache_word <= dout;
-                    cache_addr <= addr[18:1];
+                    cache_line <= dout;
+                    cache_addr <= addr[18:3];
                     cache_valid <= 1;
-                    dbg_last_data <= addr[0] ? dout[7:0] : dout[15:8];
+                    dbg_last_data <= dout[15:8];
                 end else begin
                     wr_done <= 1;
                     dbg_last_data <= din[7:0];
                     // Keep the cache coherent rather than dropping it: a store
                     // followed by a load of the same byte is common enough that
                     // invalidating would double the cost of it.
-                    if (cache_valid && cache_addr == addr[18:1]) begin
-                        if (addr[0]) cache_word[7:0]  <= din[7:0];
-                        else         cache_word[15:8] <= din[7:0];
+                    if (cache_valid && cache_addr == addr[18:3]) begin
+                        case ({ addr[2:1], addr[0] })
+                            3'b000: cache_line[15:8]  <= din[7:0];
+                            3'b001: cache_line[7:0]   <= din[7:0];
+                            3'b010: cache_line[31:24] <= din[7:0];
+                            3'b011: cache_line[23:16] <= din[7:0];
+                            3'b100: cache_line[47:40] <= din[7:0];
+                            3'b101: cache_line[39:32] <= din[7:0];
+                            3'b110: cache_line[63:56] <= din[7:0];
+                            3'b111: cache_line[55:48] <= din[7:0];
+                        endcase
                     end
                 end
                 state <= S_IDLE;

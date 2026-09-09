@@ -41,13 +41,22 @@ module PsramSdr #(
     parameter RESET_CLOCKS = 8100,       // 300us at 27MHz, comfortably past the
                                          // 150us the part wants after power up
     parameter [4:0] LATENCY = 6,         // initial latency, in CK; fixed means 2x
-    // Bring-up aid, and only that. A read samples this many CK after the command
-    // instead of just the one the data is in, and reports where the data really
-    // turned up - so one run says what the latency is, instead of a build per
-    // guess. It also sets how long CS# stays low, which the part limits to 4us:
-    // 3 command + SCAN_CK + 2 at 6.75MHz is 3.1us at 16, so this cannot grow much
-    // without either raising the CK rate or dropping the scan.
-    parameter [4:0] SCAN_CK = 16
+    // How many CK a read samples for. It only has to reach the cycle the data is
+    // in, which is what the default is; widening it turns a read into a scan
+    // that reports where the data really turned up, which is how the latency was
+    // established in the first place - one run instead of a build per guess.
+    //
+    // It also sets how long CS# stays low, which the part limits to 4us. At the
+    // bring-up value of 16 a read was 3 command + 16 + 2 CK, 3.3us at 6.75MHz,
+    // which is both close to that limit and three CK longer than it needs to be.
+    // How many words a read brings back. The latency is per access, not per
+    // word - the die keeps handing over halfwords for as long as CS# stays low
+    // - so a burst of four costs three extra CK rather than three more reads.
+    // What limits it is that CS# may not stay low for more than 4us: at
+    // 6.75MHz, 3 command + 12 latency + BURST + 2 tail is 3.1us at four and
+    // over the limit at eight.
+    parameter integer BURST = 4,
+    parameter [4:0] SCAN_CK = 2*LATENCY + BURST
 ) (
     input wire clk,                      // 27MHz, the board clock
     input wire resetn,
@@ -56,7 +65,8 @@ module PsramSdr #(
     input wire [21:0] addr,              // byte address
     input wire [15:0] din,               // for a byte write, the byte is din[7:0]
     input wire byte_write,               // write only the byte addr[0] selects
-    output reg [15:0] dout,
+    // BURST words, the one at addr in the low half. A write still takes one.
+    output reg [16*BURST-1:0] dout,
     output wire busy,
 
     output wire [1:0] O_psram_ck,
@@ -255,7 +265,10 @@ module PsramSdr #(
                 S_DATA: if (step) begin
                     if (is_read) begin
                         if (scan_idx == 0) dbg_first <= rx_word;
-                        if (scan_idx == DATA_IDX) dout <= rx_word;
+                        // Each word shifts in at the top, so when the last one
+                        // arrives the first is sitting in the low half.
+                        if (scan_idx >= DATA_IDX && scan_idx < DATA_IDX + BURST)
+                            dout <= { rx_word, dout[16*BURST-1:16] };
                         if (rx_word != 16'hffff) dbg_nonff[scan_idx[3:0]] <= 1;
                         if (rx_word == wdata && dbg_match == 5'h1f)
                             dbg_match <= scan_idx;
