@@ -1,0 +1,337 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #0
+00
+00
+79  // 800d  JSR prnum
+80
+49
+79  // 8010  JSR crlf
+81
+44
+90  // 8013  LDA #7
+00
+07
+b1  // 8016  STA scr1
+b0
+00
+91  // 8019  LDA scr1            ; is a plain store and load of scr1 even working?
+b0
+00
+79  // 801c  JSR putax
+80
+e1
+90  // 801f  LDA #7
+00
+07
+79  // 8022  JSR prnum
+80
+49
+91  // 8025  LDA scr1            ; and what does prnum leave there?
+b0
+00
+79  // 8028  JSR putax
+80
+e1
+79  // 802b  JSR crlf
+81
+44
+90  // 802e  LDA #256
+01
+00
+79  // 8031  JSR prnum
+80
+49
+79  // 8034  JSR crlf
+81
+44
+90  // 8037  LDA #12345
+30
+39
+79  // 803a  JSR prnum
+80
+49
+79  // 803d  JSR crlf
+81
+44
+90  // 8040  LDA #$0001
+00
+01
+b1  // 8043  STA $f900
+f9
+00
+71  // 8046  halt:   JMP halt
+80
+46
+b1  // 8049  prnum:  STA scr1
+b0
+00
+d0  // 804c  LDB #0
+00
+00
+50  // 804f  ADD B,A
+20
+17  // 8051  BM prneg
+03
+71
+80
+59
+71  // 8056  JMP prpos
+80
+67
+90  // 8059  prneg:  LDA #'-'
+00
+2d
+79  // 805c  JSR putc
+81
+2f
+91  // 805f  LDA scr1
+b0
+00
+3b  // 8062  IVA                 ; one's complement, then add one
+38  // 8063  INA
+b1  // 8064  STA scr1
+b0
+00
+90  // 8067  prpos:  LDA #0
+00
+00
+b1  // 806a  STA nz
+b0
+96
+90  // 806d  LDA #10000
+27
+10
+79  // 8070  JSR prdig
+80
+96
+90  // 8073  LDA #1000
+03
+e8
+79  // 8076  JSR prdig
+80
+96
+90  // 8079  LDA #100
+00
+64
+79  // 807c  JSR prdig
+80
+96
+90  // 807f  LDA #10
+00
+0a
+79  // 8082  JSR prdig
+80
+96
+91  // 8085  LDA scr1            ; the units digit always prints
+b0
+00
+d0  // 8088  LDB #'0'
+00
+30
+50  // 808b  ADD B,A
+20
+f1  // 808d  STB scr2
+b0
+02
+91  // 8090  LDA scr2
+b0
+02
+71  // 8093  JMP putc
+81
+2f
+b1  // 8096  prdig:  STA ndig
+b0
+92
+90  // 8099  LDA #0
+00
+00
+b1  // 809c  STA nq
+b0
+94
+91  // 809f  pd1:    LDA ndig
+b0
+92
+d1  // 80a2  LDB scr1
+b0
+00
+51  // 80a5  SUB B,A             ; B = what is left, minus this power of ten
+20
+17  // 80a7  BM pd2              ; gone negative: this digit is finished
+03
+71
+80
+b9
+f1  // 80ac  STB scr1
+b0
+00
+91  // 80af  LDA nq
+b0
+94
+38  // 80b2  INA
+b1  // 80b3  STA nq
+b0
+94
+71  // 80b6  JMP pd1
+80
+9f
+91  // 80b9  pd2:    LDA nq
+b0
+94
+15  // 80bc  BZ pd3
+03
+71
+80
+c7
+90  // 80c1  LDA #1
+00
+01
+b1  // 80c4  STA nz              ; a non-zero digit, so print the rest as well
+b0
+96
+91  // 80c7  pd3:    LDA nz
+b0
+96
+15  // 80ca  BZ pd4
+03
+71
+80
+e0
+91  // 80cf  LDA nq
+b0
+94
+d0  // 80d2  LDB #'0'
+00
+30
+50  // 80d5  ADD B,A
+20
+f1  // 80d7  STB scr2
+b0
+02
+91  // 80da  LDA scr2
+b0
+02
+79  // 80dd  JSR putc
+81
+2f
+09  // 80e0  pd4:    RSR
+b1  // 80e1  putax:  STA $b010
+b0
+10
+3c  // 80e4  SRA
+3c  // 80e5  SRA
+3c  // 80e6  SRA
+3c  // 80e7  SRA
+3c  // 80e8  SRA
+3c  // 80e9  SRA
+3c  // 80ea  SRA
+3c  // 80eb  SRA
+79  // 80ec  JSR puthex
+80
+fb
+91  // 80ef  LDA $b010
+b0
+10
+79  // 80f2  JSR puthex
+80
+fb
+90  // 80f5  LDA #' '
+00
+20
+71  // 80f8  JMP putc
+81
+2f
+a1  // 80fb  puthex: STAB $b012
+b0
+12
+2c  // 80fe  SRAB
+2c  // 80ff  SRAB
+2c  // 8100  SRAB
+2c  // 8101  SRAB
+d0  // 8102  LDB #$000f
+00
+0f
+52  // 8105  AND B,A
+20
+79  // 8107  JSR putnib
+81
+15
+81  // 810a  LDAB $b012
+b0
+12
+d0  // 810d  LDB #$000f
+00
+0f
+52  // 8110  AND B,A
+20
+71  // 8112  JMP putnib
+81
+15
+90  // 8115  putnib: LDA #hexd
+81
+1f
+50  // 8118  ADD B,A
+20
+85  // 811a  LDAB [B]
+20
+71  // 811c  JMP putc
+81
+2f
+30  // 811f  hexd:   .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46
+a1  // 812f  putc:   STAB pcsave         ; the low half of A is the character
+b0
+04
+81  // 8132  pc1:    LDAB CTRL
+f2
+00
+2d  // 8135  SLAB                ; bit 1 up to the sign, so a branch can test it
+2d  // 8136  SLAB
+2d  // 8137  SLAB
+2d  // 8138  SLAB
+2d  // 8139  SLAB
+2d  // 813a  SLAB
+17  // 813b  BP pc1
+f5
+81  // 813d  LDAB pcsave
+b0
+04
+a1  // 8140  STAB TXDATA
+f2
+01
+09  // 8143  RSR
+90  // 8144  crlf:   LDA #13
+00
+0d
+79  // 8147  JSR putc
+81
+2f
+90  // 814a  LDA #10
+00
+0a
+71  // 814d  JMP putc
+81
+2f

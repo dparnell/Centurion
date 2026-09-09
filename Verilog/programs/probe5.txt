@@ -1,0 +1,189 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #5
+00
+05
+d0  // 800d  LDB #3
+00
+03
+59  // 8010  SAB
+11  // 8011  BL l1
+03
+71
+80
+1f
+90  // 8016  LDA #'-'
+00
+2d
+79  // 8019  JSR putc
+80
+a7
+71  // 801c  JMP n1
+80
+25
+90  // 801f  l1:     LDA #'L'
+00
+4c
+79  // 8022  JSR putc
+80
+a7
+90  // 8025  n1:     LDA #5
+00
+05
+d0  // 8028  LDB #3
+00
+03
+59  // 802b  SAB
+19  // 802c  BGZ g1
+03
+71
+80
+3a
+90  // 8031  LDA #'-'
+00
+2d
+79  // 8034  JSR putc
+80
+a7
+71  // 8037  JMP t2
+80
+40
+90  // 803a  g1:     LDA #'G'
+00
+47
+79  // 803d  JSR putc
+80
+a7
+90  // 8040  t2:     LDA #' '
+00
+20
+79  // 8043  JSR putc
+80
+a7
+90  // 8046  LDA #3
+00
+03
+d0  // 8049  LDB #5
+00
+05
+59  // 804c  SAB
+11  // 804d  BL l2
+03
+71
+80
+5b
+90  // 8052  LDA #'-'
+00
+2d
+79  // 8055  JSR putc
+80
+a7
+71  // 8058  JMP n2
+80
+61
+90  // 805b  l2:     LDA #'L'
+00
+4c
+79  // 805e  JSR putc
+80
+a7
+90  // 8061  n2:     LDA #3
+00
+03
+d0  // 8064  LDB #5
+00
+05
+59  // 8067  SAB
+19  // 8068  BGZ g2
+03
+71
+80
+76
+90  // 806d  LDA #'-'
+00
+2d
+79  // 8070  JSR putc
+80
+a7
+71  // 8073  JMP t3
+80
+7c
+90  // 8076  g2:     LDA #'G'
+00
+47
+79  // 8079  JSR putc
+80
+a7
+90  // 807c  t3:     LDA #' '
+00
+20
+79  // 807f  JSR putc
+80
+a7
+90  // 8082  LDA #5
+00
+05
+d0  // 8085  LDB #3
+00
+03
+51  // 8088  SUB B,A
+20
+17  // 808a  BM m3
+03
+71
+80
+98
+90  // 808f  LDA #'-'
+00
+2d
+79  // 8092  JSR putc
+80
+a7
+71  // 8095  JMP done
+80
+9e
+90  // 8098  m3:     LDA #'M'
+00
+4d
+79  // 809b  JSR putc
+80
+a7
+90  // 809e  done:   LDA #$0001
+00
+01
+b1  // 80a1  STA $f900
+f9
+00
+71  // 80a4  halt:   JMP halt
+80
+a4
+a1  // 80a7  putc:   STAB pcsave
+b0
+04
+81  // 80aa  pc1:    LDAB CTRL
+f2
+00
+2d  // 80ad  SLAB
+2d  // 80ae  SLAB
+2d  // 80af  SLAB
+2d  // 80b0  SLAB
+2d  // 80b1  SLAB
+2d  // 80b2  SLAB
+17  // 80b3  BP pc1
+f5
+81  // 80b5  LDAB pcsave
+b0
+04
+a1  // 80b8  STAB TXDATA
+f2
+01
+09  // 80bb  RSR

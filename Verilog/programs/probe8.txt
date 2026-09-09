@@ -1,0 +1,253 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #10
+00
+0a
+b1  // 800d  STA BASE
+b1
+00
+90  // 8010  LDA #0
+00
+00
+79  // 8013  JSR prnum
+80
+49
+90  // 8016  LDA #7
+00
+07
+79  // 8019  JSR prnum
+80
+49
+90  // 801c  LDA #12345
+30
+39
+79  // 801f  JSR prnum
+80
+49
+90  // 8022  LDA #65535
+ff
+ff
+79  // 8025  JSR prnum
+80
+49
+79  // 8028  JSR crlf
+80
+cb
+90  // 802b  LDA #16
+00
+10
+b1  // 802e  STA BASE
+b1
+00
+90  // 8031  LDA #$beef
+be
+ef
+79  // 8034  JSR prnum
+80
+49
+90  // 8037  LDA #$0010
+00
+10
+79  // 803a  JSR prnum
+80
+49
+79  // 803d  JSR crlf
+80
+cb
+90  // 8040  LDA #$0001
+00
+01
+b1  // 8043  STA $f900
+f9
+00
+71  // 8046  halt:   JMP halt
+80
+46
+b1  // 8049  prnum:  STA nval
+b1
+02
+90  // 804c  LDA #dbuf+8
+b1
+28
+b1  // 804f  STA dptr
+b1
+06
+79  // 8052  pn1:    JSR divmod          ; nval = nval / BASE, ndig = the remainder
+80
+9e
+90  // 8055  LDA #digits         ; turn the remainder into a character
+80
+ec
+d1  // 8058  LDB ndig
+b1
+04
+58  // 805b  AAB
+85  // 805c  LDAB [B]
+20
+a1  // 805e  STAB tmp
+b1
+08
+91  // 8061  LDA dptr            ; and put it in front of the ones so far
+b1
+06
+39  // 8064  DCA
+b1  // 8065  STA dptr
+b1
+06
+5c  // 8068  XAY
+81  // 8069  LDAB tmp
+b1
+08
+a5  // 806c  STAB [Y]
+60
+91  // 806e  LDA nval
+b1
+02
+d0  // 8071  LDB #0
+00
+00
+58  // 8074  AAB             ; ask the ALU whether anything is left
+15  // 8075  BNZ pn1
+db
+91  // 8077  pn2:    LDA dptr            ; print from the front of what was built
+b1
+06
+d0  // 807a  LDB #dbuf+8
+b1
+28
+51  // 807d  SUB B,A
+20
+15  // 807f  BZ pn3
+03
+71
+80
+98
+91  // 8084  LDA dptr
+b1
+06
+5c  // 8087  XAY
+3a  // 8088  CLA                 ; a byte load leaves the high half alone
+85  // 8089  LDAB [Y]
+60
+79  // 808b  JSR putc
+80
+d7
+91  // 808e  LDA dptr
+b1
+06
+38  // 8091  INA
+b1  // 8092  STA dptr
+b1
+06
+71  // 8095  JMP pn2
+80
+77
+90  // 8098  pn3:    LDA #' '
+00
+20
+71  // 809b  JMP putc
+80
+d7
+90  // 809e  divmod: LDA #0
+00
+00
+b1  // 80a1  STA nq
+b1
+0a
+91  // 80a4  dm1:    LDA BASE
+b1
+00
+d1  // 80a7  LDB nval
+b1
+02
+51  // 80aa  SUB B,A             ; what is left after taking one more base away
+20
+17  // 80ac  BM dm2
+03
+71
+80
+be
+f1  // 80b1  STB nval
+b1
+02
+91  // 80b4  LDA nq
+b1
+0a
+38  // 80b7  INA
+b1  // 80b8  STA nq
+b1
+0a
+71  // 80bb  JMP dm1
+80
+a4
+91  // 80be  dm2:    LDA nval
+b1
+02
+b1  // 80c1  STA ndig            ; what is left over is the digit
+b1
+04
+91  // 80c4  LDA nq
+b1
+0a
+b1  // 80c7  STA nval
+b1
+02
+09  // 80ca  RSR
+90  // 80cb  crlf:   LDA #13
+00
+0d
+79  // 80ce  JSR putc
+80
+d7
+90  // 80d1  LDA #10
+00
+0a
+71  // 80d4  JMP putc
+80
+d7
+a1  // 80d7  putc:   STAB pcsave
+b1
+0c
+81  // 80da  pc1:    LDAB CTRL
+f2
+00
+2d  // 80dd  SLAB
+2d  // 80de  SLAB
+2d  // 80df  SLAB
+2d  // 80e0  SLAB
+2d  // 80e1  SLAB
+2d  // 80e2  SLAB
+17  // 80e3  BP pc1
+f5
+81  // 80e5  LDAB pcsave
+b1
+0c
+a1  // 80e8  STAB TXDATA
+f2
+01
+09  // 80eb  RSR
+30  // 80ec  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46

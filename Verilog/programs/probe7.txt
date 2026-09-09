@@ -1,0 +1,114 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #10             ; 7 - 10, negative: expect M
+00
+0a
+d0  // 800d  LDB #7
+00
+07
+79  // 8010  JSR t
+80
+49
+90  // 8013  LDA #10             ; 56 - 10, positive: expect .
+00
+0a
+d0  // 8016  LDB #56
+00
+38
+79  // 8019  JSR t
+80
+49
+90  // 801c  LDA #10             ; 6 - 10, negative: expect M
+00
+0a
+d0  // 801f  LDB #6
+00
+06
+79  // 8022  JSR t
+80
+49
+90  // 8025  LDA #10             ; 10 - 10, zero: expect .
+00
+0a
+d0  // 8028  LDB #10
+00
+0a
+79  // 802b  JSR t
+80
+49
+90  // 802e  LDA #10000          ; 256 - 10000, negative: expect M
+27
+10
+d0  // 8031  LDB #256
+01
+00
+79  // 8034  JSR t
+80
+49
+90  // 8037  LDA #100            ; 256 - 100, positive: expect .
+00
+64
+d0  // 803a  LDB #256
+01
+00
+79  // 803d  JSR t
+80
+49
+90  // 8040  LDA #$0001
+00
+01
+b1  // 8043  STA $f900
+f9
+00
+71  // 8046  halt:   JMP halt
+80
+46
+51  // 8049  t:      SUB B,A
+20
+17  // 804b  BM tm
+03
+71
+80
+56
+90  // 8050  LDA #'.'
+00
+2e
+71  // 8053  JMP putc
+80
+5c
+90  // 8056  tm:     LDA #'M'
+00
+4d
+71  // 8059  JMP putc
+80
+5c
+a1  // 805c  putc:   STAB pcsave
+b0
+04
+81  // 805f  pc1:    LDAB CTRL
+f2
+00
+2d  // 8062  SLAB
+2d  // 8063  SLAB
+2d  // 8064  SLAB
+2d  // 8065  SLAB
+2d  // 8066  SLAB
+2d  // 8067  SLAB
+17  // 8068  BP pc1
+f5
+81  // 806a  LDAB pcsave
+b0
+04
+a1  // 806d  STAB TXDATA
+f2
+01
+09  // 8070  RSR

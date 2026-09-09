@@ -1,0 +1,452 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #10
+00
+0a
+b1  // 800d  STA BASE
+b0
+14
+90  // 8010  LDA #0
+00
+00
+79  // 8013  JSR prnum
+80
+43
+90  // 8016  LDA #7
+00
+07
+79  // 8019  JSR prnum
+80
+43
+90  // 801c  LDA #250
+00
+fa
+79  // 801f  JSR prnum
+80
+43
+90  // 8022  LDA #12345
+30
+39
+79  // 8025  JSR prnum
+80
+43
+79  // 8028  JSR crlf
+81
+b7
+90  // 802b  LDA #16
+00
+10
+b1  // 802e  STA BASE
+b0
+14
+90  // 8031  LDA #$beef
+be
+ef
+79  // 8034  JSR prnum
+80
+43
+79  // 8037  JSR crlf
+81
+b7
+90  // 803a  LDA #$0001
+00
+01
+b1  // 803d  STA $f900
+f9
+00
+71  // 8040  halt:   JMP halt
+80
+40
+b1  // 8043  prnum:  STA nval
+b0
+8e
+90  // 8046  LDA #0              ; the sign has to come from an arithmetic operation,
+00
+00
+d1  // 8049  LDB nval            ; and SUB B,A computes B - A, so the value goes in B
+b0
+8e
+51  // 804c  SUB B,A
+20
+16  // 804e  BM prneg
+03
+71  // 8050  JMP prpos
+80
+6b
+91  // 8053  prneg:  LDA BASE            ; only base ten has negative numbers here
+b0
+14
+d0  // 8056  LDB #10
+00
+0a
+51  // 8059  SUB B,A
+20
+15  // 805b  BNZ prpos
+0e
+90  // 805d  LDA #'-'
+00
+2d
+79  // 8060  JSR putc
+81
+a2
+91  // 8063  LDA nval
+b0
+8e
+3b  // 8066  IVA
+38  // 8067  INA
+b1  // 8068  STA nval
+b0
+8e
+90  // 806b  prpos:  LDA #1              ; powers[0] = 1
+00
+01
+b1  // 806e  STA pow
+b0
+b4
+90  // 8071  LDA #0
+00
+00
+b1  // 8074  STA npow
+b0
+b2
+91  // 8077  pw1:    LDA npow            ; the power just built
+b0
+b2
+3d  // 807a  SLA
+d0  // 807b  LDB #pow
+b0
+b4
+58  // 807e  AAB
+f1  // 807f  STB scr1
+b0
+00
+91  // 8082  LDA scr1
+b0
+00
+5c  // 8085  XAY
+95  // 8086  LDA [Y]
+60
+b1  // 8088  STA pcur
+b0
+ac
+90  // 808b  LDA #0              ; multiply it by the base
+00
+00
+b1  // 808e  STA pnext
+b0
+ae
+91  // 8091  LDA BASE
+b0
+14
+b1  // 8094  STA pcount
+b0
+b0
+91  // 8097  pw2:    LDA pcur
+b0
+ac
+d1  // 809a  LDB pnext
+b0
+ae
+58  // 809d  AAB
+f1  // 809e  STB pnext
+b0
+ae
+91  // 80a1  LDA pcount
+b0
+b0
+39  // 80a4  DCA
+b1  // 80a5  STA pcount
+b0
+b0
+d0  // 80a8  LDB #0
+00
+00
+51  // 80ab  SUB B,A
+20
+15  // 80ad  BNZ pw2
+e8
+91  // 80af  LDA pnext           ; did it wrap round?
+b0
+ae
+d1  // 80b2  LDB pcur
+b0
+ac
+51  // 80b5  SUB B,A
+20
+16  // 80b7  BM pw3
+03
+71  // 80b9  JMP pwdone
+80
+e4
+91  // 80bc  pw3:    LDA nval            ; is it already past the value?
+b0
+8e
+d1  // 80bf  LDB pnext
+b0
+ae
+51  // 80c2  SUB B,A
+20
+16  // 80c4  BM pw4
+03
+71  // 80c6  JMP pwdone
+80
+e4
+91  // 80c9  pw4:    LDA npow
+b0
+b2
+38  // 80cc  INA
+b1  // 80cd  STA npow
+b0
+b2
+3d  // 80d0  SLA
+d0  // 80d1  LDB #pow
+b0
+b4
+58  // 80d4  AAB
+f1  // 80d5  STB scr1
+b0
+00
+91  // 80d8  LDA scr1
+b0
+00
+5c  // 80db  XAY
+91  // 80dc  LDA pnext
+b0
+ae
+b5  // 80df  STA [Y]
+60
+71  // 80e1  JMP pw1
+80
+77
+91  // 80e4  pwdone: LDA npow            ; now take each power out in turn
+b0
+b2
+3d  // 80e7  SLA
+d0  // 80e8  LDB #pow
+b0
+b4
+58  // 80eb  AAB
+f1  // 80ec  STB scr1
+b0
+00
+91  // 80ef  LDA scr1
+b0
+00
+5c  // 80f2  XAY
+95  // 80f3  LDA [Y]
+60
+b1  // 80f5  STA pcur
+b0
+ac
+90  // 80f8  LDA #0
+00
+00
+b1  // 80fb  STA nq
+b0
+94
+91  // 80fe  LDA pcur            ; show what is being taken out, and from what
+b0
+ac
+79  // 8101  JSR pdbg
+81
+57
+91  // 8104  LDA nval
+b0
+8e
+79  // 8107  JSR pdbg
+81
+57
+91  // 810a  pd1:    LDA pcur
+b0
+ac
+d1  // 810d  LDB nval
+b0
+8e
+51  // 8110  SUB B,A
+20
+16  // 8112  BM pd2
+0d
+f1  // 8114  STB nval
+b0
+8e
+91  // 8117  LDA nq
+b0
+94
+38  // 811a  INA
+b1  // 811b  STA nq
+b0
+94
+71  // 811e  JMP pd1
+81
+0a
+90  // 8121  pd2:    LDA #digits
+81
+47
+d1  // 8124  LDB nq
+b0
+94
+58  // 8127  AAB
+85  // 8128  LDAB [B]
+20
+79  // 812a  JSR putc
+81
+a2
+91  // 812d  LDA npow
+b0
+b2
+d0  // 8130  LDB #0
+00
+00
+51  // 8133  SUB B,A
+20
+14  // 8135  BZ pd3
+0a
+91  // 8137  LDA npow
+b0
+b2
+39  // 813a  DCA
+b1  // 813b  STA npow
+b0
+b2
+71  // 813e  JMP pwdone
+80
+e4
+90  // 8141  pd3:    LDA #' '
+00
+20
+71  // 8144  JMP putc
+81
+a2
+30  // 8147  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46
+b1  // 8157  pdbg:   STA $b120
+b1
+20
+3c  // 815a  SRA
+3c  // 815b  SRA
+3c  // 815c  SRA
+3c  // 815d  SRA
+3c  // 815e  SRA
+3c  // 815f  SRA
+3c  // 8160  SRA
+3c  // 8161  SRA
+79  // 8162  JSR pdb2
+81
+71
+91  // 8165  LDA $b120
+b1
+20
+79  // 8168  JSR pdb2
+81
+71
+90  // 816b  LDA #'/'
+00
+2f
+71  // 816e  JMP putc
+81
+a2
+a1  // 8171  pdb2:   STAB $b122
+b1
+22
+2c  // 8174  SRAB
+2c  // 8175  SRAB
+2c  // 8176  SRAB
+2c  // 8177  SRAB
+d0  // 8178  LDB #$000f
+00
+0f
+5a  // 817b  NAB
+79  // 817c  JSR pdb3
+81
+89
+81  // 817f  LDAB $b122
+b1
+22
+d0  // 8182  LDB #$000f
+00
+0f
+5a  // 8185  NAB
+71  // 8186  JMP pdb3
+81
+89
+90  // 8189  pdb3:   LDA #dg2
+81
+92
+58  // 818c  AAB
+85  // 818d  LDAB [B]
+20
+71  // 818f  JMP putc
+81
+a2
+30  // 8192  dg2:    .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46
+a1  // 81a2  putc:   STAB pcsave         ; the low half of A is the character
+b0
+04
+81  // 81a5  pc1:    LDAB CTRL
+f2
+00
+2d  // 81a8  SLAB                ; bit 1 up to the sign, so a branch can test it
+2d  // 81a9  SLAB
+2d  // 81aa  SLAB
+2d  // 81ab  SLAB
+2d  // 81ac  SLAB
+2d  // 81ad  SLAB
+17  // 81ae  BP pc1
+f5
+81  // 81b0  LDAB pcsave
+b0
+04
+a1  // 81b3  STAB TXDATA
+f2
+01
+09  // 81b6  RSR
+90  // 81b7  crlf:   LDA #13
+00
+0d
+79  // 81ba  JSR putc
+81
+a2
+90  // 81bd  LDA #10
+00
+0a
+71  // 81c0  JMP putc
+81
+a2

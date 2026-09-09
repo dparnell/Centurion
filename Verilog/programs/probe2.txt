@@ -1,0 +1,174 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #$1111          ; put a known value in each register
+11
+11
+5c  // 800d  XAY
+90  // 800e  LDA #$2222
+22
+22
+5b  // 8011  XAX
+90  // 8012  LDA #$3333
+33
+33
+5e  // 8015  XAZ
+55  // 8016  XFR A,Y             ; if this is A = Y, it prints 1111
+06
+79  // 8018  JSR putax
+80
+56
+55  // 801b  XFR A,X             ; 2222 if so
+04
+79  // 801d  JSR putax
+80
+56
+55  // 8020  XFR A,Z             ; 3333 if so
+08
+79  // 8022  JSR putax
+80
+56
+79  // 8025  JSR crlf
+80
+91
+90  // 8028  LDA #$4444          ; and the other direction: B = A?
+44
+44
+55  // 802b  XFR B,A
+20
+90  // 802d  LDA #$0000
+00
+00
+55  // 8030  XFR A,B
+02
+79  // 8032  JSR putax           ; 4444 if XFR moves dst from src
+80
+56
+79  // 8035  JSR crlf
+80
+91
+90  // 8038  LDA #$0001
+00
+01
+b1  // 803b  STA $f900
+f9
+00
+71  // 803e  halt:   JMP halt
+80
+3e
+a1  // 8041  putc:   STAB pcsave
+b0
+04
+81  // 8044  pc1:    LDAB CTRL
+f2
+00
+2d  // 8047  SLAB
+2d  // 8048  SLAB
+2d  // 8049  SLAB
+2d  // 804a  SLAB
+2d  // 804b  SLAB
+2d  // 804c  SLAB
+17  // 804d  BP pc1
+f5
+81  // 804f  LDAB pcsave
+b0
+04
+a1  // 8052  STAB TXDATA
+f2
+01
+09  // 8055  RSR
+b1  // 8056  putax:  STA scr2
+b0
+02
+3c  // 8059  SRA
+3c  // 805a  SRA
+3c  // 805b  SRA
+3c  // 805c  SRA
+3c  // 805d  SRA
+3c  // 805e  SRA
+3c  // 805f  SRA
+3c  // 8060  SRA
+79  // 8061  JSR puthex
+80
+70
+91  // 8064  LDA scr2
+b0
+02
+79  // 8067  JSR puthex
+80
+70
+90  // 806a  LDA #' '
+00
+20
+71  // 806d  JMP putc
+80
+41
+a1  // 8070  puthex: STAB scr1
+b0
+00
+2c  // 8073  SRAB
+2c  // 8074  SRAB
+2c  // 8075  SRAB
+2c  // 8076  SRAB
+d0  // 8077  LDB #$000f
+00
+0f
+5a  // 807a  NAB
+79  // 807b  JSR putnib
+80
+88
+81  // 807e  LDAB scr1
+b0
+00
+d0  // 8081  LDB #$000f
+00
+0f
+5a  // 8084  NAB
+71  // 8085  JMP putnib
+80
+88
+90  // 8088  putnib: LDA #digits
+80
+9d
+58  // 808b  AAB
+85  // 808c  LDAB [B]
+20
+71  // 808e  JMP putc
+80
+41
+90  // 8091  crlf:   LDA #13
+00
+0d
+79  // 8094  JSR putc
+80
+41
+90  // 8097  LDA #10
+00
+0a
+71  // 809a  JMP putc
+80
+41
+30  // 809d  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46

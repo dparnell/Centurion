@@ -1,0 +1,176 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+2e  // 800a  PAGE $1c,$f8,MAPIMG     ; capture the running map first
+1c
+f8
+b0
+60
+90  // 800f  LDA #$1111
+11
+11
+5c  // 8012  XAY
+90  // 8013  LDA #$2222
+22
+22
+5b  // 8016  XAX
+90  // 8017  LDA #$3333
+33
+33
+5e  // 801a  XAZ
+90  // 801b  LDA #$4444
+44
+44
+2e  // 801e  PAGE $0c,$f8,MAPIMG
+0c
+f8
+b0
+60
+79  // 8023  JSR putax               ; A, if PAGE leaves it alone
+80
+43
+55  // 8026  XFR A,Y
+06
+79  // 8028  JSR putax
+80
+43
+69  // 802b  STX scr2
+b0
+02
+91  // 802e  LDA scr2
+b0
+02
+79  // 8031  JSR putax
+80
+43
+79  // 8034  JSR crlf
+80
+93
+79  // 8037  p2:     JSR crlf
+80
+93
+90  // 803a  LDA #$0001
+00
+01
+b1  // 803d  STA $f900
+f9
+00
+71  // 8040  halt:   JMP halt
+80
+40
+b1  // 8043  putax:  STA scr2
+b0
+02
+3c  // 8046  SRA
+3c  // 8047  SRA
+3c  // 8048  SRA
+3c  // 8049  SRA
+3c  // 804a  SRA
+3c  // 804b  SRA
+3c  // 804c  SRA
+3c  // 804d  SRA
+79  // 804e  JSR puthex
+80
+72
+91  // 8051  LDA scr2
+b0
+02
+79  // 8054  JSR puthex
+80
+72
+90  // 8057  LDA #' '
+00
+20
+71  // 805a  JMP putc
+80
+5d
+a1  // 805d  putc:   STAB pcsave
+b0
+04
+81  // 8060  pc1:    LDAB CTRL
+f2
+00
+2d  // 8063  SLAB
+2d  // 8064  SLAB
+2d  // 8065  SLAB
+2d  // 8066  SLAB
+2d  // 8067  SLAB
+2d  // 8068  SLAB
+17  // 8069  BP pc1
+f5
+81  // 806b  LDAB pcsave
+b0
+04
+a1  // 806e  STAB TXDATA
+f2
+01
+09  // 8071  RSR
+a1  // 8072  puthex: STAB scr1
+b0
+00
+2c  // 8075  SRAB
+2c  // 8076  SRAB
+2c  // 8077  SRAB
+2c  // 8078  SRAB
+d0  // 8079  LDB #$000f
+00
+0f
+5a  // 807c  NAB
+79  // 807d  JSR putnib
+80
+8a
+81  // 8080  LDAB scr1
+b0
+00
+d0  // 8083  LDB #$000f
+00
+0f
+5a  // 8086  NAB
+71  // 8087  JMP putnib
+80
+8a
+90  // 808a  putnib: LDA #digits
+80
+9f
+58  // 808d  AAB
+85  // 808e  LDAB [B]
+20
+71  // 8090  JMP putc
+80
+5d
+90  // 8093  crlf:   LDA #13
+00
+0d
+79  // 8096  JSR putc
+80
+5d
+90  // 8099  LDA #10
+00
+0a
+71  // 809c  JMP putc
+80
+5d
+30  // 809f  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46

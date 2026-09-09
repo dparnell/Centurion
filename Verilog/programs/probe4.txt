@@ -1,0 +1,122 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #5              ; B = 3 - 5, which is negative
+00
+05
+d0  // 800d  LDB #3
+00
+03
+59  // 8010  SAB
+17  // 8011  BM ok1
+03
+71
+80
+1f
+90  // 8016  LDA #'n'
+00
+6e
+79  // 8019  JSR putc
+80
+64
+71  // 801c  JMP t2
+80
+25
+90  // 801f  ok1:    LDA #'y'
+00
+79
+79  // 8022  JSR putc
+80
+64
+90  // 8025  t2:     LDA #3              ; B = 5 - 3, which is positive
+00
+03
+d0  // 8028  LDB #5
+00
+05
+59  // 802b  SAB
+17  // 802c  BM bad2
+03
+71
+80
+3a
+90  // 8031  LDA #'y'
+00
+79
+79  // 8034  JSR putc
+80
+64
+71  // 8037  JMP t3
+80
+40
+90  // 803a  bad2:   LDA #'n'
+00
+6e
+79  // 803d  JSR putc
+80
+64
+90  // 8040  t3:     LDA #5              ; B = 5 - 5, which is zero
+00
+05
+d0  // 8043  LDB #5
+00
+05
+59  // 8046  SAB
+15  // 8047  BZ ok3
+03
+71
+80
+55
+90  // 804c  LDA #'n'
+00
+6e
+79  // 804f  JSR putc
+80
+64
+71  // 8052  JMP t4
+80
+5b
+90  // 8055  ok3:    LDA #'y'
+00
+79
+79  // 8058  JSR putc
+80
+64
+90  // 805b  t4:     LDA #$0001
+00
+01
+b1  // 805e  STA $f900
+f9
+00
+71  // 8061  halt:   JMP halt
+80
+61
+a1  // 8064  putc:   STAB pcsave
+b0
+04
+81  // 8067  pc1:    LDAB CTRL
+f2
+00
+2d  // 806a  SLAB
+2d  // 806b  SLAB
+2d  // 806c  SLAB
+2d  // 806d  SLAB
+2d  // 806e  SLAB
+2d  // 806f  SLAB
+17  // 8070  BP pc1
+f5
+81  // 8072  LDAB pcsave
+b0
+04
+a1  // 8075  STAB TXDATA
+f2
+01
+09  // 8078  RSR
