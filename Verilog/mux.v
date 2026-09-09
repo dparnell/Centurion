@@ -19,6 +19,13 @@ module MUX(
     input wire selected,
     input wire [4:0] address, 
     input wire write_en, 
+    // The cycle in which the core actually latches the bus. This design has no
+    // read strobe of its own - the address register simply stays where the
+    // microcode last left it - so without this a read of the data register is
+    // taken to be happening on every enabled cycle that the address happens to
+    // point here, and a byte arriving in that window is cleared before anyone
+    // has seen it. That is characters going missing from the terminal.
+    input wire read_strobe,
     input wire [7:0] data_in,
     // M13 bit 7 in the core: the CPU telling the board its interrupt has been taken
     input wire interrupt_ack,
@@ -55,7 +62,8 @@ reg tx_taken = 0;
 wire tx_idle;
 
 // A read of the data register consumes the received byte
-wire read_data_register = cpu_enable & selected & ~write_en & (address == 1);
+wire read_data_register = cpu_enable & selected & ~write_en & read_strobe
+                          & (address == 1);
 
 // CPU interface
 always @(posedge cpu_clock) begin

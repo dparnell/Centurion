@@ -243,6 +243,7 @@ class Assembler:
         # perfectly ordinary loop into one that never ended, because BM and BP
         # are not complements on this machine.
         self.have_labels = False
+        self.seen_labels = {}
         self.labels = {}
         self.out = bytearray()
         self.org = 0
@@ -473,6 +474,7 @@ class Assembler:
         return self.pass_over(text, False)
 
     def pass_over(self, text, size_only):
+        self.seen_labels = {}
         for size_only in (size_only,):
             here = self.org
             self.out = bytearray()
@@ -504,6 +506,15 @@ class Assembler:
                             self.labels[label] = here
                         continue
                     if label:
+                        # A label defined twice used to take the later value
+                        # silently, so a branch to the earlier one landed in
+                        # the middle of unrelated code. That cost an afternoon.
+                        if (not size_only and label in self.seen_labels
+                                and self.seen_labels[label] != lineno):
+                            raise AsmError(
+                                "label %s is defined twice, on lines %d and %d"
+                                % (label, self.seen_labels[label], lineno))
+                        self.seen_labels[label] = lineno
                         self.labels[label] = here
                     data = self.line_bytes(label, opc, arg, here, size_only,
                                            lineno)

@@ -338,7 +338,14 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     DiagBoard diag(clock, cpu_en, diag_select, addressBus[4:0], writeEnBus, data_c2r,
                    DIAG_DIP_SWITCHES, diag_data, diag_hex, diag_points, diag_blank);
 
-    MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select, { 1'b0, addressBus[3:0] }, writeEnBus, data_c2r, interrupt_ack, mux_data, int_reqn, irq_number, dbg_byte_ready, dbg_rx_byte);
+    // e7 == 3 is the only cycle in which CPU6 latches the bus, so it is this
+    // design's read strobe. Peripherals whose read has a side effect need it.
+    wire bus_read_strobe = (dbg_e7 == 2'd3);
+
+    MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select,
+             { 1'b0, addressBus[3:0] }, writeEnBus, bus_read_strobe, data_c2r,
+             interrupt_ack, mux_data, int_reqn, irq_number,
+             dbg_byte_ready, dbg_rx_byte);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr, SENSE_SWITCHES,

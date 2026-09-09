@@ -24,7 +24,7 @@
 ; subtracts until the result goes negative.
 ;
 ; NEXT is two instructions:  LDX [B++]  fetches the next code field address,
-; JMP [[Y]] jumps to the machine code whose address that field holds. The extra
+; JMP [[X]] jumps to the machine code whose address that field holds. The extra
 ; step is what lets a dictionary entry be code, a constant, a variable or a
 ; colon definition without the interpreter knowing which.
 ; ---------------------------------------------------------------------------
@@ -107,18 +107,11 @@ run:    JSR parseword
         LDAB WORDBUF
         BNZ rgot
         JMP endline         ; nothing left on this line
-rgot:   LDA #'['            ; trace: the word just parsed
-        JSR putc
-        JSR pr_word
-        LDA #']'
-        JSR putc
-        JSR find
+rgot:   JSR find
         LDA scr2            ; find leaves the code field address here, or zero
         BNZ rfound
         JMP tonumber
-rfound: LDA #'F'
-        JSR putc
-        LDA STATE
+rfound: LDA STATE
         LDB #0
         SUB B,A
         BZ rexec            ; interpreting: just run it
@@ -133,12 +126,8 @@ rfound: LDA #'F'
         LDA scr2            ; no, so lay its code field address down
         JSR comma
         JMP run
-rexec:  LDA #'X'
-        JSR putc
-        LDA scr2
+rexec:  LDA scr2
         JSR execute
-        LDA #'x'
-        JSR putc
         JMP run
 
 endline: JSR pr_ok
@@ -149,9 +138,7 @@ tonumber:
         LDA scr2
         BNZ rnum
         JMP notfound
-rnum:   LDA #'N'
-        JSR putc
-        LDA STATE
+rnum:   LDA STATE
         LDB #0
         SUB B,A
         BZ rpush
@@ -175,7 +162,11 @@ notfound:
 ; The inner interpreter
 ; ---------------------------------------------------------------------------
 NEXT:   LDX [B++]
-        JMP [[Y]]
+        JMP [[X]]           ; X, not Y: this is the word pointer NEXT just
+                            ; loaded. A bulk rename of the helpers' indirection
+                            ; from X to Y caught this line too, and the inner
+                            ; interpreter then jumped through whatever the last
+                            ; helper had left behind.
 
 DOCOL:  STB [--S]           ; push the caller's instruction pointer
         INX                 ; X points at the code field; the parameters
@@ -194,7 +185,7 @@ execute: STA EXECTH
         STX xsave2          ; and its return address, which NEXT destroys
         LDB #EXECTH
         JMP NEXT
-retmc:  LDB ipsave2
+retmc:          LDB ipsave2
         LDX xsave2
         RSR
 
@@ -534,9 +525,9 @@ nbad:   LDA #0
 ; whether it was one.
 digval: LDA #'0'
         LDB dch
-        SUB B,A             ; B = character - '0'
+        SUB B,A             ; the answer is in A, not in B
         BM dvbad
-        STB dval
+        STA dval
         LDA #9
         LDB dval
         SUB B,A
@@ -546,7 +537,7 @@ digval: LDA #'0'
         LDB dch
         SUB B,A
         BM dvbad
-        STB dval
+        STA dval
         LDA dval
         LDB #10
         AAB
@@ -597,7 +588,7 @@ prpos:  LDA #1              ; powers[0] = 1
         STA pow
         LDA #0
         STA npow
-pw1:    LDA npow            ; the power just built
+po1:    LDA npow            ; the power just built
         SLA
         LDB #pow
         AAB
@@ -610,7 +601,7 @@ pw1:    LDA npow            ; the power just built
         STA pnext
         LDA BASE
         STA pcount
-pw2:    LDA pcur
+po2:    LDA pcur
         LDB pnext
         AAB
         STB pnext
@@ -619,18 +610,18 @@ pw2:    LDA pcur
         STA pcount
         LDB #0
         SUB B,A
-        BNZ pw2
+        BNZ po2
         LDA pnext           ; did it wrap round?
         LDB pcur
         SUB B,A
-        BM pw3
-        JMP pwdone
-pw3:    LDA nval            ; is it already past the value?
+        BM po3
+        JMP podone
+po3:    LDA nval            ; is it already past the value?
         LDB pnext
         SUB B,A
-        BM pw4
-        JMP pwdone
-pw4:    LDA npow
+        BM po4
+        JMP podone
+po4:    LDA npow
         INA
         STA npow
         SLA
@@ -641,8 +632,8 @@ pw4:    LDA npow
         XAY
         LDA pnext
         STA [Y]
-        JMP pw1
-pwdone: LDA npow            ; now take each power out in turn
+        JMP po1
+podone: LDA npow            ; now take each power out in turn
         SLA
         LDB #pow
         AAB
@@ -674,7 +665,7 @@ pd2:    LDA #digits
         LDA npow
         DCA
         STA npow
-        JMP pwdone
+        JMP podone
 pd3:    LDA #' '
         JMP putc
 
@@ -839,6 +830,7 @@ newslot .equ VARS+$d2
 dtmp1   .equ VARS+$d4
 dtmp2   .equ VARS+$d6
 rimm    .equ VARS+$d8
+ipsave3 .equ VARS+$da       ; where a primitive parks the instruction pointer
 
 
 ; ---- the runtime halves of the control structures -------------------------
@@ -847,16 +839,20 @@ rimm    .equ VARS+$d8
 
 r_branch: .word rb_code     ; ( -- ) the cell after it is where to go
 rb_code: LDA [B]
+        STB ipsave3         ; B is the instruction pointer
         STA ipsave
         LDB ipsave
+        LDB ipsave3
         JMP NEXT
 
 r_qbranch: .word rq_code    ; ( flag -- ) go there when the flag is zero
 rq_code: LDA [Z++]
+        STB ipsave3         ; B is the instruction pointer
         LDB #0
         SUB B,A
         BZ rq_take
         LDA [B++]           ; not taken: step over the target
+        LDB ipsave3
         JMP NEXT
 rq_take: LDA [B]
         STA ipsave
@@ -874,20 +870,22 @@ rd_code: LDA [Z++]          ; return stack, which is where I reads it from
 
 r_loop: .word rl_code       ; ( -- ) step the index and go round again
 rl_code: LDA [S++]
+        STB ipsave3         ; B is the instruction pointer
         INA
         STA dtmp1
         LDA [S]             ; the limit, without taking it off
         LDB dtmp1
         SUB B,A             ; A = index - limit
-        BM rl_again
-        JMP rl_done
-rl_again: LDA dtmp1
+        BM lp_again
+        JMP lp_done
+lp_again: LDA dtmp1
         STA [--S]
         LDA [B]
         STA ipsave
         LDB ipsave
+        LDB ipsave3
         JMP NEXT
-rl_done: LDA [S++]          ; drop the limit
+lp_done: LDA [S++]          ; drop the limit
         LDA [B++]           ; and step over the target
         JMP NEXT
 
@@ -936,30 +934,36 @@ w_over: .code
         .byte 1
         .ascii "+"
 w_plus: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         LDB [Z++]
         AAB
         STB [--Z]
+        LDB ipsave3
         JMP NEXT
 
         .word w_plus-4
         .byte 1
         .ascii "-"
 w_minus: .code
-        LDA [Z++]
+        STB ipsave3         ; B is the instruction pointer
+        LDA [Z++]           ; ( a b -- a-b ) with b on top
         LDB [Z++]
-        SUB B,A
-        STB [--Z]
+        SUB B,A             ; the answer is in A
+        STA [--Z]
+        LDB ipsave3
         JMP NEXT
 
         .word w_minus-4
         .byte 3
         .ascii "AND"
 w_and:  .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         LDB [Z++]
         NAB
         STB [--Z]
+        LDB ipsave3
         JMP NEXT
 
         .word w_and-6
@@ -1019,10 +1023,12 @@ w_emit: .code
         .byte 3
         .ascii "KEY"
 w_key:  .code
+        STB ipsave3         ; B is the instruction pointer
         JSR getc
         LDB #$7f
         NAB
         STB [--Z]
+        LDB ipsave3
         JMP NEXT
 
         .word w_key-6
@@ -1055,7 +1061,9 @@ cfa_lit .equ w_lit
         .byte 4
         .ascii "EXIT"
 w_exit: .code
+        STB ipsave3         ; B is the instruction pointer
         LDB [S++]
+        LDB ipsave3
         JMP NEXT
 
         .word w_exit-7
@@ -1191,6 +1199,7 @@ w_i:    .code
         .byte 1
         .ascii ":"
 w_colon: .code
+        STB ipsave3         ; B is the instruction pointer
         JSR parseword
         LDA HERE
         STA newent
@@ -1238,6 +1247,7 @@ cn2:    LDA #DOCOL          ; and the code field
         STA LATEST
         LDA #1
         STA STATE
+        LDB ipsave3
         JMP NEXT
 
         .word w_colon-4
@@ -1342,6 +1352,7 @@ w_loop: .code
         .byte 9
         .ascii "IMMEDIATE"
 w_imm:  .code
+        STB ipsave3         ; B is the instruction pointer
         LDA LATEST          ; set the immediate bit on the newest entry. There
         STA newslot         ; is no dependable OR, but the bit is clear until
         XAY                 ; now, so adding it is the same thing.
@@ -1354,6 +1365,7 @@ w_imm:  .code
         XAY
         LDAB cch+1
         STAB [Y+$02]
+        LDB ipsave3
         JMP NEXT
 
 ; A flag of all ones is true, and zero is false, as everywhere else.

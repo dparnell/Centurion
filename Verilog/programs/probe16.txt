@@ -1,0 +1,152 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$bfe0
+bf
+e0
+5f  // 8009  XAS
+90  // 800a  LDA #'?'
+00
+3f
+79  // 800d  JSR putc
+80
+72
+81  // 8010  w1:     LDAB CTRL           ; wait for a byte the long way round
+f2
+00
+d0  // 8013  LDB #$0001
+00
+01
+5a  // 8016  NAB
+f1  // 8017  STB scr1
+b0
+06
+91  // 801a  LDA scr1
+b0
+06
+d0  // 801d  LDB #0
+00
+00
+51  // 8020  SUB B,A
+20
+14  // 8022  BZ w1
+ec
+81  // 8024  LDAB CTRL           ; the status with a byte waiting
+f2
+00
+79  // 8027  JSR puthex
+80
+4b
+81  // 802a  LDAB TXDATA         ; read it
+f2
+01
+79  // 802d  JSR puthex
+80
+4b
+81  // 8030  LDAB CTRL           ; and the status straight afterwards
+f2
+00
+79  // 8033  JSR puthex
+80
+4b
+81  // 8036  LDAB TXDATA         ; read again: the same byte, or the next one?
+f2
+01
+79  // 8039  JSR puthex
+80
+4b
+81  // 803c  LDAB CTRL
+f2
+00
+79  // 803f  JSR puthex
+80
+4b
+90  // 8042  LDA #$0001
+00
+01
+b1  // 8045  STA $f900
+f9
+00
+71  // 8048  halt:   JMP halt
+80
+48
+a1  // 804b  puthex: STAB scr1+2
+b0
+08
+2c  // 804e  SRAB
+2c  // 804f  SRAB
+2c  // 8050  SRAB
+2c  // 8051  SRAB
+d0  // 8052  LDB #$000f
+00
+0f
+5a  // 8055  NAB
+79  // 8056  JSR putnib
+80
+69
+81  // 8059  LDAB scr1+2
+b0
+08
+d0  // 805c  LDB #$000f
+00
+0f
+5a  // 805f  NAB
+79  // 8060  JSR putnib
+80
+69
+90  // 8063  LDA #' '
+00
+20
+71  // 8066  JMP putc
+80
+72
+90  // 8069  putnib: LDA #digits
+80
+87
+58  // 806c  AAB
+85  // 806d  LDAB [B]
+20
+71  // 806f  JMP putc
+80
+72
+a1  // 8072  putc:   STAB pcsave
+b0
+04
+81  // 8075  pc1:    LDAB CTRL
+f2
+00
+2d  // 8078  SLAB
+2d  // 8079  SLAB
+2d  // 807a  SLAB
+2d  // 807b  SLAB
+2d  // 807c  SLAB
+2d  // 807d  SLAB
+17  // 807e  BP pc1
+f5
+81  // 8080  LDAB pcsave
+b0
+04
+a1  // 8083  STAB TXDATA
+f2
+01
+09  // 8086  RSR
+30  // 8087  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46

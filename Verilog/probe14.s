@@ -24,6 +24,24 @@ start:  LDAB #$c4
 loop:   JSR readline
         LDA #'R'            ; did readline come back at all?
         JSR putc
+        LDA TIBLEN          ; and with how many characters?
+        JSR puthex
+        LDA #':'
+        JSR putc
+        LDAB TIB            ; the first few of them
+        JSR puthex
+        LDAB TIB+1
+        JSR puthex
+        LDAB TIB+2
+        JSR puthex
+        LDAB TIB+3
+        JSR puthex
+        LDAB TIB+4
+        JSR puthex
+        LDAB TIB+5
+        JSR puthex
+        LDA #'|'
+        JSR putc
         STA TIBLEN
         LDA #0
         STA TOIN
@@ -176,6 +194,24 @@ pw1:    LDA fi
         STA fi
         JMP pw1
 pw2:    RSR
+
+puthex: STAB $b0f0
+        SRAB
+        SRAB
+        SRAB
+        SRAB
+        LDB #$000f
+        NAB
+        JSR putnib
+        LDAB $b0f0
+        LDB #$000f
+        NAB
+        JMP putnib
+putnib: LDA #hexd
+        AAB
+        LDAB [B]
+        JMP putc
+hexd:   .ascii "0123456789ABCDEF"
 
 putc:   STAB pcsave         ; the low half of A is the character
 pc1:    LDAB CTRL
