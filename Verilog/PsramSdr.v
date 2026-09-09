@@ -100,12 +100,33 @@ module PsramSdr #(
     reg wbyte, wodd;
     reg [4:0] scan_idx;
 
+    reg [7:0] rx_a, rx_b, rx_a_held;
     reg cs_n, ck_en, dq_oe, rwds_oe, rst_n;
     reg [15:0] tx;                       // the two bytes for this CK cycle
     reg [1:0] tx_mask;                   // and their RWDS write masks, A then B
     reg [7:0] dq_drive;
     reg rwds_drive;
-    reg [7:0] rx_a, rx_b, rx_a_held;
+
+    // The same values the reset branch below sets, given at configuration.
+    // On the board these come for free - the FPGA zeroes every flip flop when
+    // it is configured, and `resetn' is the reset button, which is pulled up
+    // and never pressed - so the part is initialised by the state machine
+    // walking out of S_RESET on its own. Simulation gets no such favour: the
+    // board level testbenches hold the button released, the reset branch never
+    // runs, and every one of these registers stays x for the whole run. RESET#
+    // being x is enough on its own to make the die ignore the bus completely,
+    // and then every read comes back as z - which reaches the CPU as a byte of
+    // x, poisons the address it is used to compute, and stops the machine dead
+    // with no memory access ever having been attempted.
+    initial begin
+        state = S_RESET; delay = 0; count = 0;
+        cs_n = 1; ck_en = 0; dq_oe = 0; rwds_oe = 0; rst_n = 0;
+        dout = 0; is_read = 0; wbyte = 0; wodd = 0;
+        ca = 0; wdata = 0; tx = 0; tx_mask = 0; dq_drive = 0; rwds_drive = 0;
+        rx_a = 0; rx_b = 0; rx_a_held = 0;
+        dbg_match = 5'h1f; dbg_first = 0; dbg_nonff = 0;
+        scan_idx = 0; dbg_ca_echo = 0;
+    end
 
     assign busy = (state != S_IDLE);
     assign dbg_state = state;
