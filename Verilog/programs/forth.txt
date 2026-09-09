@@ -21,7 +21,7 @@ b0
 0a
 90  // 8014  LDA #lastword
 8c
-45
+9f
 b1  // 8017  STA LATEST
 b0
 08
@@ -1208,17 +1208,17 @@ d0  // 84b2  LDB #0
 20
 15  // 84b7  BNZ po2
 e8
-91  // 84b9  LDA pnext           ; did it wrap round?
+91  // 84b9  LDA pnext           ; did it wrap round? Unsigned, like the two below.
 b0
 ae
-d1  // 84bc  LDB pcur
+d1  // 84bc  LDB pcur            ; These are magnitude tests on values that can have
 b0
 ac
-51  // 84bf  SUB B,A
+51  // 84bf  SUB B,A             ; bit 15 set, and with the signed BM anything from
 20
-16  // 84c1  BM po3
+11  // 84c1  BNL po3             ; 8000 up looked smaller than every power and came
 03
-71  // 84c3  JMP podone
+71  // 84c3  JMP podone          ; out as "0". Link is set when a subtraction did
 84
 ee
 91  // 84c6  po3:    LDA nval            ; is it already past the value?
@@ -1229,7 +1229,7 @@ b0
 ae
 51  // 84cc  SUB B,A
 20
-16  // 84ce  BM po4
+11  // 84ce  BNL po4
 03
 71  // 84d0  JMP podone
 84
@@ -1295,7 +1295,7 @@ b0
 8e
 51  // 850e  SUB B,A             ; the answer lands in A, not in B
 20
-16  // 8510  BM pd2
+11  // 8510  BNL pd2
 0d
 b1  // 8512  STA nval
 b0
@@ -2414,7 +2414,7 @@ b0
 0f
 79  // 896d  JSR pr_entry
 8c
-9f
+cd
 91  // 8970  LDA fp
 b0
 80
@@ -3230,69 +3230,115 @@ a1
 71  // 8c9c  JMP NEXT
 80
 f0
-91  // 8c9f  LDA fp
+8c  // 8c9f  .word w_does-8
+45
+01  // 8ca1  .byte 1
+27  // 8ca2  .ascii "'"
+8c  // 8ca3  w_tick: .code
+a5
+f1  // 8ca5  STB ipsave3         ; B is the instruction pointer
 b0
-80
-5c  // 8ca2  XAY
-85  // 8ca3  LDAB [Y+$02]
+da
+79  // 8ca8  JSR parseword       ; the name follows in the input, not on the stack
+81
+eb
+79  // 8cab  JSR find
+82
 68
+91  // 8cae  LDA scr2            ; find leaves the code field address here, or zero
+b0
 02
-d0  // 8ca6  LDB #$1f
+b1  // 8cb1  STA tkcfa           ; a store sets no flags, so the load's still stand
+b0
+e6
+15  // 8cb4  BNZ tk_got
+0c
+79  // 8cb6  JSR pr_word         ; say so rather than pushing a silent zero that
+85
+55
+90  // 8cb9  LDA #'?'            ; only fails later, somewhere else
 00
-1f
-5a  // 8ca9  NAB
-f1  // 8caa  STB flen2
-b0
-84
-90  // 8cad  LDA #0
-00
-00
-b1  // 8cb0  STA fi
-b0
-86
-91  // 8cb3  pe1:    LDA fi
-b0
-86
-d1  // 8cb6  LDB flen2
-b0
-84
-51  // 8cb9  SUB B,A
-20
-14  // 8cbb  BZ pe2
-1e
-91  // 8cbd  LDA fp
-b0
-80
-d1  // 8cc0  LDB fi
-b0
-86
-58  // 8cc3  AAB
-f1  // 8cc4  STB scr1
-b0
-00
-91  // 8cc7  LDA scr1
-b0
-00
-5c  // 8cca  XAY
-85  // 8ccb  LDAB [Y+$03]
-68
-03
-79  // 8cce  JSR putc
+3f
+79  // 8cbc  JSR putc
 81
 19
-91  // 8cd1  LDA fi
+79  // 8cbf  JSR crlf
+81
+3e
+91  // 8cc2  tk_got: LDA tkcfa
+b0
+e6
+b5  // 8cc5  STA [--Z]
+82
+d1  // 8cc7  LDB ipsave3
+b0
+da
+71  // 8cca  JMP NEXT
+80
+f0
+91  // 8ccd  LDA fp
+b0
+80
+5c  // 8cd0  XAY
+85  // 8cd1  LDAB [Y+$02]
+68
+02
+d0  // 8cd4  LDB #$1f
+00
+1f
+5a  // 8cd7  NAB
+f1  // 8cd8  STB flen2
+b0
+84
+90  // 8cdb  LDA #0
+00
+00
+b1  // 8cde  STA fi
 b0
 86
-38  // 8cd4  INA
-b1  // 8cd5  STA fi
+91  // 8ce1  pe1:    LDA fi
 b0
 86
-71  // 8cd8  JMP pe1
+d1  // 8ce4  LDB flen2
+b0
+84
+51  // 8ce7  SUB B,A
+20
+14  // 8ce9  BZ pe2
+1e
+91  // 8ceb  LDA fp
+b0
+80
+d1  // 8cee  LDB fi
+b0
+86
+58  // 8cf1  AAB
+f1  // 8cf2  STB scr1
+b0
+00
+91  // 8cf5  LDA scr1
+b0
+00
+5c  // 8cf8  XAY
+85  // 8cf9  LDAB [Y+$03]
+68
+03
+79  // 8cfc  JSR putc
+81
+19
+91  // 8cff  LDA fi
+b0
+86
+38  // 8d02  INA
+b1  // 8d03  STA fi
+b0
+86
+71  // 8d06  JMP pe1
 8c
-b3
-90  // 8cdb  pe2:    LDA #' '
+e1
+90  // 8d09  pe2:    LDA #' '
 00
 20
-71  // 8cde  JMP putc
+71  // 8d0c  JMP putc
 81
 19

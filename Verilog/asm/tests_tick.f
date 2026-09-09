@@ -1,0 +1,10 @@
+HEX
+' DUP .
+1234 .
+FFFF .
+8000 .
+7FFF .
+DECIMAL
+32767 .
+-1 .
+' NOSUCH .
