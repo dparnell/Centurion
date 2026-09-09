@@ -212,9 +212,11 @@ has run. A word it does not know is echoed back with a `?`.
 | | |
 |---|---|
 | stack | `DUP` `DROP` `SWAP` `OVER` |
-| arithmetic | `+` `-` `*` `AND` |
+| arithmetic | `+` `-` `*` |
+| logic | `AND` `OR` `XOR` `NOT` - bitwise, on all sixteen bits |
+| shifts | `LSHIFT` `RSHIFT` - `RSHIFT` is logical, so it does not carry the sign down |
 | comparison | `=` `<` `>` `0=` - signed, and true is all ones |
-| console | `.` `EMIT` `KEY` `CR` |
+| console | `.` `EMIT` `KEY` `CR` `."` |
 | memory | `@` `!` `C@` `C!` `HERE` `,` `ALLOT` |
 | defining | `:` `;` `CREATE` `DOES>` `IMMEDIATE` `'` `EXECUTE` `LITERAL` `[` `]` |
 | control | `IF` `ELSE` `THEN` `BEGIN` `UNTIL` `AGAIN` `DO` `LOOP` `I` |
@@ -302,6 +304,18 @@ VARIABLE V   9 V !   V @ .     9  ok
 4 ARRAY A    11 0 A !   0 A @ .    11  ok
 ```
 
+`."` prints the text up to the closing quote, and works both at the prompt and
+inside a definition:
+
+```
+." hello"                      hello  ok
+: GREET ." Centurion" CR ;
+GREET                          Centurion
+```
+
+Compiled, the text is laid down inside the definition itself, so `GREET` costs
+nothing to run beyond printing.
+
 `>R` moves the top of the data stack to the return stack and `R>` brings it
 back, which is how a word gets at its second argument without a `ROT`:
 
@@ -364,9 +378,9 @@ than it answers the HyperRAM.
 ### What it does not have
 
 There is no `[']`, but it is not needed: `[ ' FOO ] LITERAL` does the same
-thing. There is no `SPACES`, no `."`, and no string words, so text is printed a
-character at a time with `EMIT`. Division is missing, as is `OR`. The console
-is seven bit, so no character above 127 survives the serial line.
+thing. Division is missing, and so are `ROT`, `SPACES` and the counted-string
+words - `."` is the only string output. The console is seven bit, so no
+character above 127 survives the serial line.
 
 One limitation worth knowing before it bites. The return stack here carries
 more than usual: `DO` puts its loop control on it, entering a colon definition
