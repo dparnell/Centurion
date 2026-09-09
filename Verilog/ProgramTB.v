@@ -192,6 +192,27 @@ module ProgramTB;
         end
     end
 
+    // +addrtrace=FILE: every address the PSRAM bridge is asked for, one per
+    // line, whether it hits or misses. Modelling cache geometries against a real
+    // address stream is far cheaper than building each one and measuring it.
+    integer atf = 0;
+    reg [18:0] last_addr = 0;
+    reg last_valid = 0;
+    reg [8*64:1] atname;
+    initial if ($value$plusargs("addrtrace=%s", atname)) atf = $fopen(atname, "w");
+    always @(posedge in_clk) if (atf) begin
+        if (dut.cpu_en && dut.psram_select) begin
+            // One line per bus cycle the core spends pointing at the PSRAM, but
+            // only when the address moves: the address register simply stays
+            // where it was, so the same cycle repeats and would swamp the trace.
+            if (!last_valid || dut.addressBus !== last_addr) begin
+                $fwrite(atf, "%0d %h\n", dut.writeEnBus, dut.addressBus);
+                last_addr <= dut.addressBus;
+                last_valid <= 1;
+            end
+        end
+    end
+
     // +rxtrace: every read of the MUX data register, with the program counter
     // that caused it and whether a byte was waiting. A read consumes whatever
     // the receiver is holding, so a read the program did not ask for loses a
