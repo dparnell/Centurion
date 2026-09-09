@@ -1,0 +1,288 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$bfe0
+bf
+e0
+5f  // 8009  XAS
+90  // 800a  LDA #'a'                ; ORI B,A
+00
+61
+79  // 800d  JSR putc
+80
+fa
+90  // 8010  LDA #$0f00
+0f
+00
+d0  // 8013  LDB #$00f0
+00
+f0
+53  // 8016  ORI B,A
+20
+b1  // 8018  STA r1
+b0
+10
+f1  // 801b  STB r2
+b0
+12
+79  // 801e  JSR show
+80
+aa
+90  // 8021  LDA #'b'                ; ORI A,B
+00
+62
+79  // 8024  JSR putc
+80
+fa
+90  // 8027  LDA #$0f00
+0f
+00
+d0  // 802a  LDB #$00f0
+00
+f0
+53  // 802d  ORI A,B
+02
+b1  // 802f  STA r1
+b0
+10
+f1  // 8032  STB r2
+b0
+12
+79  // 8035  JSR show
+80
+aa
+90  // 8038  LDA #'c'                ; ORE B,A
+00
+63
+79  // 803b  JSR putc
+80
+fa
+90  // 803e  LDA #$0ff0
+0f
+f0
+d0  // 8041  LDB #$00ff
+00
+ff
+54  // 8044  ORE B,A
+20
+b1  // 8046  STA r1
+b0
+10
+f1  // 8049  STB r2
+b0
+12
+79  // 804c  JSR show
+80
+aa
+90  // 804f  LDA #'d'                ; ORE A,B
+00
+64
+79  // 8052  JSR putc
+80
+fa
+90  // 8055  LDA #$0ff0
+0f
+f0
+d0  // 8058  LDB #$00ff
+00
+ff
+54  // 805b  ORE A,B
+02
+b1  // 805d  STA r1
+b0
+10
+f1  // 8060  STB r2
+b0
+12
+79  // 8063  JSR show
+80
+aa
+90  // 8066  LDA #'e'                ; IVA
+00
+65
+79  // 8069  JSR putc
+80
+fa
+90  // 806c  LDA #$0f0f
+0f
+0f
+3b  // 806f  IVA
+b1  // 8070  STA r1
+b0
+10
+f1  // 8073  STB r2
+b0
+12
+79  // 8076  JSR show
+80
+aa
+90  // 8079  LDA #'f'                ; SRR A,1: one place, sign propagated
+00
+66
+79  // 807c  JSR putc
+80
+fa
+90  // 807f  LDA #$8001
+80
+01
+34  // 8082  SRR A,1
+00
+b1  // 8084  STA r1
+b0
+10
+f1  // 8087  STB r2
+b0
+12
+79  // 808a  JSR show
+80
+aa
+90  // 808d  LDA #'g'                ; SLR A,4: four places
+00
+67
+79  // 8090  JSR putc
+80
+fa
+90  // 8093  LDA #$0001
+00
+01
+35  // 8096  SLR A,4
+03
+b1  // 8098  STA r1
+b0
+10
+f1  // 809b  STB r2
+b0
+12
+79  // 809e  JSR show
+80
+aa
+90  // 80a1  LDA #$0001
+00
+01
+b1  // 80a4  STA $f900
+f9
+00
+71  // 80a7  halt:   JMP halt
+80
+a7
+91  // 80aa  show:   LDA r1
+b0
+10
+79  // 80ad  JSR puthex16
+80
+c2
+91  // 80b0  LDA r2
+b0
+12
+79  // 80b3  JSR puthex16
+80
+c2
+90  // 80b6  LDA #$0d
+00
+0d
+79  // 80b9  JSR putc
+80
+fa
+90  // 80bc  LDA #$0a
+00
+0a
+71  // 80bf  JMP putc
+80
+fa
+b1  // 80c2  puthex16: STA scr2
+b0
+0a
+3a  // 80c5  CLA
+81  // 80c6  LDAB scr2
+b0
+0a
+79  // 80c9  JSR puthex
+80
+d3
+3a  // 80cc  CLA
+81  // 80cd  LDAB scr2+1
+b0
+0b
+71  // 80d0  JMP puthex
+80
+d3
+a1  // 80d3  puthex: STAB scr1+2
+b0
+08
+2c  // 80d6  SRAB
+2c  // 80d7  SRAB
+2c  // 80d8  SRAB
+2c  // 80d9  SRAB
+d0  // 80da  LDB #$000f
+00
+0f
+5a  // 80dd  NAB
+79  // 80de  JSR putnib
+80
+f1
+81  // 80e1  LDAB scr1+2
+b0
+08
+d0  // 80e4  LDB #$000f
+00
+0f
+5a  // 80e7  NAB
+79  // 80e8  JSR putnib
+80
+f1
+90  // 80eb  LDA #' '
+00
+20
+71  // 80ee  JMP putc
+80
+fa
+90  // 80f1  putnib: LDA #digits
+81
+0f
+58  // 80f4  AAB
+85  // 80f5  LDAB [B]
+20
+71  // 80f7  JMP putc
+80
+fa
+a1  // 80fa  putc:   STAB pcsave
+b0
+04
+81  // 80fd  pc1:    LDAB CTRL
+f2
+00
+2d  // 8100  SLAB
+2d  // 8101  SLAB
+2d  // 8102  SLAB
+2d  // 8103  SLAB
+2d  // 8104  SLAB
+2d  // 8105  SLAB
+17  // 8106  BP pc1
+f5
+81  // 8108  LDAB pcsave
+b0
+04
+a1  // 810b  STAB TXDATA
+f2
+01
+09  // 810e  RSR
+30  // 810f  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46

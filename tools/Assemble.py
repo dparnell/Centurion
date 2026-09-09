@@ -206,7 +206,16 @@ OPCODES = {
 
 # The count field of a register-and-count instruction is stored one less than
 # it reads, for the two that count rather than select.
-RC_BIAS = {'INR': 1, 'DCR': 1, 'INRB': 1, 'DCRB': 1}
+# The count field of these is one less than what they do: INR with a field of 0
+# increments once, and SLR with a field of 4 shifts five places - measured on
+# the machine, in Verilog/asm/probe18.s. So the source says how many places and
+# the bias converts. The byte forms are assumed to match their word forms,
+# which is an inference from the encoding rather than a measurement. CLR and
+# IVR are also 'rc' and are deliberately left out: their count field has not
+# been measured, and a round trip cannot catch a wrong bias here, because the
+# assembler and the disassembler share this table.
+RC_BIAS = {'INR': 1, 'DCR': 1, 'INRB': 1, 'DCRB': 1,
+           'SLR': 1, 'SRR': 1, 'SLRB': 1, 'SRRB': 1}
 
 # A conditional branch reaches 127 bytes either way. When the target is further
 # than that the assembler branches over a jump instead, which is what an
