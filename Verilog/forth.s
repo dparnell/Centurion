@@ -107,11 +107,18 @@ run:    JSR parseword
         LDAB WORDBUF
         BNZ rgot
         JMP endline         ; nothing left on this line
-rgot:   JSR find
+rgot:   LDA #'['            ; trace: the word just parsed
+        JSR putc
+        JSR pr_word
+        LDA #']'
+        JSR putc
+        JSR find
         LDA scr2            ; find leaves the code field address here, or zero
         BNZ rfound
         JMP tonumber
-rfound: LDA STATE
+rfound: LDA #'F'
+        JSR putc
+        LDA STATE
         LDB #0
         SUB B,A
         BZ rexec            ; interpreting: just run it
@@ -126,8 +133,12 @@ rfound: LDA STATE
         LDA scr2            ; no, so lay its code field address down
         JSR comma
         JMP run
-rexec:  LDA scr2
+rexec:  LDA #'X'
+        JSR putc
+        LDA scr2
         JSR execute
+        LDA #'x'
+        JSR putc
         JMP run
 
 endline: JSR pr_ok
@@ -138,7 +149,9 @@ tonumber:
         LDA scr2
         BNZ rnum
         JMP notfound
-rnum:   LDA STATE
+rnum:   LDA #'N'
+        JSR putc
+        LDA STATE
         LDB #0
         SUB B,A
         BZ rpush
@@ -267,7 +280,7 @@ rl1:    JSR getc
         STB scr1
         LDA scr1
         XAY
-        LDAB rlch
+        LDAB rlch+1         ; the low half is where the character is
         STAB [Y]
         LDA TIBLEN
         INA
@@ -331,7 +344,7 @@ pw_copy: LDA TOIN           ; then take everything up to the next one
         STB scr1
         LDA scr1
         XAY
-        LDAB pwch
+        LDAB pwch+1
         STAB [Y]
         CLA
         LDAB WORDBUF
@@ -681,9 +694,7 @@ pw1:    LDA fi
         STB scr1
         LDA scr1
         XAY
-        LDAB [Y]
-        STAB scr2
-        LDA scr2
+        LDAB [Y]            ; putc takes the character in the low half of A
         JSR putc
         LDA fi
         INA
@@ -1212,7 +1223,7 @@ cn1:    LDA ci              ; then the name itself
         STA cch
         LDA HERE
         XAY
-        LDAB cch
+        LDAB cch+1
         STAB [Y]
         LDA HERE
         INA
@@ -1341,7 +1352,7 @@ w_imm:  .code
         STB cch
         LDA newslot
         XAY
-        LDAB cch
+        LDAB cch+1
         STAB [Y+$02]
         JMP NEXT
 
@@ -1376,8 +1387,6 @@ pe1:    LDA fi
         LDA scr1
         XAY
         LDAB [Y+$03]
-        STAB scr2
-        LDA scr2
         JSR putc
         LDA fi
         INA

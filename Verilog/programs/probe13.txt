@@ -1,0 +1,299 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+90  // 800a  LDA #TIB
+c0
+00
+5c  // 800d  XAY
+80  // 800e  LDAB #'1'
+31
+a5  // 8010  STAB [Y]
+60
+90  // 8012  LDA #TIB+1
+c0
+01
+5c  // 8015  XAY
+80  // 8016  LDAB #' '
+20
+a5  // 8018  STAB [Y]
+60
+90  // 801a  LDA #TIB+2
+c0
+02
+5c  // 801d  XAY
+80  // 801e  LDAB #'2'
+32
+a5  // 8020  STAB [Y]
+60
+90  // 8022  LDA #TIB+3
+c0
+03
+5c  // 8025  XAY
+80  // 8026  LDAB #' '
+20
+a5  // 8028  STAB [Y]
+60
+90  // 802a  LDA #TIB+4
+c0
+04
+5c  // 802d  XAY
+80  // 802e  LDAB #'+'
+2b
+a5  // 8030  STAB [Y]
+60
+90  // 8032  LDA #5
+00
+05
+b1  // 8035  STA TIBLEN
+b0
+10
+90  // 8038  LDA #0
+00
+00
+b1  // 803b  STA TOIN
+b0
+0e
+79  // 803e  loop:   JSR parseword
+80
+67
+90  // 8041  LDA #'<'
+00
+3c
+79  // 8044  JSR putc
+81
+15
+79  // 8047  JSR pr_word
+80
+e4
+90  // 804a  LDA #'>'
+00
+3e
+79  // 804d  JSR putc
+81
+15
+3a  // 8050  CLA
+81  // 8051  LDAB WORDBUF
+b0
+20
+d0  // 8054  LDB #0
+00
+00
+51  // 8057  SUB B,A
+20
+14  // 8059  BZ fin
+03
+71  // 805b  JMP loop
+80
+3e
+90  // 805e  fin:    LDA #$0001
+00
+01
+b1  // 8061  STA $f900
+f9
+00
+71  // 8064  halt:   JMP halt
+80
+64
+90  // 8067  LDA #0
+00
+00
+a1  // 806a  STAB WORDBUF
+b0
+20
+91  // 806d  pw_skip: LDA TOIN           ; step over any spaces
+b0
+0e
+d1  // 8070  LDB TIBLEN
+b0
+10
+51  // 8073  SUB B,A
+20
+14  // 8075  BZ pw_end
+5a
+79  // 8077  JSR tibchar
+80
+d2
+b1  // 807a  STA pwch
+b0
+c6
+90  // 807d  LDA #' '
+00
+20
+d1  // 8080  LDB pwch
+b0
+c6
+51  // 8083  SUB B,A
+20
+15  // 8085  BNZ pw_copy
+0a
+91  // 8087  LDA TOIN
+b0
+0e
+38  // 808a  INA
+b1  // 808b  STA TOIN
+b0
+0e
+71  // 808e  JMP pw_skip
+80
+6d
+91  // 8091  pw_copy: LDA TOIN           ; then take everything up to the next one
+b0
+0e
+d1  // 8094  LDB TIBLEN
+b0
+10
+51  // 8097  SUB B,A
+20
+14  // 8099  BZ pw_end
+36
+79  // 809b  JSR tibchar
+80
+d2
+b1  // 809e  STA pwch
+b0
+c6
+90  // 80a1  LDA #' '
+00
+20
+d1  // 80a4  LDB pwch
+b0
+c6
+51  // 80a7  SUB B,A
+20
+14  // 80a9  BZ pw_end
+26
+3a  // 80ab  CLA
+81  // 80ac  LDAB WORDBUF
+b0
+20
+d0  // 80af  LDB #WORDBUF+1
+b0
+21
+58  // 80b2  AAB
+f1  // 80b3  STB scr1
+b0
+00
+91  // 80b6  LDA scr1
+b0
+00
+5c  // 80b9  XAY
+81  // 80ba  LDAB pwch+1
+b0
+c7
+a5  // 80bd  STAB [Y]
+60
+3a  // 80bf  CLA
+81  // 80c0  LDAB WORDBUF
+b0
+20
+28  // 80c3  INAB
+a1  // 80c4  STAB WORDBUF
+b0
+20
+91  // 80c7  LDA TOIN
+b0
+0e
+38  // 80ca  INA
+b1  // 80cb  STA TOIN
+b0
+0e
+71  // 80ce  JMP pw_copy
+80
+91
+09  // 80d1  pw_end: RSR
+90  // 80d2  tibchar: LDA #TIB
+c0
+00
+d1  // 80d5  LDB TOIN
+b0
+0e
+58  // 80d8  AAB
+f1  // 80d9  STB scr1
+b0
+00
+91  // 80dc  LDA scr1
+b0
+00
+5c  // 80df  XAY
+3a  // 80e0  CLA                 ; a byte load leaves the high half alone
+85  // 80e1  LDAB [Y]
+60
+09  // 80e3  RSR
+90  // 80e4  pr_word: LDA #0
+00
+00
+b1  // 80e7  STA fi
+b0
+86
+91  // 80ea  pw1:    LDA fi
+b0
+86
+d0  // 80ed  LDB #0
+00
+00
+c1  // 80f0  LDBB WORDBUF
+b0
+20
+51  // 80f3  SUB B,A
+20
+14  // 80f5  BZ pw2
+1d
+90  // 80f7  LDA #WORDBUF+1
+b0
+21
+d1  // 80fa  LDB fi
+b0
+86
+58  // 80fd  AAB
+f1  // 80fe  STB scr1
+b0
+00
+91  // 8101  LDA scr1
+b0
+00
+5c  // 8104  XAY
+85  // 8105  LDAB [Y]            ; putc takes the character in the low half of A
+60
+79  // 8107  JSR putc
+81
+15
+91  // 810a  LDA fi
+b0
+86
+38  // 810d  INA
+b1  // 810e  STA fi
+b0
+86
+71  // 8111  JMP pw1
+80
+ea
+09  // 8114  pw2:    RSR
+a1  // 8115  putc:   STAB pcsave         ; the low half of A is the character
+b0
+04
+81  // 8118  pc1:    LDAB CTRL
+f2
+00
+2d  // 811b  SLAB                ; bit 1 up to the sign, so a branch can test it
+2d  // 811c  SLAB
+2d  // 811d  SLAB
+2d  // 811e  SLAB
+2d  // 811f  SLAB
+2d  // 8120  SLAB
+17  // 8121  BP pc1
+f5
+81  // 8123  LDAB pcsave
+b0
+04
+a1  // 8126  STAB TXDATA
+f2
+01
+09  // 8129  RSR

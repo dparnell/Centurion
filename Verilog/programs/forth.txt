@@ -21,7 +21,7 @@ b0
 0a
 90  // 8014  LDA #lastword
 8a
-85
+a6
 b1  // 8017  STA LATEST
 b0
 08
@@ -44,17 +44,17 @@ b1  // 8029  STA BASE
 b0
 14
 90  // 802c  LDA #cfa_retmc      ; the thread that runs one word and comes back
-80
-f8
+81
+1f
 b1  // 802f  STA EXECTH+2
 b0
 42
 79  // 8032  JSR sizemem
 85
-9d
+be
 79  // 8035  JSR banner
 86
-2e
+4f
 90  // 8038  interp: LDA #0              ; the outer interpreter, in machine code
 00
 00
@@ -63,7 +63,7 @@ b0
 0c
 79  // 803e  quit:   JSR readline
 81
-44
+6b
 b1  // 8041  STA TIBLEN
 b0
 10
@@ -75,7 +75,7 @@ b0
 0e
 79  // 804a  run:    JSR parseword
 81
-d8
+ff
 81  // 804d  LDAB WORDBUF
 b0
 20
@@ -83,1253 +83,1292 @@ b0
 03
 71  // 8052  JMP endline         ; nothing left on this line
 80
-90
-79  // 8055  rgot:   JSR find
+b1
+90  // 8055  rgot:   LDA #'['            ; trace: the word just parsed
+00
+5b
+79  // 8058  JSR putc
+81
+21
+79  // 805b  JSR pr_word
+85
+69
+90  // 805e  LDA #']'
+00
+5d
+79  // 8061  JSR putc
+81
+21
+79  // 8064  JSR find
 82
-55
-91  // 8058  LDA scr2            ; find leaves the code field address here, or zero
+7c
+91  // 8067  LDA scr2            ; find leaves the code field address here, or zero
 b0
 02
-15  // 805b  BNZ rfound
+15  // 806a  BNZ rfound
 03
-71  // 805d  JMP tonumber
+71  // 806c  JMP tonumber
 80
-96
-91  // 8060  rfound: LDA STATE
+b7
+90  // 806f  rfound: LDA #'F'
+00
+46
+79  // 8072  JSR putc
+81
+21
+91  // 8075  LDA STATE
 b0
 0c
-d0  // 8063  LDB #0
+d0  // 8078  LDB #0
 00
 00
-51  // 8066  SUB B,A
+51  // 807b  SUB B,A
 20
-14  // 8068  BZ rexec            ; interpreting: just run it
+14  // 807d  BZ rexec            ; interpreting: just run it
 1d
-91  // 806a  LDA scr1            ; compiling: is it one of the immediate words?
+91  // 807f  LDA scr1            ; compiling: is it one of the immediate words?
 b0
 00
-d0  // 806d  LDB #$80
+d0  // 8082  LDB #$80
 00
 80
-5a  // 8070  NAB
-f1  // 8071  STB rimm
+5a  // 8085  NAB
+f1  // 8086  STB rimm
 b0
 d8
-91  // 8074  LDA rimm
+91  // 8089  LDA rimm
 b0
 d8
-d0  // 8077  LDB #0
+d0  // 808c  LDB #0
 00
 00
-51  // 807a  SUB B,A
+51  // 808f  SUB B,A
 20
-15  // 807c  BNZ rexec
+15  // 8091  BNZ rexec
 09
-91  // 807e  LDA scr2            ; no, so lay its code field address down
+91  // 8093  LDA scr2            ; no, so lay its code field address down
 b0
 02
-79  // 8081  JSR comma
+79  // 8096  JSR comma
 85
-88
-71  // 8084  JMP run
+a9
+71  // 8099  JMP run
 80
 4a
-91  // 8087  rexec:  LDA scr2
+90  // 809c  rexec:  LDA #'X'
+00
+58
+79  // 809f  JSR putc
+81
+21
+91  // 80a2  LDA scr2
 b0
 02
-79  // 808a  JSR execute
-80
-e2
-71  // 808d  JMP run
+79  // 80a5  JSR execute
+81
+09
+90  // 80a8  LDA #'x'
+00
+78
+79  // 80ab  JSR putc
+81
+21
+71  // 80ae  JMP run
 80
 4a
-79  // 8090  endline: JSR pr_ok
+79  // 80b1  endline: JSR pr_ok
 85
-7f
-71  // 8093  JMP quit
+a0
+71  // 80b4  JMP quit
 80
 3e
-79  // 8096  JSR number
+79  // 80b7  JSR number
 83
-0c
-91  // 8099  LDA scr2
+33
+91  // 80ba  LDA scr2
 b0
 02
-15  // 809c  BNZ rnum
+15  // 80bd  BNZ rnum
 03
-71  // 809e  JMP notfound
+71  // 80bf  JMP notfound
 80
-c2
-91  // 80a1  rnum:   LDA STATE
+e9
+90  // 80c2  rnum:   LDA #'N'
+00
+4e
+79  // 80c5  JSR putc
+81
+21
+91  // 80c8  LDA STATE
 b0
 0c
-d0  // 80a4  LDB #0
+d0  // 80cb  LDB #0
 00
 00
-51  // 80a7  SUB B,A
+51  // 80ce  SUB B,A
 20
-14  // 80a9  BZ rpush
+14  // 80d0  BZ rpush
 0f
-90  // 80ab  LDA #w_lit          ; compiling: lay down LIT and the value
-87
-e4
-79  // 80ae  JSR comma
-85
+90  // 80d2  LDA #w_lit          ; compiling: lay down LIT and the value
 88
-91  // 80b1  LDA scr1
+05
+79  // 80d5  JSR comma
+85
+a9
+91  // 80d8  LDA scr1
 b0
 00
-79  // 80b4  JSR comma
+79  // 80db  JSR comma
 85
-88
-71  // 80b7  JMP run
+a9
+71  // 80de  JMP run
 80
 4a
-91  // 80ba  rpush:  LDA scr1
+91  // 80e1  rpush:  LDA scr1
 b0
 00
-b5  // 80bd  STA [--Z]
+b5  // 80e4  STA [--Z]
 82
-71  // 80bf  JMP run
+71  // 80e6  JMP run
 80
 4a
-79  // 80c2  JSR pr_word
+79  // 80e9  JSR pr_word
 85
-42
-90  // 80c5  LDA #'?'
+69
+90  // 80ec  LDA #'?'
 00
 3f
-79  // 80c8  JSR putc
-80
-fa
-79  // 80cb  JSR crlf
+79  // 80ef  JSR putc
 81
-1f
-71  // 80ce  JMP interp
+21
+79  // 80f2  JSR crlf
+81
+46
+71  // 80f5  JMP interp
 80
 38
-65  // 80d1  NEXT:   LDX [B++]
+65  // 80f8  NEXT:   LDX [B++]
 21
-75  // 80d3  JMP [[Y]]
+75  // 80fa  JMP [[Y]]
 64
-f5  // 80d5  DOCOL:  STB [--S]           ; push the caller's instruction pointer
+f5  // 80fc  DOCOL:  STB [--S]           ; push the caller's instruction pointer
 a2
-3e  // 80d7  INX                 ; X points at the code field; the parameters
-3e  // 80d8  INX                 ; start two bytes later
-69  // 80d9  STX ipsave
+3e  // 80fe  INX                 ; X points at the code field; the parameters
+3e  // 80ff  INX                 ; start two bytes later
+69  // 8100  STX ipsave
 b0
 06
-d1  // 80dc  LDB ipsave
+d1  // 8103  LDB ipsave
 b0
 06
-71  // 80df  JMP NEXT
+71  // 8106  JMP NEXT
 80
-d1
-b1  // 80e2  execute: STA EXECTH
+f8
+b1  // 8109  execute: STA EXECTH
 b0
 40
-f1  // 80e5  STB ipsave2         ; the machine code caller's instruction pointer
+f1  // 810c  STB ipsave2         ; the machine code caller's instruction pointer
 b0
 9a
-69  // 80e8  STX xsave2          ; and its return address, which NEXT destroys
+69  // 810f  STX xsave2          ; and its return address, which NEXT destroys
 b0
 c8
-d0  // 80eb  LDB #EXECTH
+d0  // 8112  LDB #EXECTH
 b0
 40
-71  // 80ee  JMP NEXT
+71  // 8115  JMP NEXT
 80
-d1
-d1  // 80f1  retmc:  LDB ipsave2
+f8
+d1  // 8118  retmc:  LDB ipsave2
 b0
 9a
-61  // 80f4  LDX xsave2
+61  // 811b  LDX xsave2
 b0
 c8
-09  // 80f7  RSR
-80  // 80f8  cfa_retmc: .word retmc
-f1
-a1  // 80fa  putc:   STAB pcsave         ; the low half of A is the character
-b0
-04
-81  // 80fd  pc1:    LDAB CTRL
-f2
-00
-2d  // 8100  SLAB                ; bit 1 up to the sign, so a branch can test it
-2d  // 8101  SLAB
-2d  // 8102  SLAB
-2d  // 8103  SLAB
-2d  // 8104  SLAB
-2d  // 8105  SLAB
-17  // 8106  BP pc1
-f5
-81  // 8108  LDAB pcsave
-b0
-04
-a1  // 810b  STAB TXDATA
-f2
-01
-09  // 810e  RSR
-81  // 810f  getc:   LDAB CTRL           ; wait for a byte and return it in the low half of A
-f2
-00
-2d  // 8112  SLAB                ; bit 0 up to the sign
-2d  // 8113  SLAB
-2d  // 8114  SLAB
-2d  // 8115  SLAB
-2d  // 8116  SLAB
-2d  // 8117  SLAB
-2d  // 8118  SLAB
-17  // 8119  BP getc
-f4
-81  // 811b  LDAB TXDATA
-f2
-01
 09  // 811e  RSR
-90  // 811f  crlf:   LDA #13
+81  // 811f  cfa_retmc: .word retmc
+18
+a1  // 8121  putc:   STAB pcsave         ; the low half of A is the character
+b0
+04
+81  // 8124  pc1:    LDAB CTRL
+f2
+00
+2d  // 8127  SLAB                ; bit 1 up to the sign, so a branch can test it
+2d  // 8128  SLAB
+2d  // 8129  SLAB
+2d  // 812a  SLAB
+2d  // 812b  SLAB
+2d  // 812c  SLAB
+17  // 812d  BP pc1
+f5
+81  // 812f  LDAB pcsave
+b0
+04
+a1  // 8132  STAB TXDATA
+f2
+01
+09  // 8135  RSR
+81  // 8136  getc:   LDAB CTRL           ; wait for a byte and return it in the low half of A
+f2
+00
+2d  // 8139  SLAB                ; bit 0 up to the sign
+2d  // 813a  SLAB
+2d  // 813b  SLAB
+2d  // 813c  SLAB
+2d  // 813d  SLAB
+2d  // 813e  SLAB
+2d  // 813f  SLAB
+17  // 8140  BP getc
+f4
+81  // 8142  LDAB TXDATA
+f2
+01
+09  // 8145  RSR
+90  // 8146  crlf:   LDA #13
 00
 0d
-79  // 8122  JSR putc
-80
-fa
-90  // 8125  LDA #10
+79  // 8149  JSR putc
+81
+21
+90  // 814c  LDA #10
 00
 0a
-71  // 8128  JMP putc
-80
-fa
-b1  // 812b  puts:   STA scr2
+71  // 814f  JMP putc
+81
+21
+b1  // 8152  puts:   STA scr2
 b0
 02
-91  // 812e  puts1:  LDA scr2
+91  // 8155  puts1:  LDA scr2
 b0
 02
-5c  // 8131  XAY
-85  // 8132  LDAB [Y]
+5c  // 8158  XAY
+85  // 8159  LDAB [Y]
 60
-14  // 8134  BZ puts2
+14  // 815b  BZ puts2
 0d
-79  // 8136  JSR putc
-80
-fa
-91  // 8139  LDA scr2
+79  // 815d  JSR putc
+81
+21
+91  // 8160  LDA scr2
 b0
 02
-38  // 813c  INA
-b1  // 813d  STA scr2
+38  // 8163  INA
+b1  // 8164  STA scr2
 b0
 02
-71  // 8140  JMP puts1
+71  // 8167  JMP puts1
 81
-2e
-09  // 8143  puts2:  RSR
-90  // 8144  LDA #0
+55
+09  // 816a  puts2:  RSR
+90  // 816b  LDA #0
 00
 00
-b1  // 8147  STA TIBLEN
+b1  // 816e  STA TIBLEN
 b0
 10
-79  // 814a  rl1:    JSR getc
+79  // 8171  rl1:    JSR getc
 81
-0f
-d0  // 814d  LDB #$7f
-00
-7f
-5a  // 8150  NAB                 ; B = the character, seven bits
-f1  // 8151  STB rlch
-b0
-c4
-90  // 8154  LDA #13             ; end of line, either way round: a terminal sends
-00
-0d
-d1  // 8157  LDB rlch            ; a carriage return and a file has a newline
-b0
-c4
-51  // 815a  SUB B,A
-20
-14  // 815c  BZ rl_done
-03
-71
-81
-64
-71
-86
-c0
-90  // 8164  LDA #10
-00
-0a
-d1  // 8167  LDB rlch
-b0
-c4
-51  // 816a  SUB B,A
-20
-14  // 816c  BZ rl_done
-03
-71
-81
-74
-71
-86
-c0
-90  // 8174  LDA #8
-00
-08
-d1  // 8177  LDB rlch
-b0
-c4
-51  // 817a  SUB B,A
-20
-14  // 817c  BZ rl_bs
-2d
-90  // 817e  LDA #TIBSZ-1        ; is there room?
-00
-7f
-d1  // 8181  LDB TIBLEN
-b0
-10
-51  // 8184  SUB B,A
-20
-14  // 8186  BZ rl1
-c2
-90  // 8188  LDA #TIB
-c0
-00
-d1  // 818b  LDB TIBLEN
-b0
-10
-58  // 818e  AAB
-f1  // 818f  STB scr1
-b0
-00
-91  // 8192  LDA scr1
-b0
-00
-5c  // 8195  XAY
-81  // 8196  LDAB rlch
-b0
-c4
-a5  // 8199  STAB [Y]
-60
-91  // 819b  LDA TIBLEN
-b0
-10
-38  // 819e  INA
-b1  // 819f  STA TIBLEN
-b0
-10
-91  // 81a2  LDA rlch            ; echo it
-b0
-c4
-79  // 81a5  JSR putc
-80
-fa
-71  // 81a8  JMP rl1
-81
-4a
-91  // 81ab  rl_bs:  LDA TIBLEN
-b0
-10
-d0  // 81ae  LDB #0
-00
-00
-51  // 81b1  SUB B,A
-20
-14  // 81b3  BZ rl1
-95
-91  // 81b5  LDA TIBLEN
-b0
-10
-39  // 81b8  DCA
-b1  // 81b9  STA TIBLEN
-b0
-10
-90  // 81bc  LDA #8
-00
-08
-79  // 81bf  JSR putc
-80
-fa
-90  // 81c2  LDA #' '
-00
-20
-79  // 81c5  JSR putc
-80
-fa
-90  // 81c8  LDA #8
-00
-08
-79  // 81cb  JSR putc
-80
-fa
-71  // 81ce  JMP rl1
-81
-4a
-79  // 81d1  rl_done: JSR crlf
-81
-1f
-91  // 81d4  LDA TIBLEN
-b0
-10
-09  // 81d7  RSR
-90  // 81d8  LDA #0
-00
-00
-a1  // 81db  STAB WORDBUF
-b0
-20
-91  // 81de  pw_skip: LDA TOIN           ; step over any spaces
-b0
-0e
-d1  // 81e1  LDB TIBLEN
-b0
-10
-51  // 81e4  SUB B,A
-20
-14  // 81e6  BZ pw_end
-5a
-79  // 81e8  JSR tibchar
-82
-43
-b1  // 81eb  STA pwch
-b0
-c6
-90  // 81ee  LDA #' '
-00
-20
-d1  // 81f1  LDB pwch
-b0
-c6
-51  // 81f4  SUB B,A
-20
-15  // 81f6  BNZ pw_copy
-0a
-91  // 81f8  LDA TOIN
-b0
-0e
-38  // 81fb  INA
-b1  // 81fc  STA TOIN
-b0
-0e
-71  // 81ff  JMP pw_skip
-81
-de
-91  // 8202  pw_copy: LDA TOIN           ; then take everything up to the next one
-b0
-0e
-d1  // 8205  LDB TIBLEN
-b0
-10
-51  // 8208  SUB B,A
-20
-14  // 820a  BZ pw_end
 36
-79  // 820c  JSR tibchar
-82
-43
-b1  // 820f  STA pwch
+d0  // 8174  LDB #$7f
+00
+7f
+5a  // 8177  NAB                 ; B = the character, seven bits
+f1  // 8178  STB rlch
 b0
-c6
-90  // 8212  LDA #' '
+c4
+90  // 817b  LDA #13             ; end of line, either way round: a terminal sends
+00
+0d
+d1  // 817e  LDB rlch            ; a carriage return and a file has a newline
+b0
+c4
+51  // 8181  SUB B,A
+20
+14  // 8183  BZ rl_done
+03
+71
+81
+8b
+71
+86
+e1
+90  // 818b  LDA #10
+00
+0a
+d1  // 818e  LDB rlch
+b0
+c4
+51  // 8191  SUB B,A
+20
+14  // 8193  BZ rl_done
+03
+71
+81
+9b
+71
+86
+e1
+90  // 819b  LDA #8
+00
+08
+d1  // 819e  LDB rlch
+b0
+c4
+51  // 81a1  SUB B,A
+20
+14  // 81a3  BZ rl_bs
+2d
+90  // 81a5  LDA #TIBSZ-1        ; is there room?
+00
+7f
+d1  // 81a8  LDB TIBLEN
+b0
+10
+51  // 81ab  SUB B,A
+20
+14  // 81ad  BZ rl1
+c2
+90  // 81af  LDA #TIB
+c0
+00
+d1  // 81b2  LDB TIBLEN
+b0
+10
+58  // 81b5  AAB
+f1  // 81b6  STB scr1
+b0
+00
+91  // 81b9  LDA scr1
+b0
+00
+5c  // 81bc  XAY
+81  // 81bd  LDAB rlch+1         ; the low half is where the character is
+b0
+c5
+a5  // 81c0  STAB [Y]
+60
+91  // 81c2  LDA TIBLEN
+b0
+10
+38  // 81c5  INA
+b1  // 81c6  STA TIBLEN
+b0
+10
+91  // 81c9  LDA rlch            ; echo it
+b0
+c4
+79  // 81cc  JSR putc
+81
+21
+71  // 81cf  JMP rl1
+81
+71
+91  // 81d2  rl_bs:  LDA TIBLEN
+b0
+10
+d0  // 81d5  LDB #0
+00
+00
+51  // 81d8  SUB B,A
+20
+14  // 81da  BZ rl1
+95
+91  // 81dc  LDA TIBLEN
+b0
+10
+39  // 81df  DCA
+b1  // 81e0  STA TIBLEN
+b0
+10
+90  // 81e3  LDA #8
+00
+08
+79  // 81e6  JSR putc
+81
+21
+90  // 81e9  LDA #' '
 00
 20
-d1  // 8215  LDB pwch
+79  // 81ec  JSR putc
+81
+21
+90  // 81ef  LDA #8
+00
+08
+79  // 81f2  JSR putc
+81
+21
+71  // 81f5  JMP rl1
+81
+71
+79  // 81f8  rl_done: JSR crlf
+81
+46
+91  // 81fb  LDA TIBLEN
+b0
+10
+09  // 81fe  RSR
+90  // 81ff  LDA #0
+00
+00
+a1  // 8202  STAB WORDBUF
+b0
+20
+91  // 8205  pw_skip: LDA TOIN           ; step over any spaces
+b0
+0e
+d1  // 8208  LDB TIBLEN
+b0
+10
+51  // 820b  SUB B,A
+20
+14  // 820d  BZ pw_end
+5a
+79  // 820f  JSR tibchar
+82
+6a
+b1  // 8212  STA pwch
 b0
 c6
-51  // 8218  SUB B,A
+90  // 8215  LDA #' '
+00
 20
-14  // 821a  BZ pw_end
+d1  // 8218  LDB pwch
+b0
+c6
+51  // 821b  SUB B,A
+20
+15  // 821d  BNZ pw_copy
+0a
+91  // 821f  LDA TOIN
+b0
+0e
+38  // 8222  INA
+b1  // 8223  STA TOIN
+b0
+0e
+71  // 8226  JMP pw_skip
+82
+05
+91  // 8229  pw_copy: LDA TOIN           ; then take everything up to the next one
+b0
+0e
+d1  // 822c  LDB TIBLEN
+b0
+10
+51  // 822f  SUB B,A
+20
+14  // 8231  BZ pw_end
+36
+79  // 8233  JSR tibchar
+82
+6a
+b1  // 8236  STA pwch
+b0
+c6
+90  // 8239  LDA #' '
+00
+20
+d1  // 823c  LDB pwch
+b0
+c6
+51  // 823f  SUB B,A
+20
+14  // 8241  BZ pw_end
 26
-3a  // 821c  CLA
-81  // 821d  LDAB WORDBUF
+3a  // 8243  CLA
+81  // 8244  LDAB WORDBUF
 b0
 20
-d0  // 8220  LDB #WORDBUF+1
+d0  // 8247  LDB #WORDBUF+1
 b0
 21
-58  // 8223  AAB
-f1  // 8224  STB scr1
+58  // 824a  AAB
+f1  // 824b  STB scr1
 b0
 00
-91  // 8227  LDA scr1
+91  // 824e  LDA scr1
 b0
 00
-5c  // 822a  XAY
-81  // 822b  LDAB pwch
+5c  // 8251  XAY
+81  // 8252  LDAB pwch+1
 b0
-c6
-a5  // 822e  STAB [Y]
+c7
+a5  // 8255  STAB [Y]
 60
-3a  // 8230  CLA
-81  // 8231  LDAB WORDBUF
+3a  // 8257  CLA
+81  // 8258  LDAB WORDBUF
 b0
 20
-28  // 8234  INAB
-a1  // 8235  STAB WORDBUF
+28  // 825b  INAB
+a1  // 825c  STAB WORDBUF
 b0
 20
-91  // 8238  LDA TOIN
+91  // 825f  LDA TOIN
 b0
 0e
-38  // 823b  INA
-b1  // 823c  STA TOIN
+38  // 8262  INA
+b1  // 8263  STA TOIN
 b0
 0e
-71  // 823f  JMP pw_copy
+71  // 8266  JMP pw_copy
 82
-02
-09  // 8242  pw_end: RSR
-90  // 8243  tibchar: LDA #TIB
+29
+09  // 8269  pw_end: RSR
+90  // 826a  tibchar: LDA #TIB
 c0
 00
-d1  // 8246  LDB TOIN
+d1  // 826d  LDB TOIN
 b0
 0e
-58  // 8249  AAB
-f1  // 824a  STB scr1
+58  // 8270  AAB
+f1  // 8271  STB scr1
 b0
 00
-91  // 824d  LDA scr1
+91  // 8274  LDA scr1
 b0
 00
-5c  // 8250  XAY
-3a  // 8251  CLA                 ; a byte load leaves the high half alone
-85  // 8252  LDAB [Y]
+5c  // 8277  XAY
+3a  // 8278  CLA                 ; a byte load leaves the high half alone
+85  // 8279  LDAB [Y]
 60
-09  // 8254  RSR
-91  // 8255  find:   LDA LATEST
+09  // 827b  RSR
+91  // 827c  find:   LDA LATEST
 b0
 08
-b1  // 8258  STA fp
+b1  // 827f  STA fp
 b0
 80
-91  // 825b  fnext:  LDA fp
+91  // 8282  fnext:  LDA fp
 b0
 80
-d0  // 825e  LDB #0
+d0  // 8285  LDB #0
 00
 00
-51  // 8261  SUB B,A
+51  // 8288  SUB B,A
 20
-14  // 8263  BZ fnone
+14  // 828a  BZ fnone
 03
 71
 82
-6b
+92
 71
+83
+2c
+91  // 8292  LDA fp
+b0
+80
+5c  // 8295  XAY
+3a  // 8296  CLA
+85  // 8297  LDAB [Y+$02]        ; the flags and length byte
+68
+02
+b1  // 829a  STA flen
+b0
+82
+d0  // 829d  LDB #$1f
+00
+1f
+5a  // 82a0  NAB
+f1  // 82a1  STB flen2
+b0
+84
+3a  // 82a4  CLA
+81  // 82a5  LDAB WORDBUF
+b0
+20
+d1  // 82a8  LDB flen2
+b0
+84
+51  // 82ab  SUB B,A             ; the same length?
+20
+14  // 82ad  BZ fcmp
+03
+71  // 82af  JMP fskip
+83
+20
+90  // 82b2  fcmp:   LDA #0
+00
+00
+b1  // 82b5  STA fi
+b0
+86
+91  // 82b8  fc1:    LDA fi
+b0
+86
+d1  // 82bb  LDB flen2
+b0
+84
+51  // 82be  SUB B,A
+20
+15  // 82c0  BNZ fc0
+03
+71  // 82c2  JMP ffound
 83
 05
-91  // 826b  LDA fp
+91  // 82c5  fc0:    LDA fp              ; the name starts three bytes in
 b0
 80
-5c  // 826e  XAY
-3a  // 826f  CLA
-85  // 8270  LDAB [Y+$02]        ; the flags and length byte
-68
-02
-b1  // 8273  STA flen
-b0
-82
-d0  // 8276  LDB #$1f
-00
-1f
-5a  // 8279  NAB
-f1  // 827a  STB flen2
-b0
-84
-3a  // 827d  CLA
-81  // 827e  LDAB WORDBUF
-b0
-20
-d1  // 8281  LDB flen2
-b0
-84
-51  // 8284  SUB B,A             ; the same length?
-20
-14  // 8286  BZ fcmp
-03
-71  // 8288  JMP fskip
-82
-f9
-90  // 828b  fcmp:   LDA #0
-00
-00
-b1  // 828e  STA fi
+d1  // 82c8  LDB fi
 b0
 86
-91  // 8291  fc1:    LDA fi
-b0
-86
-d1  // 8294  LDB flen2
-b0
-84
-51  // 8297  SUB B,A
-20
-15  // 8299  BNZ fc0
-03
-71  // 829b  JMP ffound
-82
-de
-91  // 829e  fc0:    LDA fp              ; the name starts three bytes in
-b0
-80
-d1  // 82a1  LDB fi
-b0
-86
-58  // 82a4  AAB
-f1  // 82a5  STB scr1
+58  // 82cb  AAB
+f1  // 82cc  STB scr1
 b0
 00
-91  // 82a8  LDA scr1
+91  // 82cf  LDA scr1
 b0
 00
-5c  // 82ab  XAY
-3a  // 82ac  CLA
-85  // 82ad  LDAB [Y+$03]
+5c  // 82d2  XAY
+3a  // 82d3  CLA
+85  // 82d4  LDAB [Y+$03]
 68
 03
-b1  // 82b0  STA fa
+b1  // 82d7  STA fa
 b0
 88
-90  // 82b3  LDA #WORDBUF+1
+90  // 82da  LDA #WORDBUF+1
 b0
 21
-d1  // 82b6  LDB fi
+d1  // 82dd  LDB fi
 b0
 86
-58  // 82b9  AAB
-f1  // 82ba  STB scr1
+58  // 82e0  AAB
+f1  // 82e1  STB scr1
 b0
 00
-91  // 82bd  LDA scr1
+91  // 82e4  LDA scr1
 b0
 00
-5c  // 82c0  XAY
-3a  // 82c1  CLA
-85  // 82c2  LDAB [Y]
+5c  // 82e7  XAY
+3a  // 82e8  CLA
+85  // 82e9  LDAB [Y]
 60
-b1  // 82c4  STA fb
+b1  // 82eb  STA fb
 b0
 8a
-91  // 82c7  LDA fa
+91  // 82ee  LDA fa
 b0
 88
-d1  // 82ca  LDB fb
+d1  // 82f1  LDB fb
 b0
 8a
-51  // 82cd  SUB B,A
+51  // 82f4  SUB B,A
 20
-14  // 82cf  BZ fc2
+14  // 82f6  BZ fc2
 03
-71  // 82d1  JMP fskip
-82
-f9
-91  // 82d4  fc2:    LDA fi
+71  // 82f8  JMP fskip
+83
+20
+91  // 82fb  fc2:    LDA fi
 b0
 86
-38  // 82d7  INA
-b1  // 82d8  STA fi
+38  // 82fe  INA
+b1  // 82ff  STA fi
 b0
 86
-71  // 82db  JMP fc1
+71  // 8302  JMP fc1
 82
-91
-91  // 82de  ffound: LDA fp              ; the code field follows the name
+b8
+91  // 8305  ffound: LDA fp              ; the code field follows the name
 b0
 80
-d1  // 82e1  LDB flen2
+d1  // 8308  LDB flen2
 b0
 84
-58  // 82e4  AAB
-f1  // 82e5  STB scr2
+58  // 830b  AAB
+f1  // 830c  STB scr2
 b0
 02
-90  // 82e8  LDA #3
+90  // 830f  LDA #3
 00
 03
-d1  // 82eb  LDB scr2
+d1  // 8312  LDB scr2
 b0
 02
-58  // 82ee  AAB
-f1  // 82ef  STB scr2
+58  // 8315  AAB
+f1  // 8316  STB scr2
 b0
 02
-91  // 82f2  LDA flen
+91  // 8319  LDA flen
 b0
 82
-b1  // 82f5  STA scr1
+b1  // 831c  STA scr1
 b0
 00
-09  // 82f8  RSR
-91  // 82f9  fskip:  LDA fp              ; on to the entry before it
+09  // 831f  RSR
+91  // 8320  fskip:  LDA fp              ; on to the entry before it
 b0
 80
-5c  // 82fc  XAY
-95  // 82fd  LDA [Y]
+5c  // 8323  XAY
+95  // 8324  LDA [Y]
 60
-b1  // 82ff  STA fp
+b1  // 8326  STA fp
 b0
 80
-71  // 8302  JMP fnext
+71  // 8329  JMP fnext
 82
-5b
-90  // 8305  fnone:  LDA #0
+82
+90  // 832c  fnone:  LDA #0
 00
 00
-b1  // 8308  STA scr2
+b1  // 832f  STA scr2
 b0
 02
-09  // 830b  RSR
-90  // 830c  number: LDA #0
+09  // 8332  RSR
+90  // 8333  number: LDA #0
 00
 00
-b1  // 830f  STA nval
+b1  // 8336  STA nval
 b0
 8e
-b1  // 8312  STA nneg
+b1  // 8339  STA nneg
 b0
 90
-b1  // 8315  STA fi
+b1  // 833c  STA fi
 b0
 86
-3a  // 8318  CLA
-81  // 8319  LDAB WORDBUF
+3a  // 833f  CLA
+81  // 8340  LDAB WORDBUF
 b0
 20
-d0  // 831c  LDB #0
+d0  // 8343  LDB #0
 00
 00
-51  // 831f  SUB B,A
+51  // 8346  SUB B,A
 20
-14  // 8321  BZ nbad             ; an empty word is not a number
+14  // 8348  BZ nbad             ; an empty word is not a number
 03
 71
 83
-29
+50
 71
-83
-d9
-3a  // 8329  CLA
-81  // 832a  LDAB WORDBUF+1
+84
+00
+3a  // 8350  CLA
+81  // 8351  LDAB WORDBUF+1
 b0
 21
-d0  // 832d  LDB #'-'
+d0  // 8354  LDB #'-'
 00
 2d
-51  // 8330  SUB B,A
+51  // 8357  SUB B,A
 20
-15  // 8332  BNZ ndigits
+15  // 8359  BNZ ndigits
 1a
-90  // 8334  LDA #1              ; a minus sign, and there must be more after it
+90  // 835b  LDA #1              ; a minus sign, and there must be more after it
 00
 01
-b1  // 8337  STA nneg
+b1  // 835e  STA nneg
 b0
 90
-b1  // 833a  STA fi
+b1  // 8361  STA fi
 b0
 86
-3a  // 833d  CLA
-81  // 833e  LDAB WORDBUF
+3a  // 8364  CLA
+81  // 8365  LDAB WORDBUF
 b0
 20
-d0  // 8341  LDB #1
+d0  // 8368  LDB #1
 00
 01
-51  // 8344  SUB B,A
+51  // 836b  SUB B,A
 20
-14  // 8346  BZ nbad
+14  // 836d  BZ nbad
 03
 71
 83
-4e
+75
 71
-83
-d9
-91  // 834e  ndigits: LDA fi
+84
+00
+91  // 8375  ndigits: LDA fi
 b0
 86
-d0  // 8351  LDB #0
+d0  // 8378  LDB #0
 00
 00
-c1  // 8354  LDBB WORDBUF
+c1  // 837b  LDBB WORDBUF
 b0
 20
-51  // 8357  SUB B,A             ; B = length - position
+51  // 837e  SUB B,A             ; B = length - position
 20
-14  // 8359  BZ ndone
+14  // 8380  BZ ndone
 5f
-90  // 835b  LDA #WORDBUF+1      ; the character at that position
+90  // 8382  LDA #WORDBUF+1      ; the character at that position
 b0
 21
-d1  // 835e  LDB fi
+d1  // 8385  LDB fi
 b0
 86
-58  // 8361  AAB
-f1  // 8362  STB scr1
+58  // 8388  AAB
+f1  // 8389  STB scr1
 b0
 00
-91  // 8365  LDA scr1
+91  // 838c  LDA scr1
 b0
 00
-5c  // 8368  XAY
-3a  // 8369  CLA
-85  // 836a  LDAB [Y]
+5c  // 838f  XAY
+3a  // 8390  CLA
+85  // 8391  LDAB [Y]
 60
-b1  // 836c  STA dch
+b1  // 8393  STA dch
 b0
 a2
-79  // 836f  JSR digval
-83
-e0
-91  // 8372  LDA dok
+79  // 8396  JSR digval
+84
+07
+91  // 8399  LDA dok
 b0
 a6
-d0  // 8375  LDB #0
+d0  // 839c  LDB #0
 00
 00
-51  // 8378  SUB B,A
+51  // 839f  SUB B,A
 20
-14  // 837a  BZ nbad
+14  // 83a1  BZ nbad
 5d
-91  // 837c  LDA nval            ; value = value * base + digit
+91  // 83a3  LDA nval            ; value = value * base + digit
 b0
 8e
-b1  // 837f  STA dtmp
+b1  // 83a6  STA dtmp
 b0
 a8
-90  // 8382  LDA #0
+90  // 83a9  LDA #0
 00
 00
-b1  // 8385  STA nval
+b1  // 83ac  STA nval
 b0
 8e
-91  // 8388  LDA BASE
+91  // 83af  LDA BASE
 b0
 14
-b1  // 838b  STA dcount
+b1  // 83b2  STA dcount
 b0
 aa
-91  // 838e  nmul:   LDA dtmp
+91  // 83b5  nmul:   LDA dtmp
 b0
 a8
-d1  // 8391  LDB nval
+d1  // 83b8  LDB nval
 b0
 8e
-58  // 8394  AAB
-f1  // 8395  STB nval
+58  // 83bb  AAB
+f1  // 83bc  STB nval
 b0
 8e
-91  // 8398  LDA dcount
+91  // 83bf  LDA dcount
 b0
 aa
-39  // 839b  DCA
-b1  // 839c  STA dcount
+39  // 83c2  DCA
+b1  // 83c3  STA dcount
 b0
 aa
-d0  // 839f  LDB #0
+d0  // 83c6  LDB #0
 00
 00
-51  // 83a2  SUB B,A
+51  // 83c9  SUB B,A
 20
-15  // 83a4  BNZ nmul
+15  // 83cb  BNZ nmul
 e8
-91  // 83a6  LDA dval
+91  // 83cd  LDA dval
 b0
 a4
-d1  // 83a9  LDB nval
+d1  // 83d0  LDB nval
 b0
 8e
-58  // 83ac  AAB
-f1  // 83ad  STB nval
+58  // 83d3  AAB
+f1  // 83d4  STB nval
 b0
 8e
-91  // 83b0  LDA fi
+91  // 83d7  LDA fi
 b0
 86
-38  // 83b3  INA
-b1  // 83b4  STA fi
+38  // 83da  INA
+b1  // 83db  STA fi
 b0
 86
-71  // 83b7  JMP ndigits
+71  // 83de  JMP ndigits
 83
-4e
-91  // 83ba  ndone:  LDA nneg
+75
+91  // 83e1  ndone:  LDA nneg
 b0
 90
-d0  // 83bd  LDB #0
+d0  // 83e4  LDB #0
 00
 00
-51  // 83c0  SUB B,A
+51  // 83e7  SUB B,A
 20
-14  // 83c2  BZ npos
+14  // 83e9  BZ npos
 08
-91  // 83c4  LDA nval
+91  // 83eb  LDA nval
 b0
 8e
-3b  // 83c7  IVA
-38  // 83c8  INA
-b1  // 83c9  STA nval
+3b  // 83ee  IVA
+38  // 83ef  INA
+b1  // 83f0  STA nval
 b0
 8e
-91  // 83cc  npos:   LDA nval
+91  // 83f3  npos:   LDA nval
 b0
 8e
-b1  // 83cf  STA scr1
+b1  // 83f6  STA scr1
 b0
 00
-90  // 83d2  LDA #1
+90  // 83f9  LDA #1
 00
 01
-b1  // 83d5  STA scr2
+b1  // 83fc  STA scr2
 b0
 02
-09  // 83d8  RSR
-90  // 83d9  nbad:   LDA #0
+09  // 83ff  RSR
+90  // 8400  nbad:   LDA #0
 00
 00
-b1  // 83dc  STA scr2
+b1  // 8403  STA scr2
 b0
 02
-09  // 83df  RSR
-90  // 83e0  digval: LDA #'0'
+09  // 8406  RSR
+90  // 8407  digval: LDA #'0'
 00
 30
-d1  // 83e3  LDB dch
+d1  // 840a  LDB dch
 b0
 a2
-51  // 83e6  SUB B,A             ; B = character - '0'
+51  // 840d  SUB B,A             ; B = character - '0'
 20
-16  // 83e8  BM dvbad
+16  // 840f  BM dvbad
 49
-f1  // 83ea  STB dval
+f1  // 8411  STB dval
 b0
 a4
-90  // 83ed  LDA #9
+90  // 8414  LDA #9
 00
 09
-d1  // 83f0  LDB dval
+d1  // 8417  LDB dval
 b0
 a4
-51  // 83f3  SUB B,A
+51  // 841a  SUB B,A
 20
-16  // 83f5  BM dvck
+16  // 841c  BM dvck
 28
-14  // 83f7  BZ dvck
+14  // 841e  BZ dvck
 26
-90  // 83f9  LDA #'A'            ; not a decimal digit, so try the letters
+90  // 8420  LDA #'A'            ; not a decimal digit, so try the letters
 00
 41
-d1  // 83fc  LDB dch
+d1  // 8423  LDB dch
 b0
 a2
-51  // 83ff  SUB B,A
+51  // 8426  SUB B,A
 20
-16  // 8401  BM dvbad
+16  // 8428  BM dvbad
 30
-f1  // 8403  STB dval
+f1  // 842a  STB dval
 b0
 a4
-91  // 8406  LDA dval
+91  // 842d  LDA dval
 b0
 a4
-d0  // 8409  LDB #10
+d0  // 8430  LDB #10
 00
 0a
-58  // 840c  AAB
-f1  // 840d  STB dval
+58  // 8433  AAB
+f1  // 8434  STB dval
 b0
 a4
-90  // 8410  LDA #15
+90  // 8437  LDA #15
 00
 0f
-d1  // 8413  LDB dval
+d1  // 843a  LDB dval
 b0
 a4
-51  // 8416  SUB B,A
+51  // 843d  SUB B,A
 20
-16  // 8418  BM dvck
+16  // 843f  BM dvck
 05
-14  // 841a  BZ dvck
+14  // 8441  BZ dvck
 03
-71  // 841c  JMP dvbad
+71  // 8443  JMP dvbad
 84
-33
-91  // 841f  dvck:   LDA BASE            ; and it has to fit in the base
+5a
+91  // 8446  dvck:   LDA BASE            ; and it has to fit in the base
 b0
 14
-d1  // 8422  LDB dval
+d1  // 8449  LDB dval
 b0
 a4
-51  // 8425  SUB B,A
+51  // 844c  SUB B,A
 20
-16  // 8427  BM dvgood
+16  // 844e  BM dvgood
 03
-71  // 8429  JMP dvbad
+71  // 8450  JMP dvbad
 84
-33
-90  // 842c  dvgood: LDA #1
+5a
+90  // 8453  dvgood: LDA #1
 00
 01
-b1  // 842f  STA dok
+b1  // 8456  STA dok
 b0
 a6
-09  // 8432  RSR
-90  // 8433  dvbad:  LDA #0
+09  // 8459  RSR
+90  // 845a  dvbad:  LDA #0
 00
 00
-b1  // 8436  STA dok
+b1  // 845d  STA dok
 b0
 a6
-09  // 8439  RSR
-b1  // 843a  prnum:  STA nval
+09  // 8460  RSR
+b1  // 8461  prnum:  STA nval
 b0
 8e
-90  // 843d  LDA #0              ; the sign has to come from an arithmetic operation,
+90  // 8464  LDA #0              ; the sign has to come from an arithmetic operation,
 00
 00
-d1  // 8440  LDB nval            ; and SUB B,A computes B - A, so the value goes in B
+d1  // 8467  LDB nval            ; and SUB B,A computes B - A, so the value goes in B
 b0
 8e
-51  // 8443  SUB B,A
+51  // 846a  SUB B,A
 20
-16  // 8445  BM prneg
+16  // 846c  BM prneg
 03
-71  // 8447  JMP prpos
+71  // 846e  JMP prpos
 84
-62
-91  // 844a  prneg:  LDA BASE            ; only base ten has negative numbers here
+89
+91  // 8471  prneg:  LDA BASE            ; only base ten has negative numbers here
 b0
 14
-d0  // 844d  LDB #10
+d0  // 8474  LDB #10
 00
 0a
-51  // 8450  SUB B,A
+51  // 8477  SUB B,A
 20
-15  // 8452  BNZ prpos
+15  // 8479  BNZ prpos
 0e
-90  // 8454  LDA #'-'
+90  // 847b  LDA #'-'
 00
 2d
-79  // 8457  JSR putc
-80
-fa
-91  // 845a  LDA nval
+79  // 847e  JSR putc
+81
+21
+91  // 8481  LDA nval
 b0
 8e
-3b  // 845d  IVA
-38  // 845e  INA
-b1  // 845f  STA nval
+3b  // 8484  IVA
+38  // 8485  INA
+b1  // 8486  STA nval
 b0
 8e
-90  // 8462  prpos:  LDA #1              ; powers[0] = 1
+90  // 8489  prpos:  LDA #1              ; powers[0] = 1
 00
 01
-b1  // 8465  STA pow
+b1  // 848c  STA pow
 b0
 b4
-90  // 8468  LDA #0
+90  // 848f  LDA #0
 00
 00
-b1  // 846b  STA npow
+b1  // 8492  STA npow
 b0
 b2
-91  // 846e  pw1:    LDA npow            ; the power just built
+91  // 8495  pw1:    LDA npow            ; the power just built
 b0
 b2
-3d  // 8471  SLA
-d0  // 8472  LDB #pow
+3d  // 8498  SLA
+d0  // 8499  LDB #pow
 b0
 b4
-58  // 8475  AAB
-f1  // 8476  STB scr1
+58  // 849c  AAB
+f1  // 849d  STB scr1
 b0
 00
-91  // 8479  LDA scr1
+91  // 84a0  LDA scr1
 b0
 00
-5c  // 847c  XAY
-95  // 847d  LDA [Y]
+5c  // 84a3  XAY
+95  // 84a4  LDA [Y]
 60
-b1  // 847f  STA pcur
+b1  // 84a6  STA pcur
 b0
 ac
-90  // 8482  LDA #0              ; multiply it by the base
+90  // 84a9  LDA #0              ; multiply it by the base
 00
 00
-b1  // 8485  STA pnext
+b1  // 84ac  STA pnext
 b0
 ae
-91  // 8488  LDA BASE
+91  // 84af  LDA BASE
 b0
 14
-b1  // 848b  STA pcount
+b1  // 84b2  STA pcount
 b0
 b0
-91  // 848e  pw2:    LDA pcur
+91  // 84b5  pw2:    LDA pcur
 b0
 ac
-d1  // 8491  LDB pnext
+d1  // 84b8  LDB pnext
 b0
 ae
-58  // 8494  AAB
-f1  // 8495  STB pnext
+58  // 84bb  AAB
+f1  // 84bc  STB pnext
 b0
 ae
-91  // 8498  LDA pcount
+91  // 84bf  LDA pcount
 b0
 b0
-39  // 849b  DCA
-b1  // 849c  STA pcount
+39  // 84c2  DCA
+b1  // 84c3  STA pcount
 b0
 b0
-d0  // 849f  LDB #0
+d0  // 84c6  LDB #0
 00
 00
-51  // 84a2  SUB B,A
+51  // 84c9  SUB B,A
 20
-15  // 84a4  BNZ pw2
+15  // 84cb  BNZ pw2
 e8
-91  // 84a6  LDA pnext           ; did it wrap round?
+91  // 84cd  LDA pnext           ; did it wrap round?
 b0
 ae
-d1  // 84a9  LDB pcur
+d1  // 84d0  LDB pcur
 b0
 ac
-51  // 84ac  SUB B,A
+51  // 84d3  SUB B,A
 20
-16  // 84ae  BM pw3
+16  // 84d5  BM pw3
 03
-71  // 84b0  JMP pwdone
-84
-db
-91  // 84b3  pw3:    LDA nval            ; is it already past the value?
-b0
-8e
-d1  // 84b6  LDB pnext
-b0
-ae
-51  // 84b9  SUB B,A
-20
-16  // 84bb  BM pw4
-03
-71  // 84bd  JMP pwdone
-84
-db
-91  // 84c0  pw4:    LDA npow
-b0
-b2
-38  // 84c3  INA
-b1  // 84c4  STA npow
-b0
-b2
-3d  // 84c7  SLA
-d0  // 84c8  LDB #pow
-b0
-b4
-58  // 84cb  AAB
-f1  // 84cc  STB scr1
-b0
-00
-91  // 84cf  LDA scr1
-b0
-00
-5c  // 84d2  XAY
-91  // 84d3  LDA pnext
-b0
-ae
-b5  // 84d6  STA [Y]
-60
-71  // 84d8  JMP pw1
-84
-6e
-91  // 84db  pwdone: LDA npow            ; now take each power out in turn
-b0
-b2
-3d  // 84de  SLA
-d0  // 84df  LDB #pow
-b0
-b4
-58  // 84e2  AAB
-f1  // 84e3  STB scr1
-b0
-00
-91  // 84e6  LDA scr1
-b0
-00
-5c  // 84e9  XAY
-95  // 84ea  LDA [Y]
-60
-b1  // 84ec  STA pcur
-b0
-ac
-90  // 84ef  LDA #0
-00
-00
-b1  // 84f2  STA nq
-b0
-94
-91  // 84f5  pd1:    LDA pcur
-b0
-ac
-d1  // 84f8  LDB nval
-b0
-8e
-51  // 84fb  SUB B,A             ; the answer lands in A, not in B
-20
-16  // 84fd  BM pd2
-0d
-b1  // 84ff  STA nval
-b0
-8e
-91  // 8502  LDA nq
-b0
-94
-38  // 8505  INA
-b1  // 8506  STA nq
-b0
-94
-71  // 8509  JMP pd1
-84
-f5
-90  // 850c  pd2:    LDA #digits
+71  // 84d7  JMP pwdone
 85
-32
-d1  // 850f  LDB nq
+02
+91  // 84da  pw3:    LDA nval            ; is it already past the value?
+b0
+8e
+d1  // 84dd  LDB pnext
+b0
+ae
+51  // 84e0  SUB B,A
+20
+16  // 84e2  BM pw4
+03
+71  // 84e4  JMP pwdone
+85
+02
+91  // 84e7  pw4:    LDA npow
+b0
+b2
+38  // 84ea  INA
+b1  // 84eb  STA npow
+b0
+b2
+3d  // 84ee  SLA
+d0  // 84ef  LDB #pow
+b0
+b4
+58  // 84f2  AAB
+f1  // 84f3  STB scr1
+b0
+00
+91  // 84f6  LDA scr1
+b0
+00
+5c  // 84f9  XAY
+91  // 84fa  LDA pnext
+b0
+ae
+b5  // 84fd  STA [Y]
+60
+71  // 84ff  JMP pw1
+84
+95
+91  // 8502  pwdone: LDA npow            ; now take each power out in turn
+b0
+b2
+3d  // 8505  SLA
+d0  // 8506  LDB #pow
+b0
+b4
+58  // 8509  AAB
+f1  // 850a  STB scr1
+b0
+00
+91  // 850d  LDA scr1
+b0
+00
+5c  // 8510  XAY
+95  // 8511  LDA [Y]
+60
+b1  // 8513  STA pcur
+b0
+ac
+90  // 8516  LDA #0
+00
+00
+b1  // 8519  STA nq
 b0
 94
-58  // 8512  AAB
-85  // 8513  LDAB [B]
+91  // 851c  pd1:    LDA pcur
+b0
+ac
+d1  // 851f  LDB nval
+b0
+8e
+51  // 8522  SUB B,A             ; the answer lands in A, not in B
 20
-79  // 8515  JSR putc
-80
-fa
-91  // 8518  LDA npow
+16  // 8524  BM pd2
+0d
+b1  // 8526  STA nval
+b0
+8e
+91  // 8529  LDA nq
+b0
+94
+38  // 852c  INA
+b1  // 852d  STA nq
+b0
+94
+71  // 8530  JMP pd1
+85
+1c
+90  // 8533  pd2:    LDA #digits
+85
+59
+d1  // 8536  LDB nq
+b0
+94
+58  // 8539  AAB
+85  // 853a  LDAB [B]
+20
+79  // 853c  JSR putc
+81
+21
+91  // 853f  LDA npow
 b0
 b2
-d0  // 851b  LDB #0
+d0  // 8542  LDB #0
 00
 00
-51  // 851e  SUB B,A
+51  // 8545  SUB B,A
 20
-14  // 8520  BZ pd3
+14  // 8547  BZ pd3
 0a
-91  // 8522  LDA npow
+91  // 8549  LDA npow
 b0
 b2
-39  // 8525  DCA
-b1  // 8526  STA npow
+39  // 854c  DCA
+b1  // 854d  STA npow
 b0
 b2
-71  // 8529  JMP pwdone
-84
-db
-90  // 852c  pd3:    LDA #' '
+71  // 8550  JMP pwdone
+85
+02
+90  // 8553  pd3:    LDA #' '
 00
 20
-71  // 852f  JMP putc
-80
-fa
-30  // 8532  digits: .ascii "0123456789ABCDEF"
+71  // 8556  JMP putc
+81
+21
+30  // 8559  digits: .ascii "0123456789ABCDEF"
 31
 32
 33
@@ -1345,265 +1384,259 @@ fa
 44
 45
 46
-90  // 8542  pr_word: LDA #0
+90  // 8569  pr_word: LDA #0
 00
 00
-b1  // 8545  STA fi
+b1  // 856c  STA fi
 b0
 86
-91  // 8548  pw1:    LDA fi
+91  // 856f  pw1:    LDA fi
 b0
 86
-d0  // 854b  LDB #0
+d0  // 8572  LDB #0
 00
 00
-c1  // 854e  LDBB WORDBUF
+c1  // 8575  LDBB WORDBUF
 b0
 20
-51  // 8551  SUB B,A
+51  // 8578  SUB B,A
 20
-14  // 8553  BZ pw2
+14  // 857a  BZ pw2
 03
 71
 85
-5b
+82
 71
 84
-8e
-90  // 855b  LDA #WORDBUF+1
+b5
+90  // 8582  LDA #WORDBUF+1
 b0
 21
-d1  // 855e  LDB fi
+d1  // 8585  LDB fi
 b0
 86
-58  // 8561  AAB
-f1  // 8562  STB scr1
+58  // 8588  AAB
+f1  // 8589  STB scr1
 b0
 00
-91  // 8565  LDA scr1
+91  // 858c  LDA scr1
 b0
 00
-5c  // 8568  XAY
-85  // 8569  LDAB [Y]
+5c  // 858f  XAY
+85  // 8590  LDAB [Y]            ; putc takes the character in the low half of A
 60
-a1  // 856b  STAB scr2
-b0
-02
-91  // 856e  LDA scr2
-b0
-02
-79  // 8571  JSR putc
-80
-fa
-91  // 8574  LDA fi
-b0
-86
-38  // 8577  INA
-b1  // 8578  STA fi
-b0
-86
-71  // 857b  JMP pw1
-85
-48
-09  // 857e  pw2:    RSR
-90  // 857f  pr_ok:  LDA #s_ok
-86
-5c
-79  // 8582  JSR puts
+79  // 8592  JSR putc
 81
-2b
-71  // 8585  JMP crlf
-81
-1f
-b1  // 8588  comma:  STA scr2
+21
+91  // 8595  LDA fi
 b0
-02
-91  // 858b  LDA HERE
-b0
-0a
-5c  // 858e  XAY
-91  // 858f  LDA scr2
-b0
-02
-b5  // 8592  STA [Y]
-60
-91  // 8594  LDA HERE
-b0
-0a
-38  // 8597  INA
+86
 38  // 8598  INA
-b1  // 8599  STA HERE
+b1  // 8599  STA fi
+b0
+86
+71  // 859c  JMP pw1
+85
+6f
+09  // 859f  pw2:    RSR
+90  // 85a0  pr_ok:  LDA #s_ok
+86
+7d
+79  // 85a3  JSR puts
+81
+52
+71  // 85a6  JMP crlf
+81
+46
+b1  // 85a9  comma:  STA scr2
+b0
+02
+91  // 85ac  LDA HERE
 b0
 0a
-09  // 859c  RSR
-2e  // 859d  PAGE $1c,$f8,MAPIMG     ; capture the map that is running
+5c  // 85af  XAY
+91  // 85b0  LDA scr2
+b0
+02
+b5  // 85b3  STA [Y]
+60
+91  // 85b5  LDA HERE
+b0
+0a
+38  // 85b8  INA
+38  // 85b9  INA
+b1  // 85ba  STA HERE
+b0
+0a
+09  // 85bd  RSR
+2e  // 85be  PAGE $1c,$f8,MAPIMG     ; capture the map that is running
 1c
 f8
 b0
 60
-90  // 85a2  LDA #0
+90  // 85c3  LDA #0
 00
 00
-b1  // 85a5  STA NPAGES
+b1  // 85c6  STA NPAGES
 b0
 12
-b1  // 85a8  STA mp
+b1  // 85c9  STA mp
 b0
 98
-91  // 85ab  sm1:    LDA mp
+91  // 85cc  sm1:    LDA mp
 b0
 98
-d0  // 85ae  LDB #128                ; 128 pages of 2K is the whole 256K
+d0  // 85cf  LDB #128                ; 128 pages of 2K is the whole 256K
 00
 80
-51  // 85b1  SUB B,A
+51  // 85d2  SUB B,A
 20
-15  // 85b3  BNZ sm_go
+15  // 85d4  BNZ sm_go
 03
-71  // 85b5  JMP smdone
+71  // 85d6  JMP smdone
 86
-20
-90  // 85b8  sm_go:  LDA #MAPIMG+BANKPG      ; point the window at physical page mp
+41
+90  // 85d9  sm_go:  LDA #MAPIMG+BANKPG      ; point the window at physical page mp
 b0
 6e
-5c  // 85bb  XAY
-81  // 85bc  LDAB mp+1
+5c  // 85dc  XAY
+81  // 85dd  LDAB mp+1
 b0
 99
-a5  // 85bf  STAB [Y]
+a5  // 85e0  STAB [Y]
 60
-2e  // 85c1  PAGE $0c,$f8,MAPIMG
+2e  // 85e2  PAGE $0c,$f8,MAPIMG
 0c
 f8
 b0
 60
-91  // 85c6  LDA PROBE1              ; keep whatever is there, so that sizing the
+91  // 85e7  LDA PROBE1              ; keep whatever is there, so that sizing the
 71
 00
-b1  // 85c9  STA sv1                 ; memory does not destroy it - the stacks and
+b1  // 85ea  STA sv1                 ; memory does not destroy it - the stacks and
 b0
 9c
-91  // 85cc  LDA PROBE2              ; these variables live in pages this walks over
+91  // 85ed  LDA PROBE2              ; these variables live in pages this walks over
 71
 02
-b1  // 85cf  STA sv2
+b1  // 85f0  STA sv2
 b0
 9e
-90  // 85d2  LDA #$a5c3
+90  // 85f3  LDA #$a5c3
 a5
 c3
-b1  // 85d5  STA PROBE1
+b1  // 85f6  STA PROBE1
 71
 00
-90  // 85d8  LDA #$5a3c
+90  // 85f9  LDA #$5a3c
 5a
 3c
-b1  // 85db  STA PROBE2
+b1  // 85fc  STA PROBE2
 71
 02
-90  // 85de  LDA #0
+90  // 85ff  LDA #0
 00
 00
-b1  // 85e1  STA smok
+b1  // 8602  STA smok
 b0
 a0
-91  // 85e4  LDA PROBE1
+91  // 8605  LDA PROBE1
 71
 00
-d0  // 85e7  LDB #$a5c3
+d0  // 8608  LDB #$a5c3
 a5
 c3
-51  // 85ea  SUB B,A
+51  // 860b  SUB B,A
 20
-15  // 85ec  BNZ sm_put
+15  // 860d  BNZ sm_put
 10
-91  // 85ee  LDA PROBE2
+91  // 860f  LDA PROBE2
 71
 02
-d0  // 85f1  LDB #$5a3c
+d0  // 8612  LDB #$5a3c
 5a
 3c
-51  // 85f4  SUB B,A
+51  // 8615  SUB B,A
 20
-15  // 85f6  BNZ sm_put
+15  // 8617  BNZ sm_put
 06
-90  // 85f8  LDA #1
+90  // 8619  LDA #1
 00
 01
-b1  // 85fb  STA smok
+b1  // 861c  STA smok
 b0
 a0
-91  // 85fe  sm_put: LDA sv1                 ; put the page back as it was
+91  // 861f  sm_put: LDA sv1                 ; put the page back as it was
 b0
 9c
-b1  // 8601  STA PROBE1
+b1  // 8622  STA PROBE1
 71
 00
-91  // 8604  LDA sv2
+91  // 8625  LDA sv2
 b0
 9e
-b1  // 8607  STA PROBE2
+b1  // 8628  STA PROBE2
 71
 02
-91  // 860a  LDA smok
+91  // 862b  LDA smok
 b0
 a0
-14  // 860d  BZ smnext
+14  // 862e  BZ smnext
 07
-91  // 860f  LDA NPAGES
+91  // 8630  LDA NPAGES
 b0
 12
-38  // 8612  INA
-b1  // 8613  STA NPAGES
+38  // 8633  INA
+b1  // 8634  STA NPAGES
 b0
 12
-91  // 8616  smnext: LDA mp
+91  // 8637  smnext: LDA mp
 b0
 98
-38  // 8619  INA
-b1  // 861a  STA mp
+38  // 863a  INA
+b1  // 863b  STA mp
 b0
 98
-71  // 861d  JMP sm1
+71  // 863e  JMP sm1
 85
-ab
-90  // 8620  smdone: LDA #MAPIMG+BANKPG      ; and put the window back where it was
+cc
+90  // 8641  smdone: LDA #MAPIMG+BANKPG      ; and put the window back where it was
 b0
 6e
-5c  // 8623  XAY
-80  // 8624  LDAB #BANKPG
+5c  // 8644  XAY
+80  // 8645  LDAB #BANKPG
 0e
-a5  // 8626  STAB [Y]
+a5  // 8647  STAB [Y]
 60
-2e  // 8628  PAGE $0c,$f8,MAPIMG
+2e  // 8649  PAGE $0c,$f8,MAPIMG
 0c
 f8
 b0
 60
-09  // 862d  RSR
-90  // 862e  banner: LDA #s_banner
+09  // 864e  RSR
+90  // 864f  banner: LDA #s_banner
 86
-44
-79  // 8631  JSR puts
+65
+79  // 8652  JSR puts
 81
-2b
-91  // 8634  LDA NPAGES              ; each page is 2K
+52
+91  // 8655  LDA NPAGES              ; each page is 2K
 b0
 12
-3d  // 8637  SLA
-79  // 8638  JSR prnum
+3d  // 8658  SLA
+79  // 8659  JSR prnum
 84
-3a
-90  // 863b  LDA #s_kb
+61
+90  // 865c  LDA #s_kb
 86
-56
-79  // 863e  JSR puts
+77
+79  // 865f  JSR puts
 81
-2b
-71  // 8641  JMP crlf
+52
+71  // 8662  JMP crlf
 81
-1f
-43  // 8644  s_banner: .asciiz "Centurion FORTH  "
+46
+43  // 8665  s_banner: .asciiz "Centurion FORTH  "
 65
 6e
 74
@@ -1621,1081 +1654,1081 @@ b0
 20
 20
 00
-4b  // 8656  s_kb:     .asciiz "K RAM"
+4b  // 8677  s_kb:     .asciiz "K RAM"
 20
 52
 41
 4d
 00
-20  // 865c  s_ok:     .asciiz "  ok"
+20  // 867d  s_ok:     .asciiz "  ok"
 20
 6f
 6b
 00
-86  // 8661  r_branch: .word rb_code     ; ( -- ) the cell after it is where to go
-63
-95  // 8663  rb_code: LDA [B]
+86  // 8682  r_branch: .word rb_code     ; ( -- ) the cell after it is where to go
+84
+95  // 8684  rb_code: LDA [B]
 20
-b1  // 8665  STA ipsave
+b1  // 8686  STA ipsave
 b0
 06
-d1  // 8668  LDB ipsave
+d1  // 8689  LDB ipsave
 b0
 06
-71  // 866b  JMP NEXT
+71  // 868c  JMP NEXT
 80
-d1
-86  // 866e  r_qbranch: .word rq_code    ; ( flag -- ) go there when the flag is zero
-70
-95  // 8670  rq_code: LDA [Z++]
+f8
+86  // 868f  r_qbranch: .word rq_code    ; ( flag -- ) go there when the flag is zero
+91
+95  // 8691  rq_code: LDA [Z++]
 81
-d0  // 8672  LDB #0
+d0  // 8693  LDB #0
 00
 00
-51  // 8675  SUB B,A
+51  // 8696  SUB B,A
 20
-14  // 8677  BZ rq_take
+14  // 8698  BZ rq_take
 05
-95  // 8679  LDA [B++]           ; not taken: step over the target
+95  // 869a  LDA [B++]           ; not taken: step over the target
 21
-71  // 867b  JMP NEXT
+71  // 869c  JMP NEXT
 80
-d1
-95  // 867e  rq_take: LDA [B]
+f8
+95  // 869f  rq_take: LDA [B]
 20
-b1  // 8680  STA ipsave
+b1  // 86a1  STA ipsave
 b0
 06
-d1  // 8683  LDB ipsave
+d1  // 86a4  LDB ipsave
 b0
 06
-71  // 8686  JMP NEXT
+71  // 86a7  JMP NEXT
 80
-d1
-86  // 8689  r_do:   .word rd_code       ; ( limit start -- ) the loop control goes on the
-8b
-95  // 868b  rd_code: LDA [Z++]          ; return stack, which is where I reads it from
+f8
+86  // 86aa  r_do:   .word rd_code       ; ( limit start -- ) the loop control goes on the
+ac
+95  // 86ac  rd_code: LDA [Z++]          ; return stack, which is where I reads it from
 81
-b1  // 868d  STA dtmp1
+b1  // 86ae  STA dtmp1
 b0
 d4
-95  // 8690  LDA [Z++]
+95  // 86b1  LDA [Z++]
 81
-b5  // 8692  STA [--S]           ; the limit underneath
+b5  // 86b3  STA [--S]           ; the limit underneath
 a2
-91  // 8694  LDA dtmp1
+91  // 86b5  LDA dtmp1
 b0
 d4
-b5  // 8697  STA [--S]           ; and the index on top
+b5  // 86b8  STA [--S]           ; and the index on top
 a2
-71  // 8699  JMP NEXT
+71  // 86ba  JMP NEXT
 80
-d1
-86  // 869c  r_loop: .word rl_code       ; ( -- ) step the index and go round again
-9e
-95  // 869e  rl_code: LDA [S++]
+f8
+86  // 86bd  r_loop: .word rl_code       ; ( -- ) step the index and go round again
+bf
+95  // 86bf  rl_code: LDA [S++]
 a1
-38  // 86a0  INA
-b1  // 86a1  STA dtmp1
+38  // 86c1  INA
+b1  // 86c2  STA dtmp1
 b0
 d4
-95  // 86a4  LDA [S]             ; the limit, without taking it off
+95  // 86c5  LDA [S]             ; the limit, without taking it off
 a0
-d1  // 86a6  LDB dtmp1
+d1  // 86c7  LDB dtmp1
 b0
 d4
-51  // 86a9  SUB B,A             ; A = index - limit
+51  // 86ca  SUB B,A             ; A = index - limit
 20
-16  // 86ab  BM rl_again
+16  // 86cc  BM rl_again
 03
-71  // 86ad  JMP rl_done
+71  // 86ce  JMP rl_done
 81
-d1
-91  // 86b0  rl_again: LDA dtmp1
+f8
+91  // 86d1  rl_again: LDA dtmp1
 b0
 d4
-b5  // 86b3  STA [--S]
+b5  // 86d4  STA [--S]
 a2
-95  // 86b5  LDA [B]
+95  // 86d6  LDA [B]
 20
-b1  // 86b7  STA ipsave
+b1  // 86d8  STA ipsave
 b0
 06
-d1  // 86ba  LDB ipsave
+d1  // 86db  LDB ipsave
 b0
 06
-71  // 86bd  JMP NEXT
+71  // 86de  JMP NEXT
 80
-d1
-95  // 86c0  rl_done: LDA [S++]          ; drop the limit
+f8
+95  // 86e1  rl_done: LDA [S++]          ; drop the limit
 a1
-95  // 86c2  LDA [B++]           ; and step over the target
+95  // 86e3  LDA [B++]           ; and step over the target
 21
-71  // 86c4  JMP NEXT
+71  // 86e5  JMP NEXT
 80
-d1
-00  // 86c7  .word 0
+f8
+00  // 86e8  .word 0
 00
-03  // 86c9  .byte 3
-44  // 86ca  .ascii "DUP"
+03  // 86ea  .byte 3
+44  // 86eb  .ascii "DUP"
 55
 50
-86  // 86cd  w_dup:  .code
-cf
-95  // 86cf  LDA [Z]
+86  // 86ee  w_dup:  .code
+f0
+95  // 86f0  LDA [Z]
 80
-b5  // 86d1  STA [--Z]
+b5  // 86f2  STA [--Z]
 82
-71  // 86d3  JMP NEXT
+71  // 86f4  JMP NEXT
 80
-d1
-86  // 86d6  .word w_dup-6
-c7
-04  // 86d8  .byte 4
-44  // 86d9  .ascii "DROP"
+f8
+86  // 86f7  .word w_dup-6
+e8
+04  // 86f9  .byte 4
+44  // 86fa  .ascii "DROP"
 52
 4f
 50
-86  // 86dd  w_drop: .code
-df
-95  // 86df  LDA [Z++]
+87  // 86fe  w_drop: .code
+00
+95  // 8700  LDA [Z++]
 81
-71  // 86e1  JMP NEXT
+71  // 8702  JMP NEXT
 80
-d1
-86  // 86e4  .word w_drop-7
-d6
-04  // 86e6  .byte 4
-53  // 86e7  .ascii "SWAP"
+f8
+86  // 8705  .word w_drop-7
+f7
+04  // 8707  .byte 4
+53  // 8708  .ascii "SWAP"
 57
 41
 50
-86  // 86eb  w_swap: .code
-ed
-95  // 86ed  LDA [Z++]
+87  // 870c  w_swap: .code
+0e
+95  // 870e  LDA [Z++]
 81
-b1  // 86ef  STA scr1
+b1  // 8710  STA scr1
 b0
 00
-95  // 86f2  LDA [Z++]
+95  // 8713  LDA [Z++]
 81
-b1  // 86f4  STA scr2
+b1  // 8715  STA scr2
 b0
 02
-91  // 86f7  LDA scr1
+91  // 8718  LDA scr1
 b0
 00
-b5  // 86fa  STA [--Z]
+b5  // 871b  STA [--Z]
 82
-91  // 86fc  LDA scr2
+91  // 871d  LDA scr2
 b0
 02
-b5  // 86ff  STA [--Z]
-82
-71  // 8701  JMP NEXT
-80
-d1
-86  // 8704  .word w_swap-7
-e4
-04  // 8706  .byte 4
-4f  // 8707  .ascii "OVER"
-56
-45
-52
-87  // 870b  w_over: .code
-0d
-95  // 870d  LDA [Z+$02]
-88
-02
-b5  // 8710  STA [--Z]
-82
-71  // 8712  JMP NEXT
-80
-d1
-87  // 8715  .word w_over-7
-04
-01  // 8717  .byte 1
-2b  // 8718  .ascii "+"
-87  // 8719  w_plus: .code
-1b
-95  // 871b  LDA [Z++]
-81
-d5  // 871d  LDB [Z++]
-81
-58  // 871f  AAB
-f5  // 8720  STB [--Z]
+b5  // 8720  STA [--Z]
 82
 71  // 8722  JMP NEXT
 80
-d1
-87  // 8725  .word w_plus-4
-15
-01  // 8727  .byte 1
-2d  // 8728  .ascii "-"
-87  // 8729  w_minus: .code
-2b
-95  // 872b  LDA [Z++]
-81
-d5  // 872d  LDB [Z++]
-81
-51  // 872f  SUB B,A
-20
-f5  // 8731  STB [--Z]
+f8
+87  // 8725  .word w_swap-7
+05
+04  // 8727  .byte 4
+4f  // 8728  .ascii "OVER"
+56
+45
+52
+87  // 872c  w_over: .code
+2e
+95  // 872e  LDA [Z+$02]
+88
+02
+b5  // 8731  STA [--Z]
 82
 71  // 8733  JMP NEXT
 80
-d1
-87  // 8736  .word w_minus-4
+f8
+87  // 8736  .word w_over-7
 25
-03  // 8738  .byte 3
-41  // 8739  .ascii "AND"
+01  // 8738  .byte 1
+2b  // 8739  .ascii "+"
+87  // 873a  w_plus: .code
+3c
+95  // 873c  LDA [Z++]
+81
+d5  // 873e  LDB [Z++]
+81
+58  // 8740  AAB
+f5  // 8741  STB [--Z]
+82
+71  // 8743  JMP NEXT
+80
+f8
+87  // 8746  .word w_plus-4
+36
+01  // 8748  .byte 1
+2d  // 8749  .ascii "-"
+87  // 874a  w_minus: .code
+4c
+95  // 874c  LDA [Z++]
+81
+d5  // 874e  LDB [Z++]
+81
+51  // 8750  SUB B,A
+20
+f5  // 8752  STB [--Z]
+82
+71  // 8754  JMP NEXT
+80
+f8
+87  // 8757  .word w_minus-4
+46
+03  // 8759  .byte 3
+41  // 875a  .ascii "AND"
 4e
 44
-87  // 873c  w_and:  .code
-3e
-95  // 873e  LDA [Z++]
+87  // 875d  w_and:  .code
+5f
+95  // 875f  LDA [Z++]
 81
-d5  // 8740  LDB [Z++]
+d5  // 8761  LDB [Z++]
 81
-5a  // 8742  NAB
-f5  // 8743  STB [--Z]
+5a  // 8763  NAB
+f5  // 8764  STB [--Z]
 82
-71  // 8745  JMP NEXT
+71  // 8766  JMP NEXT
 80
-d1
-87  // 8748  .word w_and-6
-36
-01  // 874a  .byte 1
-40  // 874b  .ascii "@"
-87  // 874c  w_fetch: .code
-4e
-95  // 874e  LDA [Z++]
-81
-5c  // 8750  XAY
-95  // 8751  LDA [Y]
-60
-b5  // 8753  STA [--Z]
-82
-71  // 8755  JMP NEXT
-80
-d1
-87  // 8758  .word w_fetch-4
-48
-01  // 875a  .byte 1
-21  // 875b  .ascii "!"
-87  // 875c  w_store: .code
-5e
-95  // 875e  LDA [Z++]
-81
-5c  // 8760  XAY
-95  // 8761  LDA [Z++]
-81
-b5  // 8763  STA [Y]
-60
-71  // 8765  JMP NEXT
-80
-d1
-87  // 8768  .word w_store-4
-58
-02  // 876a  .byte 2
-43  // 876b  .ascii "C@"
-40
-87  // 876d  w_cfetch: .code
+f8
+87  // 8769  .word w_and-6
+57
+01  // 876b  .byte 1
+40  // 876c  .ascii "@"
+87  // 876d  w_fetch: .code
 6f
 95  // 876f  LDA [Z++]
 81
 5c  // 8771  XAY
-90  // 8772  LDA #0
-00
-00
-85  // 8775  LDAB [Y]
+95  // 8772  LDA [Y]
 60
-b1  // 8777  STA scr1
+b5  // 8774  STA [--Z]
+82
+71  // 8776  JMP NEXT
+80
+f8
+87  // 8779  .word w_fetch-4
+69
+01  // 877b  .byte 1
+21  // 877c  .ascii "!"
+87  // 877d  w_store: .code
+7f
+95  // 877f  LDA [Z++]
+81
+5c  // 8781  XAY
+95  // 8782  LDA [Z++]
+81
+b5  // 8784  STA [Y]
+60
+71  // 8786  JMP NEXT
+80
+f8
+87  // 8789  .word w_store-4
+79
+02  // 878b  .byte 2
+43  // 878c  .ascii "C@"
+40
+87  // 878e  w_cfetch: .code
+90
+95  // 8790  LDA [Z++]
+81
+5c  // 8792  XAY
+90  // 8793  LDA #0
+00
+00
+85  // 8796  LDAB [Y]
+60
+b1  // 8798  STA scr1
 b0
 00
-85  // 877a  LDAB [Y]
+85  // 879b  LDAB [Y]
 60
-a1  // 877c  STAB scr1+1
+a1  // 879d  STAB scr1+1
 b0
 01
-91  // 877f  LDA scr1
+91  // 87a0  LDA scr1
 b0
 00
-b5  // 8782  STA [--Z]
+b5  // 87a3  STA [--Z]
 82
-71  // 8784  JMP NEXT
+71  // 87a5  JMP NEXT
 80
-d1
-87  // 8787  .word w_cfetch-5
-68
-02  // 8789  .byte 2
-43  // 878a  .ascii "C!"
+f8
+87  // 87a8  .word w_cfetch-5
+89
+02  // 87aa  .byte 2
+43  // 87ab  .ascii "C!"
 21
-87  // 878c  w_cstore: .code
-8e
-95  // 878e  LDA [Z++]
+87  // 87ad  w_cstore: .code
+af
+95  // 87af  LDA [Z++]
 81
-5c  // 8790  XAY
-95  // 8791  LDA [Z++]
+5c  // 87b1  XAY
+95  // 87b2  LDA [Z++]
 81
-a5  // 8793  STAB [Y]
+a5  // 87b4  STAB [Y]
 60
-71  // 8795  JMP NEXT
+71  // 87b6  JMP NEXT
 80
-d1
-87  // 8798  .word w_cstore-5
-87
-04  // 879a  .byte 4
-45  // 879b  .ascii "EMIT"
+f8
+87  // 87b9  .word w_cstore-5
+a8
+04  // 87bb  .byte 4
+45  // 87bc  .ascii "EMIT"
 4d
 49
 54
-87  // 879f  w_emit: .code
-a1
-95  // 87a1  LDA [Z++]
+87  // 87c0  w_emit: .code
+c2
+95  // 87c2  LDA [Z++]
 81
-79  // 87a3  JSR putc
-80
-fa
-71  // 87a6  JMP NEXT
-80
-d1
-87  // 87a9  .word w_emit-7
-98
-03  // 87ab  .byte 3
-4b  // 87ac  .ascii "KEY"
-45
-59
-87  // 87af  w_key:  .code
-b1
-79  // 87b1  JSR getc
+79  // 87c4  JSR putc
 81
-0f
-d0  // 87b4  LDB #$7f
-00
-7f
-5a  // 87b7  NAB
-f5  // 87b8  STB [--Z]
-82
-71  // 87ba  JMP NEXT
-80
-d1
-87  // 87bd  .word w_key-6
-a9
-02  // 87bf  .byte 2
-43  // 87c0  .ascii "CR"
-52
-87  // 87c2  w_cr:   .code
-c4
-79  // 87c4  JSR crlf
-81
-1f
+21
 71  // 87c7  JMP NEXT
 80
-d1
-87  // 87ca  .word w_cr-5
-bd
-01  // 87cc  .byte 1
-2e  // 87cd  .ascii "."
-87  // 87ce  w_dot:  .code
-d0
-95  // 87d0  LDA [Z++]
+f8
+87  // 87ca  .word w_emit-7
+b9
+03  // 87cc  .byte 3
+4b  // 87cd  .ascii "KEY"
+45
+59
+87  // 87d0  w_key:  .code
+d2
+79  // 87d2  JSR getc
 81
-79  // 87d2  JSR prnum
-84
-3a
-90  // 87d5  LDA #' '
+36
+d0  // 87d5  LDB #$7f
 00
-20
-79  // 87d8  JSR putc
-80
-fa
+7f
+5a  // 87d8  NAB
+f5  // 87d9  STB [--Z]
+82
 71  // 87db  JMP NEXT
 80
-d1
-87  // 87de  .word w_dot-4
+f8
+87  // 87de  .word w_key-6
 ca
-03  // 87e0  .byte 3
-4c  // 87e1  .ascii "LIT"
+02  // 87e0  .byte 2
+43  // 87e1  .ascii "CR"
+52
+87  // 87e3  w_cr:   .code
+e5
+79  // 87e5  JSR crlf
+81
+46
+71  // 87e8  JMP NEXT
+80
+f8
+87  // 87eb  .word w_cr-5
+de
+01  // 87ed  .byte 1
+2e  // 87ee  .ascii "."
+87  // 87ef  w_dot:  .code
+f1
+95  // 87f1  LDA [Z++]
+81
+79  // 87f3  JSR prnum
+84
+61
+90  // 87f6  LDA #' '
+00
+20
+79  // 87f9  JSR putc
+81
+21
+71  // 87fc  JMP NEXT
+80
+f8
+87  // 87ff  .word w_dot-4
+eb
+03  // 8801  .byte 3
+4c  // 8802  .ascii "LIT"
 49
 54
-87  // 87e4  w_lit:  .code
-e6
-95  // 87e6  LDA [B++]
+88  // 8805  w_lit:  .code
+07
+95  // 8807  LDA [B++]
 21
-b5  // 87e8  STA [--Z]
+b5  // 8809  STA [--Z]
 82
-71  // 87ea  JMP NEXT
+71  // 880b  JMP NEXT
 80
-d1
-87  // 87ed  .word w_lit-6
-de
-04  // 87ef  .byte 4
-45  // 87f0  .ascii "EXIT"
+f8
+87  // 880e  .word w_lit-6
+ff
+04  // 8810  .byte 4
+45  // 8811  .ascii "EXIT"
 58
 49
 54
-87  // 87f4  w_exit: .code
-f6
-d5  // 87f6  LDB [S++]
+88  // 8815  w_exit: .code
+17
+d5  // 8817  LDB [S++]
 a1
-71  // 87f8  JMP NEXT
+71  // 8819  JMP NEXT
 80
-d1
-87  // 87fb  .word w_exit-7
-ed
-05  // 87fd  .byte 5
-50  // 87fe  .ascii "PAGES"
+f8
+88  // 881c  .word w_exit-7
+0e
+05  // 881e  .byte 5
+50  // 881f  .ascii "PAGES"
 41
 47
 45
 53
-88  // 8803  w_pages: .code
-05
-91  // 8805  LDA NPAGES
+88  // 8824  w_pages: .code
+26
+91  // 8826  LDA NPAGES
 b0
 12
-b5  // 8808  STA [--Z]
+b5  // 8829  STA [--Z]
 82
-71  // 880a  JMP NEXT
+71  // 882b  JMP NEXT
 80
-d1
-87  // 880d  .word w_pages-8
-fb
-04  // 880f  .byte 4
-48  // 8810  .ascii "HERE"
+f8
+88  // 882e  .word w_pages-8
+1c
+04  // 8830  .byte 4
+48  // 8831  .ascii "HERE"
 45
 52
 45
-88  // 8814  w_here: .code
-16
-91  // 8816  LDA HERE
+88  // 8835  w_here: .code
+37
+91  // 8837  LDA HERE
 b0
 0a
-b5  // 8819  STA [--Z]
+b5  // 883a  STA [--Z]
 82
-71  // 881b  JMP NEXT
+71  // 883c  JMP NEXT
 80
-d1
-88  // 881e  .word w_here-7
-0d
-05  // 8820  .byte 5
-57  // 8821  .ascii "WORDS"
+f8
+88  // 883f  .word w_here-7
+2e
+05  // 8841  .byte 5
+57  // 8842  .ascii "WORDS"
 4f
 52
 44
 53
-88  // 8826  w_words: .code
-28
-91  // 8828  LDA LATEST
+88  // 8847  w_words: .code
+49
+91  // 8849  LDA LATEST
 b0
 08
-b1  // 882b  STA fp
+b1  // 884c  STA fp
 b0
 80
-91  // 882e  ww1:    LDA fp
+91  // 884f  ww1:    LDA fp
 b0
 80
-14  // 8831  BZ ww2
+14  // 8852  BZ ww2
 0f
-79  // 8833  JSR pr_entry
+79  // 8854  JSR pr_entry
 8a
-c2
-91  // 8836  LDA fp
+e3
+91  // 8857  LDA fp
 b0
 80
-5c  // 8839  XAY
-95  // 883a  LDA [Y]
+5c  // 885a  XAY
+95  // 885b  LDA [Y]
 60
-b1  // 883c  STA fp
+b1  // 885d  STA fp
 b0
 80
-71  // 883f  JMP ww1
+71  // 8860  JMP ww1
 88
-2e
-79  // 8842  ww2:    JSR crlf
+4f
+79  // 8863  ww2:    JSR crlf
 81
-1f
-71  // 8845  JMP NEXT
+46
+71  // 8866  JMP NEXT
 80
-d1
-88  // 8848  .word w_words-8
-1e
-05  // 884a  .byte 5
-42  // 884b  .ascii "BANK!"
+f8
+88  // 8869  .word w_words-8
+3f
+05  // 886b  .byte 5
+42  // 886c  .ascii "BANK!"
 41
 4e
 4b
 21
-88  // 8850  w_bank: .code
-52
-95  // 8852  LDA [Z++]               ; a physical page number
+88  // 8871  w_bank: .code
+73
+95  // 8873  LDA [Z++]               ; a physical page number
 81
-b1  // 8854  STA scr1
+b1  // 8875  STA scr1
 b0
 00
-90  // 8857  LDA #MAPIMG+BANKPG
+90  // 8878  LDA #MAPIMG+BANKPG
 b0
 6e
-5c  // 885a  XAY
-81  // 885b  LDAB scr1+1
+5c  // 887b  XAY
+81  // 887c  LDAB scr1+1
 b0
 01
-a5  // 885e  STAB [Y]
+a5  // 887f  STAB [Y]
 60
-2e  // 8860  PAGE $0c,$f8,MAPIMG
+2e  // 8881  PAGE $0c,$f8,MAPIMG
 0c
 f8
 b0
 60
-71  // 8865  JMP NEXT
+71  // 8886  JMP NEXT
 80
-d1
-88  // 8868  .word w_bank-8
-48
-03  // 886a  .byte 3
-48  // 886b  .ascii "HEX"
+f8
+88  // 8889  .word w_bank-8
+69
+03  // 888b  .byte 3
+48  // 888c  .ascii "HEX"
 45
 58
-88  // 886e  w_hex:  .code
-70
-90  // 8870  LDA #16
+88  // 888f  w_hex:  .code
+91
+90  // 8891  LDA #16
 00
 10
-b1  // 8873  STA BASE
+b1  // 8894  STA BASE
 b0
 14
-71  // 8876  JMP NEXT
+71  // 8897  JMP NEXT
 80
-d1
-88  // 8879  .word w_hex-6
-68
-07  // 887b  .byte 7
-44  // 887c  .ascii "DECIMAL"
+f8
+88  // 889a  .word w_hex-6
+89
+07  // 889c  .byte 7
+44  // 889d  .ascii "DECIMAL"
 45
 43
 49
 4d
 41
 4c
-88  // 8883  w_dec:  .code
-85
-90  // 8885  LDA #10
+88  // 88a4  w_dec:  .code
+a6
+90  // 88a6  LDA #10
 00
 0a
-b1  // 8888  STA BASE
+b1  // 88a9  STA BASE
 b0
 14
-71  // 888b  JMP NEXT
+71  // 88ac  JMP NEXT
 80
-d1
-88  // 888e  .word w_dec-10
-79
-04  // 8890  .byte 4
-42  // 8891  .ascii "BASE"
+f8
+88  // 88af  .word w_dec-10
+9a
+04  // 88b1  .byte 4
+42  // 88b2  .ascii "BASE"
 41
 53
 45
-88  // 8895  w_base: .code
-97
-90  // 8897  LDA #BASE
+88  // 88b6  w_base: .code
+b8
+90  // 88b8  LDA #BASE
 b0
 14
-b5  // 889a  STA [--Z]
+b5  // 88bb  STA [--Z]
 82
-71  // 889c  JMP NEXT
+71  // 88bd  JMP NEXT
 80
-d1
-88  // 889f  .word w_base-7
-8e
-07  // 88a1  .byte 7
-3f  // 88a2  .ascii "?BRANCH"
+f8
+88  // 88c0  .word w_base-7
+af
+07  // 88c2  .byte 7
+3f  // 88c3  .ascii "?BRANCH"
 42
 52
 41
 4e
 43
 48
-86  // 88a9  w_qbranch: .word rq_code
-70
-88  // 88ab  .word w_qbranch-10
-9f
-06  // 88ad  .byte 6
-42  // 88ae  .ascii "BRANCH"
+86  // 88ca  w_qbranch: .word rq_code
+91
+88  // 88cc  .word w_qbranch-10
+c0
+06  // 88ce  .byte 6
+42  // 88cf  .ascii "BRANCH"
 52
 41
 4e
 43
 48
-86  // 88b4  w_branch: .word rb_code
-63
-88  // 88b6  .word w_branch-9
-ab
-01  // 88b8  .byte 1
-3d  // 88b9  .ascii "="
-88  // 88ba  w_eq:   .code
-bc
-95  // 88bc  LDA [Z++]
+86  // 88d5  w_branch: .word rb_code
+84
+88  // 88d7  .word w_branch-9
+cc
+01  // 88d9  .byte 1
+3d  // 88da  .ascii "="
+88  // 88db  w_eq:   .code
+dd
+95  // 88dd  LDA [Z++]
 81
-d5  // 88be  LDB [Z++]
+d5  // 88df  LDB [Z++]
 81
-51  // 88c0  SUB B,A
+51  // 88e1  SUB B,A
 20
-14  // 88c2  BZ tru
+14  // 88e3  BZ tru
 03
 71
 88
-ca
+eb
 71
 8a
-b2
-71  // 88ca  JMP fls
-8a
-ba
-88  // 88cd  .word w_eq-4
-b6
-01  // 88cf  .byte 1
-3c  // 88d0  .ascii "<"
-88  // 88d1  w_lt:   .code
 d3
-95  // 88d3  LDA [Z++]           ; ( a b -- flag ) with b on top
+71  // 88eb  JMP fls
+8a
+db
+88  // 88ee  .word w_eq-4
+d7
+01  // 88f0  .byte 1
+3c  // 88f1  .ascii "<"
+88  // 88f2  w_lt:   .code
+f4
+95  // 88f4  LDA [Z++]           ; ( a b -- flag ) with b on top
 81
-d5  // 88d5  LDB [Z++]
+d5  // 88f6  LDB [Z++]
 81
-51  // 88d7  SUB B,A             ; A = a - b
+51  // 88f8  SUB B,A             ; A = a - b
 20
-16  // 88d9  BM tru
-03
-71
-88
-e1
-71
-8a
-b2
-71  // 88e1  JMP fls
-8a
-ba
-88  // 88e4  .word w_lt-4
-cd
-01  // 88e6  .byte 1
-3e  // 88e7  .ascii ">"
-88  // 88e8  w_gt:   .code
-ea
-95  // 88ea  LDA [Z++]
-81
-d5  // 88ec  LDB [Z++]
-81
-51  // 88ee  SUB B,A             ; A = a - b
-20
-16  // 88f0  BM fls
-03
-71
-88
-f8
-71
-8a
-ba
-14  // 88f8  BZ fls
+16  // 88fa  BM tru
 03
 71
 89
-00
+02
 71
 8a
-ba
-71  // 8900  JMP tru
+d3
+71  // 8902  JMP fls
 8a
-b2
-88  // 8903  .word w_gt-4
-e4
-02  // 8905  .byte 2
-30  // 8906  .ascii "0="
-3d
-89  // 8908  w_zeq:  .code
-0a
-95  // 890a  LDA [Z++]
+db
+88  // 8905  .word w_lt-4
+ee
+01  // 8907  .byte 1
+3e  // 8908  .ascii ">"
+89  // 8909  w_gt:   .code
+0b
+95  // 890b  LDA [Z++]
 81
-d0  // 890c  LDB #0
-00
-00
-51  // 890f  SUB B,A
+d5  // 890d  LDB [Z++]
+81
+51  // 890f  SUB B,A             ; A = a - b
 20
-14  // 8911  BZ tru
+16  // 8911  BM fls
 03
 71
 89
 19
 71
 8a
-b2
-71  // 8919  JMP fls
-8a
-ba
-89  // 891c  .word w_zeq-5
+db
+14  // 8919  BZ fls
 03
-01  // 891e  .byte 1
-49  // 891f  .ascii "I"
-89  // 8920  w_i:    .code
-22
-95  // 8922  LDA [S]
-a0
-b5  // 8924  STA [--Z]
-82
-71  // 8926  JMP NEXT
-80
-d1
-89  // 8929  .word w_i-4
-1c
-01  // 892b  .byte 1
-3a  // 892c  .ascii ":"
-89  // 892d  w_colon: .code
-2f
-79  // 892f  JSR parseword
+71
+89
+21
+71
+8a
+db
+71  // 8921  JMP tru
+8a
+d3
+89  // 8924  .word w_gt-4
+05
+02  // 8926  .byte 2
+30  // 8927  .ascii "0="
+3d
+89  // 8929  w_zeq:  .code
+2b
+95  // 892b  LDA [Z++]
 81
-d8
-91  // 8932  LDA HERE
+d0  // 892d  LDB #0
+00
+00
+51  // 8930  SUB B,A
+20
+14  // 8932  BZ tru
+03
+71
+89
+3a
+71
+8a
+d3
+71  // 893a  JMP fls
+8a
+db
+89  // 893d  .word w_zeq-5
+24
+01  // 893f  .byte 1
+49  // 8940  .ascii "I"
+89  // 8941  w_i:    .code
+43
+95  // 8943  LDA [S]
+a0
+b5  // 8945  STA [--Z]
+82
+71  // 8947  JMP NEXT
+80
+f8
+89  // 894a  .word w_i-4
+3d
+01  // 894c  .byte 1
+3a  // 894d  .ascii ":"
+89  // 894e  w_colon: .code
+50
+79  // 8950  JSR parseword
+81
+ff
+91  // 8953  LDA HERE
 b0
 0a
-b1  // 8935  STA newent
+b1  // 8956  STA newent
 b0
 ca
-91  // 8938  LDA LATEST          ; the link to the entry before this one
+91  // 8959  LDA LATEST          ; the link to the entry before this one
 b0
 08
-79  // 893b  JSR comma
+79  // 895c  JSR comma
 85
-88
-3a  // 893e  CLA
-81  // 893f  LDAB WORDBUF
+a9
+3a  // 895f  CLA
+81  // 8960  LDAB WORDBUF
 b0
 20
-b1  // 8942  STA cnt
+b1  // 8963  STA cnt
 b0
 cc
-91  // 8945  LDA HERE            ; the length byte
+91  // 8966  LDA HERE            ; the length byte
 b0
 0a
-5c  // 8948  XAY
-81  // 8949  LDAB WORDBUF
+5c  // 8969  XAY
+81  // 896a  LDAB WORDBUF
 b0
 20
-a5  // 894c  STAB [Y]
+a5  // 896d  STAB [Y]
 60
-91  // 894e  LDA HERE
+91  // 896f  LDA HERE
 b0
 0a
-38  // 8951  INA
-b1  // 8952  STA HERE
+38  // 8972  INA
+b1  // 8973  STA HERE
 b0
 0a
-90  // 8955  LDA #0
+90  // 8976  LDA #0
 00
 00
-b1  // 8958  STA ci
+b1  // 8979  STA ci
 b0
 ce
-91  // 895b  cn1:    LDA ci              ; then the name itself
+91  // 897c  cn1:    LDA ci              ; then the name itself
 b0
 ce
-d1  // 895e  LDB cnt
+d1  // 897f  LDB cnt
 b0
 cc
-51  // 8961  SUB B,A
+51  // 8982  SUB B,A
 20
-14  // 8963  BZ cn2
+14  // 8984  BZ cn2
 2e
-90  // 8965  LDA #WORDBUF+1
+90  // 8986  LDA #WORDBUF+1
 b0
 21
-d1  // 8968  LDB ci
+d1  // 8989  LDB ci
 b0
 ce
-58  // 896b  AAB
-f1  // 896c  STB scr1
+58  // 898c  AAB
+f1  // 898d  STB scr1
 b0
 00
-91  // 896f  LDA scr1
+91  // 8990  LDA scr1
 b0
 00
-5c  // 8972  XAY
-3a  // 8973  CLA
-85  // 8974  LDAB [Y]
+5c  // 8993  XAY
+3a  // 8994  CLA
+85  // 8995  LDAB [Y]
 60
-b1  // 8976  STA cch
+b1  // 8997  STA cch
 b0
 d0
-91  // 8979  LDA HERE
+91  // 899a  LDA HERE
 b0
 0a
-5c  // 897c  XAY
-81  // 897d  LDAB cch
+5c  // 899d  XAY
+81  // 899e  LDAB cch+1
 b0
-d0
-a5  // 8980  STAB [Y]
+d1
+a5  // 89a1  STAB [Y]
 60
-91  // 8982  LDA HERE
+91  // 89a3  LDA HERE
 b0
 0a
-38  // 8985  INA
-b1  // 8986  STA HERE
+38  // 89a6  INA
+b1  // 89a7  STA HERE
 b0
 0a
-91  // 8989  LDA ci
+91  // 89aa  LDA ci
 b0
 ce
-38  // 898c  INA
-b1  // 898d  STA ci
+38  // 89ad  INA
+b1  // 89ae  STA ci
 b0
 ce
-71  // 8990  JMP cn1
+71  // 89b1  JMP cn1
 89
-5b
-90  // 8993  cn2:    LDA #DOCOL          ; and the code field
+7c
+90  // 89b4  cn2:    LDA #DOCOL          ; and the code field
 80
-d5
-79  // 8996  JSR comma
+fc
+79  // 89b7  JSR comma
 85
-88
-91  // 8999  LDA newent
+a9
+91  // 89ba  LDA newent
 b0
 ca
-b1  // 899c  STA LATEST
+b1  // 89bd  STA LATEST
 b0
 08
-90  // 899f  LDA #1
+90  // 89c0  LDA #1
 00
 01
-b1  // 89a2  STA STATE
+b1  // 89c3  STA STATE
 b0
 0c
-71  // 89a5  JMP NEXT
+71  // 89c6  JMP NEXT
 80
-d1
-89  // 89a8  .word w_colon-4
-29
-81  // 89aa  .byte $81
-3b  // 89ab  .ascii ";"
-89  // 89ac  w_semi: .code
-ae
-90  // 89ae  LDA #w_exit
-87
-f4
-79  // 89b1  JSR comma
-85
+f8
+89  // 89c9  .word w_colon-4
+4a
+81  // 89cb  .byte $81
+3b  // 89cc  .ascii ";"
+89  // 89cd  w_semi: .code
+cf
+90  // 89cf  LDA #w_exit
 88
-90  // 89b4  LDA #0
-00
-00
-b1  // 89b7  STA STATE
-b0
-0c
-71  // 89ba  JMP NEXT
-80
-d1
-89  // 89bd  .word w_semi-4
-a8
-82  // 89bf  .byte $82
-49  // 89c0  .ascii "IF"
-46
-89  // 89c2  w_if:   .code
-c4
-90  // 89c4  LDA #w_qbranch
-88
-a9
-79  // 89c7  JSR comma
-85
-88
-91  // 89ca  LDA HERE            ; remember the slot to fill in later
-b0
-0a
-b5  // 89cd  STA [--Z]
-82
-90  // 89cf  LDA #0
-00
-00
+15
 79  // 89d2  JSR comma
 85
-88
-71  // 89d5  JMP NEXT
+a9
+90  // 89d5  LDA #0
+00
+00
+b1  // 89d8  STA STATE
+b0
+0c
+71  // 89db  JMP NEXT
 80
-d1
-89  // 89d8  .word w_if-5
-bd
-84  // 89da  .byte $84
-54  // 89db  .ascii "THEN"
+f8
+89  // 89de  .word w_semi-4
+c9
+82  // 89e0  .byte $82
+49  // 89e1  .ascii "IF"
+46
+89  // 89e3  w_if:   .code
+e5
+90  // 89e5  LDA #w_qbranch
+88
+ca
+79  // 89e8  JSR comma
+85
+a9
+91  // 89eb  LDA HERE            ; remember the slot to fill in later
+b0
+0a
+b5  // 89ee  STA [--Z]
+82
+90  // 89f0  LDA #0
+00
+00
+79  // 89f3  JSR comma
+85
+a9
+71  // 89f6  JMP NEXT
+80
+f8
+89  // 89f9  .word w_if-5
+de
+84  // 89fb  .byte $84
+54  // 89fc  .ascii "THEN"
 48
 45
 4e
-89  // 89df  w_then: .code
-e1
-95  // 89e1  LDA [Z++]
+8a  // 8a00  w_then: .code
+02
+95  // 8a02  LDA [Z++]
 81
-5c  // 89e3  XAY
-91  // 89e4  LDA HERE
+5c  // 8a04  XAY
+91  // 8a05  LDA HERE
 b0
 0a
-b5  // 89e7  STA [Y]
+b5  // 8a08  STA [Y]
 60
-71  // 89e9  JMP NEXT
+71  // 8a0a  JMP NEXT
 80
-d1
-89  // 89ec  .word w_then-7
-d8
-84  // 89ee  .byte $84
-45  // 89ef  .ascii "ELSE"
+f8
+89  // 8a0d  .word w_then-7
+f9
+84  // 8a0f  .byte $84
+45  // 8a10  .ascii "ELSE"
 4c
 53
 45
-89  // 89f3  w_else: .code
-f5
-90  // 89f5  LDA #w_branch
+8a  // 8a14  w_else: .code
+16
+90  // 8a16  LDA #w_branch
 88
-b4
-79  // 89f8  JSR comma
+d5
+79  // 8a19  JSR comma
 85
-88
-91  // 89fb  LDA HERE
+a9
+91  // 8a1c  LDA HERE
 b0
 0a
-b1  // 89fe  STA newslot
+b1  // 8a1f  STA newslot
 b0
 d2
-90  // 8a01  LDA #0
+90  // 8a22  LDA #0
 00
 00
-79  // 8a04  JSR comma
+79  // 8a25  JSR comma
 85
-88
-95  // 8a07  LDA [Z++]           ; fill in the IF's slot with where we are now
+a9
+95  // 8a28  LDA [Z++]           ; fill in the IF's slot with where we are now
 81
-5c  // 8a09  XAY
-91  // 8a0a  LDA HERE
+5c  // 8a2a  XAY
+91  // 8a2b  LDA HERE
 b0
 0a
-b5  // 8a0d  STA [Y]
+b5  // 8a2e  STA [Y]
 60
-91  // 8a0f  LDA newslot
+91  // 8a30  LDA newslot
 b0
 d2
-b5  // 8a12  STA [--Z]
+b5  // 8a33  STA [--Z]
 82
-71  // 8a14  JMP NEXT
+71  // 8a35  JMP NEXT
 80
-d1
-89  // 8a17  .word w_else-7
-ec
-85  // 8a19  .byte $85
-42  // 8a1a  .ascii "BEGIN"
+f8
+8a  // 8a38  .word w_else-7
+0d
+85  // 8a3a  .byte $85
+42  // 8a3b  .ascii "BEGIN"
 45
 47
 49
 4e
-8a  // 8a1f  w_begin: .code
-21
-91  // 8a21  LDA HERE
+8a  // 8a40  w_begin: .code
+42
+91  // 8a42  LDA HERE
 b0
 0a
-b5  // 8a24  STA [--Z]
+b5  // 8a45  STA [--Z]
 82
-71  // 8a26  JMP NEXT
+71  // 8a47  JMP NEXT
 80
-d1
-8a  // 8a29  .word w_begin-8
-17
-85  // 8a2b  .byte $85
-55  // 8a2c  .ascii "UNTIL"
+f8
+8a  // 8a4a  .word w_begin-8
+38
+85  // 8a4c  .byte $85
+55  // 8a4d  .ascii "UNTIL"
 4e
 54
 49
 4c
-8a  // 8a31  w_until: .code
-33
-90  // 8a33  LDA #w_qbranch
+8a  // 8a52  w_until: .code
+54
+90  // 8a54  LDA #w_qbranch
 88
+ca
+79  // 8a57  JSR comma
+85
 a9
-79  // 8a36  JSR comma
-85
-88
-95  // 8a39  LDA [Z++]
+95  // 8a5a  LDA [Z++]
 81
-79  // 8a3b  JSR comma
+79  // 8a5c  JSR comma
 85
-88
-71  // 8a3e  JMP NEXT
+a9
+71  // 8a5f  JMP NEXT
 80
-d1
-8a  // 8a41  .word w_until-8
-29
-85  // 8a43  .byte $85
-41  // 8a44  .ascii "AGAIN"
+f8
+8a  // 8a62  .word w_until-8
+4a
+85  // 8a64  .byte $85
+41  // 8a65  .ascii "AGAIN"
 47
 41
 49
 4e
-8a  // 8a49  w_again: .code
-4b
-90  // 8a4b  LDA #w_branch
+8a  // 8a6a  w_again: .code
+6c
+90  // 8a6c  LDA #w_branch
 88
-b4
-79  // 8a4e  JSR comma
+d5
+79  // 8a6f  JSR comma
 85
-88
-95  // 8a51  LDA [Z++]
+a9
+95  // 8a72  LDA [Z++]
 81
-79  // 8a53  JSR comma
+79  // 8a74  JSR comma
 85
-88
-71  // 8a56  JMP NEXT
+a9
+71  // 8a77  JMP NEXT
 80
-d1
-8a  // 8a59  .word w_again-8
-41
-82  // 8a5b  .byte $82
-44  // 8a5c  .ascii "DO"
+f8
+8a  // 8a7a  .word w_again-8
+62
+82  // 8a7c  .byte $82
+44  // 8a7d  .ascii "DO"
 4f
-8a  // 8a5e  w_do:   .code
-60
-90  // 8a60  LDA #r_do
+8a  // 8a7f  w_do:   .code
+81
+90  // 8a81  LDA #r_do
 86
-89
-79  // 8a63  JSR comma
+aa
+79  // 8a84  JSR comma
 85
-88
-91  // 8a66  LDA HERE            ; where LOOP comes back to
+a9
+91  // 8a87  LDA HERE            ; where LOOP comes back to
 b0
 0a
-b5  // 8a69  STA [--Z]
+b5  // 8a8a  STA [--Z]
 82
-71  // 8a6b  JMP NEXT
+71  // 8a8c  JMP NEXT
 80
-d1
-8a  // 8a6e  .word w_do-5
-59
-84  // 8a70  .byte $84
-4c  // 8a71  .ascii "LOOP"
+f8
+8a  // 8a8f  .word w_do-5
+7a
+84  // 8a91  .byte $84
+4c  // 8a92  .ascii "LOOP"
 4f
 4f
 50
-8a  // 8a75  w_loop: .code
-77
-90  // 8a77  LDA #r_loop
+8a  // 8a96  w_loop: .code
+98
+90  // 8a98  LDA #r_loop
 86
-9c
-79  // 8a7a  JSR comma
+bd
+79  // 8a9b  JSR comma
 85
-88
-95  // 8a7d  LDA [Z++]
+a9
+95  // 8a9e  LDA [Z++]
 81
-79  // 8a7f  JSR comma
+79  // 8aa0  JSR comma
 85
-88
-71  // 8a82  JMP NEXT
+a9
+71  // 8aa3  JMP NEXT
 80
-d1
-8a  // 8a85  .word w_loop-7
-6e
-09  // 8a87  .byte 9
-49  // 8a88  .ascii "IMMEDIATE"
+f8
+8a  // 8aa6  .word w_loop-7
+8f
+09  // 8aa8  .byte 9
+49  // 8aa9  .ascii "IMMEDIATE"
 4d
 4d
 45
@@ -2704,124 +2737,118 @@ d1
 41
 54
 45
-8a  // 8a91  w_imm:  .code
-93
-91  // 8a93  LDA LATEST          ; set the immediate bit on the newest entry. There
+8a  // 8ab2  w_imm:  .code
+b4
+91  // 8ab4  LDA LATEST          ; set the immediate bit on the newest entry. There
 b0
 08
-b1  // 8a96  STA newslot         ; is no dependable OR, but the bit is clear until
+b1  // 8ab7  STA newslot         ; is no dependable OR, but the bit is clear until
 b0
 d2
-5c  // 8a99  XAY                 ; now, so adding it is the same thing.
-3a  // 8a9a  CLA
-85  // 8a9b  LDAB [Y+$02]
+5c  // 8aba  XAY                 ; now, so adding it is the same thing.
+3a  // 8abb  CLA
+85  // 8abc  LDAB [Y+$02]
 68
 02
-d0  // 8a9e  LDB #$80
+d0  // 8abf  LDB #$80
 00
 80
-58  // 8aa1  AAB
-f1  // 8aa2  STB cch
+58  // 8ac2  AAB
+f1  // 8ac3  STB cch
 b0
 d0
-91  // 8aa5  LDA newslot
+91  // 8ac6  LDA newslot
 b0
 d2
-5c  // 8aa8  XAY
-81  // 8aa9  LDAB cch
+5c  // 8ac9  XAY
+81  // 8aca  LDAB cch+1
 b0
-d0
-a5  // 8aac  STAB [Y+$02]
+d1
+a5  // 8acd  STAB [Y+$02]
 68
 02
-71  // 8aaf  JMP NEXT
+71  // 8ad0  JMP NEXT
 80
-d1
-90  // 8ab2  tru:    LDA #$ffff
+f8
+90  // 8ad3  tru:    LDA #$ffff
 ff
 ff
-b5  // 8ab5  STA [--Z]
+b5  // 8ad6  STA [--Z]
 82
-71  // 8ab7  JMP NEXT
+71  // 8ad8  JMP NEXT
 80
-d1
-90  // 8aba  fls:    LDA #0
+f8
+90  // 8adb  fls:    LDA #0
 00
 00
-b5  // 8abd  STA [--Z]
+b5  // 8ade  STA [--Z]
 82
-71  // 8abf  JMP NEXT
+71  // 8ae0  JMP NEXT
 80
-d1
-91  // 8ac2  LDA fp
+f8
+91  // 8ae3  LDA fp
 b0
 80
-5c  // 8ac5  XAY
-85  // 8ac6  LDAB [Y+$02]
+5c  // 8ae6  XAY
+85  // 8ae7  LDAB [Y+$02]
 68
 02
-d0  // 8ac9  LDB #$1f
+d0  // 8aea  LDB #$1f
 00
 1f
-5a  // 8acc  NAB
-f1  // 8acd  STB flen2
+5a  // 8aed  NAB
+f1  // 8aee  STB flen2
 b0
 84
-90  // 8ad0  LDA #0
+90  // 8af1  LDA #0
 00
 00
-b1  // 8ad3  STA fi
+b1  // 8af4  STA fi
 b0
 86
-91  // 8ad6  pe1:    LDA fi
+91  // 8af7  pe1:    LDA fi
 b0
 86
-d1  // 8ad9  LDB flen2
+d1  // 8afa  LDB flen2
 b0
 84
-51  // 8adc  SUB B,A
+51  // 8afd  SUB B,A
 20
-14  // 8ade  BZ pe2
-24
-91  // 8ae0  LDA fp
+14  // 8aff  BZ pe2
+1e
+91  // 8b01  LDA fp
 b0
 80
-d1  // 8ae3  LDB fi
+d1  // 8b04  LDB fi
 b0
 86
-58  // 8ae6  AAB
-f1  // 8ae7  STB scr1
+58  // 8b07  AAB
+f1  // 8b08  STB scr1
 b0
 00
-91  // 8aea  LDA scr1
+91  // 8b0b  LDA scr1
 b0
 00
-5c  // 8aed  XAY
-85  // 8aee  LDAB [Y+$03]
+5c  // 8b0e  XAY
+85  // 8b0f  LDAB [Y+$03]
 68
 03
-a1  // 8af1  STAB scr2
-b0
-02
-91  // 8af4  LDA scr2
-b0
-02
-79  // 8af7  JSR putc
-80
-fa
-91  // 8afa  LDA fi
+79  // 8b12  JSR putc
+81
+21
+91  // 8b15  LDA fi
 b0
 86
-38  // 8afd  INA
-b1  // 8afe  STA fi
+38  // 8b18  INA
+b1  // 8b19  STA fi
 b0
 86
-71  // 8b01  JMP pe1
+71  // 8b1c  JMP pe1
 8a
-d6
-90  // 8b04  pe2:    LDA #' '
+f7
+90  // 8b1f  pe2:    LDA #' '
 00
 20
-71  // 8b07  JMP putc
-80
-fa
+71  // 8b22  JMP putc
+81
+21
