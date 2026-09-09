@@ -1,0 +1,268 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$c000
+c0
+00
+5f  // 8009  XAS
+2e  // 800a  PAGE $1c,$f8,MAPIMG     ; capture the running map
+1c
+f8
+b1
+40
+90  // 800f  LDA #MAPIMG+BANKPG
+b1
+4e
+5c  // 8012  XAY
+80  // 8013  LDAB #40
+28
+a5  // 8015  STAB [Y]
+60
+2e  // 8017  PAGE $0c,$f8,MAPIMG
+0c
+f8
+b1
+40
+90  // 801c  LDA #MAPIMG+BANKPG
+b1
+4e
+5c  // 801f  XAY
+3a  // 8020  CLA
+85  // 8021  LDAB [Y]
+60
+79  // 8023  JSR puthex
+80
+b9
+90  // 8026  LDA #' '
+00
+20
+79  // 8029  JSR putc
+80
+e6
+90  // 802c  LDA #'a'
+00
+61
+79  // 802f  JSR putc
+80
+e6
+91  // 8032  LDA PROBE1              ; save what is there
+71
+00
+90  // 8035  LDA #'b'
+00
+62
+79  // 8038  JSR putc
+80
+e6
+b1  // 803b  STA sv1
+b1
+06
+91  // 803e  LDA PROBE2
+71
+02
+90  // 8041  LDA #'c'
+00
+63
+79  // 8044  JSR putc
+80
+e6
+b1  // 8047  STA sv2
+b1
+08
+90  // 804a  LDA #$a5c3
+a5
+c3
+b1  // 804d  STA PROBE1
+71
+00
+90  // 8050  LDA #'d'
+00
+64
+79  // 8053  JSR putc
+80
+e6
+90  // 8056  LDA #$5a3c
+5a
+3c
+b1  // 8059  STA PROBE2
+71
+02
+90  // 805c  LDA #'e'
+00
+65
+79  // 805f  JSR putc
+80
+e6
+91  // 8062  LDA PROBE1              ; read the first back
+71
+00
+79  // 8065  JSR putax
+80
+9f
+91  // 8068  LDA PROBE2              ; and the second
+71
+02
+79  // 806b  JSR putax
+80
+9f
+91  // 806e  LDA sv1                 ; put the page back
+b1
+06
+b1  // 8071  STA PROBE1
+71
+00
+91  // 8074  LDA sv2
+b1
+08
+b1  // 8077  STA PROBE2
+71
+02
+90  // 807a  LDA #MAPIMG+BANKPG
+b1
+4e
+5c  // 807d  XAY
+80  // 807e  LDAB #22
+16
+a5  // 8080  STAB [Y]
+60
+2e  // 8082  PAGE $0c,$f8,MAPIMG
+0c
+f8
+b1
+40
+90  // 8087  LDA #$1234
+12
+34
+b1  // 808a  STA PROBE1
+71
+00
+91  // 808d  LDA PROBE1
+71
+00
+79  // 8090  JSR putax
+80
+9f
+79  // 8093  JSR crlf
+80
+da
+90  // 8096  LDA #$0001
+00
+01
+b1  // 8099  STA $f900
+f9
+00
+71  // 809c  halt:   JMP halt
+80
+9c
+b1  // 809f  putax:  STA scr1
+b1
+02
+3c  // 80a2  SRA
+3c  // 80a3  SRA
+3c  // 80a4  SRA
+3c  // 80a5  SRA
+3c  // 80a6  SRA
+3c  // 80a7  SRA
+3c  // 80a8  SRA
+3c  // 80a9  SRA
+79  // 80aa  JSR puthex
+80
+b9
+91  // 80ad  LDA scr1
+b1
+02
+79  // 80b0  JSR puthex
+80
+b9
+90  // 80b3  LDA #' '
+00
+20
+71  // 80b6  JMP putc
+80
+e6
+a1  // 80b9  puthex: STAB scr1+2
+b1
+04
+2c  // 80bc  SRAB
+2c  // 80bd  SRAB
+2c  // 80be  SRAB
+2c  // 80bf  SRAB
+d0  // 80c0  LDB #$000f
+00
+0f
+5a  // 80c3  NAB
+79  // 80c4  JSR putnib
+80
+d1
+81  // 80c7  LDAB scr1+2
+b1
+04
+d0  // 80ca  LDB #$000f
+00
+0f
+5a  // 80cd  NAB
+71  // 80ce  JMP putnib
+80
+d1
+90  // 80d1  putnib: LDA #digits
+80
+fb
+58  // 80d4  AAB
+85  // 80d5  LDAB [B]
+20
+71  // 80d7  JMP putc
+80
+e6
+90  // 80da  crlf:   LDA #13
+00
+0d
+79  // 80dd  JSR putc
+80
+e6
+90  // 80e0  LDA #10
+00
+0a
+71  // 80e3  JMP putc
+80
+e6
+a1  // 80e6  putc:   STAB pcsave
+b1
+00
+81  // 80e9  pc1:    LDAB CTRL
+f2
+00
+2d  // 80ec  SLAB
+2d  // 80ed  SLAB
+2d  // 80ee  SLAB
+2d  // 80ef  SLAB
+2d  // 80f0  SLAB
+2d  // 80f1  SLAB
+17  // 80f2  BP pc1
+f5
+81  // 80f4  LDAB pcsave
+b1
+00
+a1  // 80f7  STAB TXDATA
+f2
+01
+09  // 80fa  RSR
+30  // 80fb  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46

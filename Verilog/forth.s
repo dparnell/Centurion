@@ -109,9 +109,25 @@ run:    JSR parseword
         JMP endline         ; nothing left on this line
 rgot:   JSR find
         LDA scr2            ; find leaves the code field address here, or zero
-        BNZ rexec
+        BNZ rfound
         JMP tonumber
-rexec:  JSR execute
+rfound: LDA STATE
+        LDB #0
+        SUB B,A
+        BZ rexec            ; interpreting: just run it
+        LDA scr1            ; compiling: is it one of the immediate words?
+        LDB #$80
+        NAB
+        STB rimm
+        LDA rimm
+        LDB #0
+        SUB B,A
+        BNZ rexec
+        LDA scr2            ; no, so lay its code field address down
+        JSR comma
+        JMP run
+rexec:  LDA scr2
+        JSR execute
         JMP run
 
 endline: JSR pr_ok
@@ -122,7 +138,16 @@ tonumber:
         LDA scr2
         BNZ rnum
         JMP notfound
-rnum:   LDA scr1
+rnum:   LDA STATE
+        LDB #0
+        SUB B,A
+        BZ rpush
+        LDA #w_lit          ; compiling: lay down LIT and the value
+        JSR comma
+        LDA scr1
+        JSR comma
+        JMP run
+rpush:  LDA scr1
         STA [--Z]
         JMP run
 
@@ -152,10 +177,12 @@ DOCOL:  STB [--S]           ; push the caller's instruction pointer
 ; then hits a primitive whose only job is to return to the caller.
 ; ---------------------------------------------------------------------------
 execute: STA EXECTH
-        STB ipsave2         ; keep the machine code caller's B out of the way
+        STB ipsave2         ; the machine code caller's instruction pointer
+        STX xsave2          ; and its return address, which NEXT destroys
         LDB #EXECTH
         JMP NEXT
 retmc:  LDB ipsave2
+        LDX xsave2
         RSR
 
 cfa_retmc: .word retmc
@@ -218,7 +245,11 @@ rl1:    JSR getc
         LDB #$7f
         NAB                 ; B = the character, seven bits
         STB rlch
-        LDA #13
+        LDA #13             ; end of line, either way round: a terminal sends
+        LDB rlch            ; a carriage return and a file has a newline
+        SUB B,A
+        BZ rl_done
+        LDA #10
         LDB rlch
         SUB B,A
         BZ rl_done
@@ -788,6 +819,66 @@ pcount  .equ VARS+$b0
 npow    .equ VARS+$b2
 pow     .equ VARS+$b4       ; six words: the powers of the base that fit
 ipsave2 .equ VARS+$9a
+xsave2  .equ VARS+$c8
+newent  .equ VARS+$ca
+cnt     .equ VARS+$cc
+ci      .equ VARS+$ce
+cch     .equ VARS+$d0
+newslot .equ VARS+$d2
+dtmp1   .equ VARS+$d4
+dtmp2   .equ VARS+$d6
+rimm    .equ VARS+$d8
+
+
+; ---- the runtime halves of the control structures -------------------------
+; These have no dictionary entries of their own: the compiling words below lay
+; their code field addresses down, and nothing else should reach them.
+
+r_branch: .word rb_code     ; ( -- ) the cell after it is where to go
+rb_code: LDA [B]
+        STA ipsave
+        LDB ipsave
+        JMP NEXT
+
+r_qbranch: .word rq_code    ; ( flag -- ) go there when the flag is zero
+rq_code: LDA [Z++]
+        LDB #0
+        SUB B,A
+        BZ rq_take
+        LDA [B++]           ; not taken: step over the target
+        JMP NEXT
+rq_take: LDA [B]
+        STA ipsave
+        LDB ipsave
+        JMP NEXT
+
+r_do:   .word rd_code       ; ( limit start -- ) the loop control goes on the
+rd_code: LDA [Z++]          ; return stack, which is where I reads it from
+        STA dtmp1
+        LDA [Z++]
+        STA [--S]           ; the limit underneath
+        LDA dtmp1
+        STA [--S]           ; and the index on top
+        JMP NEXT
+
+r_loop: .word rl_code       ; ( -- ) step the index and go round again
+rl_code: LDA [S++]
+        INA
+        STA dtmp1
+        LDA [S]             ; the limit, without taking it off
+        LDB dtmp1
+        SUB B,A             ; A = index - limit
+        BM rl_again
+        JMP rl_done
+rl_again: LDA dtmp1
+        STA [--S]
+        LDA [B]
+        STA ipsave
+        LDB ipsave
+        JMP NEXT
+rl_done: LDA [S++]          ; drop the limit
+        LDA [B++]           ; and step over the target
+        JMP NEXT
 
 ; ---------------------------------------------------------------------------
 ; The dictionary. Each entry is a link to the one before, a length byte with
@@ -1026,7 +1117,243 @@ w_base: .code
         STA [--Z]
         JMP NEXT
 
-lastword .equ w_base-7
+        .word w_base-7
+        .byte 7
+        .ascii "?BRANCH"
+w_qbranch: .word rq_code
+
+        .word w_qbranch-10
+        .byte 6
+        .ascii "BRANCH"
+w_branch: .word rb_code
+
+        .word w_branch-9
+        .byte 1
+        .ascii "="
+w_eq:   .code
+        LDA [Z++]
+        LDB [Z++]
+        SUB B,A
+        BZ tru
+        JMP fls
+
+        .word w_eq-4
+        .byte 1
+        .ascii "<"
+w_lt:   .code
+        LDA [Z++]           ; ( a b -- flag ) with b on top
+        LDB [Z++]
+        SUB B,A             ; A = a - b
+        BM tru
+        JMP fls
+
+        .word w_lt-4
+        .byte 1
+        .ascii ">"
+w_gt:   .code
+        LDA [Z++]
+        LDB [Z++]
+        SUB B,A             ; A = a - b
+        BM fls
+        BZ fls
+        JMP tru
+
+        .word w_gt-4
+        .byte 2
+        .ascii "0="
+w_zeq:  .code
+        LDA [Z++]
+        LDB #0
+        SUB B,A
+        BZ tru
+        JMP fls
+
+        .word w_zeq-5
+        .byte 1
+        .ascii "I"
+w_i:    .code
+        LDA [S]
+        STA [--Z]
+        JMP NEXT
+
+        .word w_i-4
+        .byte 1
+        .ascii ":"
+w_colon: .code
+        JSR parseword
+        LDA HERE
+        STA newent
+        LDA LATEST          ; the link to the entry before this one
+        JSR comma
+        CLA
+        LDAB WORDBUF
+        STA cnt
+        LDA HERE            ; the length byte
+        XAY
+        LDAB WORDBUF
+        STAB [Y]
+        LDA HERE
+        INA
+        STA HERE
+        LDA #0
+        STA ci
+cn1:    LDA ci              ; then the name itself
+        LDB cnt
+        SUB B,A
+        BZ cn2
+        LDA #WORDBUF+1
+        LDB ci
+        AAB
+        STB scr1
+        LDA scr1
+        XAY
+        CLA
+        LDAB [Y]
+        STA cch
+        LDA HERE
+        XAY
+        LDAB cch
+        STAB [Y]
+        LDA HERE
+        INA
+        STA HERE
+        LDA ci
+        INA
+        STA ci
+        JMP cn1
+cn2:    LDA #DOCOL          ; and the code field
+        JSR comma
+        LDA newent
+        STA LATEST
+        LDA #1
+        STA STATE
+        JMP NEXT
+
+        .word w_colon-4
+        .byte $81
+        .ascii ";"
+w_semi: .code
+        LDA #w_exit
+        JSR comma
+        LDA #0
+        STA STATE
+        JMP NEXT
+
+        .word w_semi-4
+        .byte $82
+        .ascii "IF"
+w_if:   .code
+        LDA #w_qbranch
+        JSR comma
+        LDA HERE            ; remember the slot to fill in later
+        STA [--Z]
+        LDA #0
+        JSR comma
+        JMP NEXT
+
+        .word w_if-5
+        .byte $84
+        .ascii "THEN"
+w_then: .code
+        LDA [Z++]
+        XAY
+        LDA HERE
+        STA [Y]
+        JMP NEXT
+
+        .word w_then-7
+        .byte $84
+        .ascii "ELSE"
+w_else: .code
+        LDA #w_branch
+        JSR comma
+        LDA HERE
+        STA newslot
+        LDA #0
+        JSR comma
+        LDA [Z++]           ; fill in the IF's slot with where we are now
+        XAY
+        LDA HERE
+        STA [Y]
+        LDA newslot
+        STA [--Z]
+        JMP NEXT
+
+        .word w_else-7
+        .byte $85
+        .ascii "BEGIN"
+w_begin: .code
+        LDA HERE
+        STA [--Z]
+        JMP NEXT
+
+        .word w_begin-8
+        .byte $85
+        .ascii "UNTIL"
+w_until: .code
+        LDA #w_qbranch
+        JSR comma
+        LDA [Z++]
+        JSR comma
+        JMP NEXT
+
+        .word w_until-8
+        .byte $85
+        .ascii "AGAIN"
+w_again: .code
+        LDA #w_branch
+        JSR comma
+        LDA [Z++]
+        JSR comma
+        JMP NEXT
+
+        .word w_again-8
+        .byte $82
+        .ascii "DO"
+w_do:   .code
+        LDA #r_do
+        JSR comma
+        LDA HERE            ; where LOOP comes back to
+        STA [--Z]
+        JMP NEXT
+
+        .word w_do-5
+        .byte $84
+        .ascii "LOOP"
+w_loop: .code
+        LDA #r_loop
+        JSR comma
+        LDA [Z++]
+        JSR comma
+        JMP NEXT
+
+        .word w_loop-7
+        .byte 9
+        .ascii "IMMEDIATE"
+w_imm:  .code
+        LDA LATEST          ; set the immediate bit on the newest entry. There
+        STA newslot         ; is no dependable OR, but the bit is clear until
+        XAY                 ; now, so adding it is the same thing.
+        CLA
+        LDAB [Y+$02]
+        LDB #$80
+        AAB
+        STB cch
+        LDA newslot
+        XAY
+        LDAB cch
+        STAB [Y+$02]
+        JMP NEXT
+
+; A flag of all ones is true, and zero is false, as everywhere else.
+tru:    LDA #$ffff
+        STA [--Z]
+        JMP NEXT
+fls:    LDA #0
+        STA [--Z]
+        JMP NEXT
+
+lastword .equ w_imm-12
 
 ; Print the dictionary entry at fp, followed by a space.
 pr_entry:

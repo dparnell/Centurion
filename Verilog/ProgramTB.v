@@ -73,6 +73,11 @@ module ProgramTB;
     reg [7:0] ch;
     reg quiet = 0;
     reg hex = 0;
+    // How long the machine has been silent, in board clocks. Typing has to wait
+    // for it to stop talking: the MUX holds one byte, so anything sent while a
+    // banner is still printing is lost except the last of it.
+    integer quiet_for = 0;
+    always @(posedge in_clk) quiet_for = quiet_for + 1;
     reg said_something = 0;
     initial begin
         forever begin
@@ -84,6 +89,7 @@ module ProgramTB;
                 repeat (BITP) @(posedge in_clk);
             end
             said_something = 1;
+            quiet_for = 0;
             nprinted = nprinted + 1;
             if (hex) $write("%02x ", ch);
             else if (!quiet) $write("%s", ch);
@@ -111,10 +117,10 @@ module ProgramTB;
         if ($test$plusargs("hex")) hex = 1;
         if (!$value$plusargs("for=%d", ms)) ms = 100;
         if ($value$plusargs("in=%s", infile)) begin
-            // Wait until the machine has printed something, so that input is
-            // not typed at a program that is not listening yet.
+            // Wait until the machine has printed something and then stopped,
+            // so that input is not typed over the top of a banner.
             wait (said_something);
-            #2000000;
+            wait (quiet_for > 27000 * 20);
             fd = $fopen(infile, "r");
             if (fd == 0) begin
                 $display("\ncannot open %0s", infile);
