@@ -120,9 +120,15 @@ module ProgramTB;
                 $display("\ncannot open %0s", infile);
                 $finish;
             end
+            // Typed at something like a human speed. The MUX holds one byte,
+            // so sending a file at full line rate loses most of it while the
+            // program is busy with the character before.
             c = $fgetc(fd);
             while (c != -1) begin
                 send(c[7:0]);
+                repeat (BITP * 12) @(posedge in_clk);
+                if (c == 10 || c == 13)
+                    repeat (BITP * 400) @(posedge in_clk);
                 c = $fgetc(fd);
             end
             $fclose(fd);
