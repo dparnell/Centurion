@@ -211,8 +211,8 @@ has run. A word it does not know is echoed back with a `?`.
 
 | | |
 |---|---|
-| stack | `DUP` `DROP` `SWAP` `OVER` |
-| arithmetic | `+` `-` `*` |
+| stack | `DUP` `DROP` `SWAP` `OVER` `ROT` `PICK` |
+| arithmetic | `+` `-` `*` `/` `/MOD` |
 | logic | `AND` `OR` `XOR` `NOT` - bitwise, on all sixteen bits |
 | shifts | `LSHIFT` `RSHIFT` - `RSHIFT` is logical, so it does not carry the sign down |
 | comparison | `=` `<` `>` `0=` - signed, and true is all ones |
@@ -234,7 +234,18 @@ while interpreting:
 \ and the rest of this line is ignored
 ```
 
-`WORDS` lists the dictionary, newest first.
+`WORDS` lists the dictionary, newest first. `0 PICK` copies the top of the
+stack and `1 PICK` the one below it, so `PICK` generalises `DUP` and `OVER`.
+`/MOD` leaves the remainder under the quotient, which makes `MOD` a definition
+rather than a primitive:
+
+```
+: MOD /MOD DROP ;
+```
+
+`*` and `/` are the machine's own multiply and divide instructions. `*` keeps
+the low sixteen bits of the product, so `123 456 *` is -9448 rather than 56088.
+Dividing by zero returns rather than hanging, but the answer means nothing.
 
 ### The stack, and defining words
 
@@ -378,9 +389,10 @@ than it answers the HyperRAM.
 ### What it does not have
 
 There is no `[']`, but it is not needed: `[ ' FOO ] LITERAL` does the same
-thing. Division is missing, and so are `ROT`, `SPACES` and the counted-string
-words - `."` is the only string output. The console is seven bit, so no
-character above 127 survives the serial line.
+thing. `SPACES` and the counted-string words are missing - `."` is the only
+string output - and so is anything double-length, although the machine's
+multiply computes the high word of the product and `*` simply discards it. The
+console is seven bit, so no character above 127 survives the serial line.
 
 One limitation worth knowing before it bites. The return stack here carries
 more than usual: `DO` puts its loop control on it, entering a colon definition
