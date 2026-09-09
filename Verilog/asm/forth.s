@@ -931,10 +931,7 @@ dtmp1   .equ VARS+$d4
 dtmp2   .equ VARS+$d6
 rimm    .equ VARS+$d8
 ipsave3 .equ VARS+$da
-mula    .equ VARS+$dc
-mulb    .equ VARS+$de
-mulr    .equ VARS+$e0
-mulbit  .equ VARS+$e2       ; where a primitive parks the instruction pointer
+mula    .equ VARS+$dc       ; the multiplicand * hands to MUL
 dvtmp   .equ VARS+$e4       ; the code field address a CREATEd word was entered with
 tkcfa   .equ VARS+$e6       ; what ' looked up
 pnch    .equ VARS+$e8       ; the character ( is scanning
@@ -1067,41 +1064,14 @@ w_plus: .code
         .byte 1
         .ascii "*"
 w_star: .code
-        STB ipsave3
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         STA mula
         LDA [Z++]
-        STA mulb
-        LDA #0
-        STA mulr
-mul1:   LDA mula            ; while there are bits left in the multiplier
-        LDB #0
-        SUB B,A
-        BZ mul2
-        LDA mula            ; add the multiplicand in for a set bit
-        LDB #1
-        NAB
-        STB mulbit
-        LDA mulbit
-        LDB #0
-        SUB B,A
-        BZ mul3
-        LDA mulb
-        LDB mulr
-        AAB
-        STB mulr
-mul3:   LDA mulb            ; double it, and halve the multiplier
-        SLA
-        STA mulb
-        LDA mula
-        SRA                 ; an arithmetic shift, so mask the sign back off
-        LDB #$7fff
-        NAB
-        STB mula
-        JMP mul1
-mul2:   LDA mulr
-        STA [--Z]
-        LDB ipsave3
+        LDB mula
+        MUL B,A             ; the machine multiplies: the low word of the
+        STB [--Z]           ; product lands in B and the high word in A, which
+        LDB ipsave3         ; a sixteen bit * has nowhere to put
         JMP NEXT
 
         .word w_star-4
