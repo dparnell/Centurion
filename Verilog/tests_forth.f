@@ -7,4 +7,3 @@
 : C 5 0 DO I . LOOP ;
 C
 HEX FF . DECIMAL 255 .
-WORDS

@@ -156,6 +156,16 @@ notfound:
         LDA #'?'
         JSR putc
         JSR crlf
+        LDA STATE           ; if this was in the middle of a definition, take
+        LDB #0              ; the half built entry back out again rather than
+        SUB B,A             ; leaving something that crashes when it is run
+        BZ interp
+        LDA newent
+        XAY
+        LDA [Y]
+        STA LATEST
+        LDA newent
+        STA HERE
         JMP interp
 
 ; ---------------------------------------------------------------------------
@@ -830,7 +840,11 @@ newslot .equ VARS+$d2
 dtmp1   .equ VARS+$d4
 dtmp2   .equ VARS+$d6
 rimm    .equ VARS+$d8
-ipsave3 .equ VARS+$da       ; where a primitive parks the instruction pointer
+ipsave3 .equ VARS+$da
+mula    .equ VARS+$dc
+mulb    .equ VARS+$de
+mulr    .equ VARS+$e0
+mulbit  .equ VARS+$e2       ; where a primitive parks the instruction pointer
 
 
 ; ---- the runtime halves of the control structures -------------------------
@@ -846,15 +860,16 @@ rb_code: LDA [B]
         JMP NEXT
 
 r_qbranch: .word rq_code    ; ( flag -- ) go there when the flag is zero
-rq_code: LDA [Z++]
-        STB ipsave3         ; B is the instruction pointer
+rq_code: STB ipsave3        ; the target is read through B, so it has to come
+        LDA [Z++]           ; back before either path uses it
         LDB #0
         SUB B,A
         BZ rq_take
-        LDA [B++]           ; not taken: step over the target
-        LDB ipsave3
+        LDB ipsave3         ; not taken: step over the target
+        LDA [B++]
         JMP NEXT
-rq_take: LDA [B]
+rq_take: LDB ipsave3
+        LDA [B]
         STA ipsave
         LDB ipsave
         JMP NEXT
@@ -869,23 +884,24 @@ rd_code: LDA [Z++]          ; return stack, which is where I reads it from
         JMP NEXT
 
 r_loop: .word rl_code       ; ( -- ) step the index and go round again
-rl_code: LDA [S++]
-        STB ipsave3         ; B is the instruction pointer
+rl_code: STB ipsave3        ; same again: the comparison needs B, and so does
+        LDA [S++]           ; reading the address to go back to
         INA
         STA dtmp1
         LDA [S]             ; the limit, without taking it off
         LDB dtmp1
-        SUB B,A             ; A = index - limit
+        SUB B,A             ; A = the new index, less the limit
         BM lp_again
         JMP lp_done
 lp_again: LDA dtmp1
         STA [--S]
+        LDB ipsave3
         LDA [B]
         STA ipsave
         LDB ipsave
-        LDB ipsave3
         JMP NEXT
 lp_done: LDA [S++]          ; drop the limit
+        LDB ipsave3
         LDA [B++]           ; and step over the target
         JMP NEXT
 
@@ -943,6 +959,47 @@ w_plus: .code
         JMP NEXT
 
         .word w_plus-4
+        .byte 1
+        .ascii "*"
+w_star: .code
+        STB ipsave3
+        LDA [Z++]
+        STA mula
+        LDA [Z++]
+        STA mulb
+        LDA #0
+        STA mulr
+mul1:   LDA mula            ; while there are bits left in the multiplier
+        LDB #0
+        SUB B,A
+        BZ mul2
+        LDA mula            ; add the multiplicand in for a set bit
+        LDB #1
+        NAB
+        STB mulbit
+        LDA mulbit
+        LDB #0
+        SUB B,A
+        BZ mul3
+        LDA mulb
+        LDB mulr
+        AAB
+        STB mulr
+mul3:   LDA mulb            ; double it, and halve the multiplier
+        SLA
+        STA mulb
+        LDA mula
+        SRA                 ; an arithmetic shift, so mask the sign back off
+        LDB #$7fff
+        NAB
+        STB mula
+        JMP mul1
+mul2:   LDA mulr
+        STA [--Z]
+        LDB ipsave3
+        JMP NEXT
+
+        .word w_star-4
         .byte 1
         .ascii "-"
 w_minus: .code
