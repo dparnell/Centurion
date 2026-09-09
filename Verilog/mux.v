@@ -61,9 +61,30 @@ reg tx_request = 0;
 reg tx_taken = 0;
 wire tx_idle;
 
-// A read of the data register consumes the received byte
+// A read of the data register consumes the received byte. Which makes it
+// dangerous, because this bus has no read strobe of its own: the address
+// register simply stays where it was until something needs it again. So the
+// cycles after the CPU *writes* the transmit register still have that register
+// on the address bus with write_en gone, and the next read strobe then reads as
+// the CPU taking a received byte - discarding whatever had arrived. Every
+// character the machine printed could eat one it had been sent, which looks
+// exactly like input being lost while the machine is busy, and is why typing at
+// a terminal never showed it: a person cannot type inside one character time.
+//
+// So once the data register has been written, ignore reads of it until the
+// address bus points somewhere else. A genuine read is always preceded by the
+// instruction fetch that issued it, so it is never inhibited.
+reg wrote_data = 0;
+always @(posedge cpu_clock) begin
+    if (reset) wrote_data <= 0;
+    else if (cpu_enable && selected) begin
+        if (write_en && address == 1) wrote_data <= 1;
+        else if (address != 1) wrote_data <= 0;
+    end else if (cpu_enable && !selected) wrote_data <= 0;
+end
+
 wire read_data_register = cpu_enable & selected & ~write_en & read_strobe
-                          & (address == 1);
+                          & (address == 1) & ~wrote_data;
 
 // CPU interface
 always @(posedge cpu_clock) begin
