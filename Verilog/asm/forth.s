@@ -19,9 +19,11 @@
 ; The implicit-register arithmetic - SAB, AAB, NAB - leaves the sign flag alone,
 ; so BM after one of them tests something stale. The register-to-register forms
 ; SUB B,A, AAB and NAB do the same work and do set it, so this file uses
-; those throughout. BL after a subtraction is the borrow, which is the unsigned
-; comparison. Finding this cost a hang in the number printer, whose loop
-; subtracts until the result goes negative.
+; those throughout. For an unsigned comparison use BNL, not BL: BL is branch if
+; Link, and Link is set when the subtraction did NOT borrow, so BNL is "less
+; than". Finding this cost a hang in the number printer, whose loop subtracts
+; until the result goes negative, and then a second round when the obvious
+; reading of the flag turned out to be backwards.
 ;
 ; NEXT is two instructions:  LDX [B++]  fetches the next code field address,
 ; JMP [[X]] jumps to the machine code whose address that field holds. The extra
@@ -621,15 +623,16 @@ po2:    LDA pcur
         LDB #0
         SUB B,A
         BNZ po2
-        LDA pnext           ; did it wrap round?
-        LDB pcur
-        SUB B,A
-        BM po3
-        JMP podone
+        LDA pnext           ; did it wrap round? Unsigned, like the two below.
+        LDB pcur            ; These are magnitude tests on values that can have
+        SUB B,A             ; bit 15 set, and with the signed BM anything from
+        BNL po3             ; 8000 up looked smaller than every power and came
+        JMP podone          ; out as "0". Link is set when a subtraction did
+                            ; NOT borrow, so BNL is the unsigned "less than".
 po3:    LDA nval            ; is it already past the value?
         LDB pnext
         SUB B,A
-        BM po4
+        BNL po4
         JMP podone
 po4:    LDA npow
         INA
@@ -657,7 +660,7 @@ podone: LDA npow            ; now take each power out in turn
 pd1:    LDA pcur
         LDB nval
         SUB B,A             ; the answer lands in A, not in B
-        BM pd2
+        BNL pd2
         STA nval
         LDA nq
         INA
@@ -931,6 +934,7 @@ mulb    .equ VARS+$de
 mulr    .equ VARS+$e0
 mulbit  .equ VARS+$e2       ; where a primitive parks the instruction pointer
 dvtmp   .equ VARS+$e4       ; the code field address a CREATEd word was entered with
+tkcfa   .equ VARS+$e6       ; what ' looked up
 
 
 ; ---- the runtime halves of the control structures -------------------------
@@ -1595,7 +1599,26 @@ rdoes_code: STB ipsave3
         LDB [S++]           ; then return from the defining word, as EXIT does
         JMP NEXT
 
-lastword .equ w_does-8
+        .word w_does-8
+        .byte 1
+        .ascii "'"
+w_tick: .code
+        STB ipsave3         ; B is the instruction pointer
+        JSR parseword       ; the name follows in the input, not on the stack
+        JSR find
+        LDA scr2            ; find leaves the code field address here, or zero
+        STA tkcfa           ; a store sets no flags, so the load's still stand
+        BNZ tk_got
+        JSR pr_word         ; say so rather than pushing a silent zero that
+        LDA #'?'            ; only fails later, somewhere else
+        JSR putc
+        JSR crlf
+tk_got: LDA tkcfa
+        STA [--Z]
+        LDB ipsave3
+        JMP NEXT
+
+lastword .equ w_tick-4
 
 ; Print the dictionary entry at fp, followed by a space.
 pr_entry:
