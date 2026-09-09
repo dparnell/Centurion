@@ -66,8 +66,9 @@ MapFailTB: *.v
 
 # Assemble a program and run it on the whole simulated board, talking to it over
 # the serial line. This is the loop for writing machine code for this machine:
-# "make run SRC=forth.s IN=tests/forth_basic.txt".
-SRC ?= forth.s
+# "make run SRC=asm/forth.s IN=asm/tests_forth.f". Program sources live in asm/
+# and the assembled images they produce live in programs/.
+SRC ?= asm/forth.s
 IN ?=
 FOR ?= 300
 run: ProgramTB
