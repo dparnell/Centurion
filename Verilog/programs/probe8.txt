@@ -41,7 +41,7 @@ ff
 49
 79  // 8028  JSR crlf
 80
-cb
+c5
 90  // 802b  LDA #16
 00
 10
@@ -62,7 +62,7 @@ ef
 49
 79  // 803d  JSR crlf
 80
-cb
+c5
 90  // 8040  LDA #$0001
 00
 01
@@ -83,10 +83,10 @@ b1
 06
 79  // 8052  pn1:    JSR divmod          ; nval = nval / BASE, ndig = the remainder
 80
-9e
+9b
 90  // 8055  LDA #digits         ; turn the remainder into a character
 80
-ec
+e6
 d1  // 8058  LDB ndig
 b1
 04
@@ -126,116 +126,110 @@ b1
 28
 51  // 807d  SUB B,A
 20
-15  // 807f  BZ pn3
-03
-71
-80
-98
-91  // 8084  LDA dptr
+14  // 807f  BZ pn3
+14
+91  // 8081  LDA dptr
 b1
 06
-5c  // 8087  XAY
-3a  // 8088  CLA                 ; a byte load leaves the high half alone
-85  // 8089  LDAB [Y]
+5c  // 8084  XAY
+3a  // 8085  CLA                 ; a byte load leaves the high half alone
+85  // 8086  LDAB [Y]
 60
-79  // 808b  JSR putc
+79  // 8088  JSR putc
 80
-d7
-91  // 808e  LDA dptr
+d1
+91  // 808b  LDA dptr
 b1
 06
-38  // 8091  INA
-b1  // 8092  STA dptr
+38  // 808e  INA
+b1  // 808f  STA dptr
 b1
 06
-71  // 8095  JMP pn2
+71  // 8092  JMP pn2
 80
 77
-90  // 8098  pn3:    LDA #' '
+90  // 8095  pn3:    LDA #' '
 00
 20
-71  // 809b  JMP putc
+71  // 8098  JMP putc
 80
-d7
-90  // 809e  divmod: LDA #0
+d1
+90  // 809b  divmod: LDA #0
 00
 00
-b1  // 80a1  STA nq
+b1  // 809e  STA nq
 b1
 0a
-91  // 80a4  dm1:    LDA BASE
+91  // 80a1  dm1:    LDA BASE
 b1
 00
-d1  // 80a7  LDB nval
+d1  // 80a4  LDB nval
 b1
 02
-51  // 80aa  SUB B,A             ; what is left after taking one more base away
+51  // 80a7  SUB B,A             ; what is left after taking one more base away
 20
-17  // 80ac  BM dm2
-03
-71
-80
-be
-f1  // 80b1  STB nval
+16  // 80a9  BM dm2
+0d
+f1  // 80ab  STB nval
 b1
 02
-91  // 80b4  LDA nq
+91  // 80ae  LDA nq
 b1
 0a
-38  // 80b7  INA
-b1  // 80b8  STA nq
+38  // 80b1  INA
+b1  // 80b2  STA nq
 b1
 0a
-71  // 80bb  JMP dm1
+71  // 80b5  JMP dm1
 80
-a4
-91  // 80be  dm2:    LDA nval
+a1
+91  // 80b8  dm2:    LDA nval
 b1
 02
-b1  // 80c1  STA ndig            ; what is left over is the digit
+b1  // 80bb  STA ndig            ; what is left over is the digit
 b1
 04
-91  // 80c4  LDA nq
+91  // 80be  LDA nq
 b1
 0a
-b1  // 80c7  STA nval
+b1  // 80c1  STA nval
 b1
 02
-09  // 80ca  RSR
-90  // 80cb  crlf:   LDA #13
+09  // 80c4  RSR
+90  // 80c5  crlf:   LDA #13
 00
 0d
-79  // 80ce  JSR putc
+79  // 80c8  JSR putc
 80
-d7
-90  // 80d1  LDA #10
+d1
+90  // 80cb  LDA #10
 00
 0a
-71  // 80d4  JMP putc
+71  // 80ce  JMP putc
 80
-d7
-a1  // 80d7  putc:   STAB pcsave
+d1
+a1  // 80d1  putc:   STAB pcsave
 b1
 0c
-81  // 80da  pc1:    LDAB CTRL
+81  // 80d4  pc1:    LDAB CTRL
 f2
 00
-2d  // 80dd  SLAB
-2d  // 80de  SLAB
-2d  // 80df  SLAB
-2d  // 80e0  SLAB
-2d  // 80e1  SLAB
-2d  // 80e2  SLAB
-17  // 80e3  BP pc1
+2d  // 80d7  SLAB
+2d  // 80d8  SLAB
+2d  // 80d9  SLAB
+2d  // 80da  SLAB
+2d  // 80db  SLAB
+2d  // 80dc  SLAB
+17  // 80dd  BP pc1
 f5
-81  // 80e5  LDAB pcsave
+81  // 80df  LDAB pcsave
 b1
 0c
-a1  // 80e8  STAB TXDATA
+a1  // 80e2  STAB TXDATA
 f2
 01
-09  // 80eb  RSR
-30  // 80ec  digits: .ascii "0123456789ABCDEF"
+09  // 80e5  RSR
+30  // 80e6  digits: .ascii "0123456789ABCDEF"
 31
 32
 33

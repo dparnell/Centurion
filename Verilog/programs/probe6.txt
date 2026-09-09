@@ -17,7 +17,7 @@ c0
 49
 79  // 8010  JSR crlf
 81
-44
+38
 90  // 8013  LDA #7
 00
 07
@@ -29,7 +29,7 @@ b0
 00
 79  // 801c  JSR putax
 80
-e1
+d5
 90  // 801f  LDA #7
 00
 07
@@ -41,10 +41,10 @@ b0
 00
 79  // 8028  JSR putax
 80
-e1
+d5
 79  // 802b  JSR crlf
 81
-44
+38
 90  // 802e  LDA #256
 01
 00
@@ -53,7 +53,7 @@ e1
 49
 79  // 8034  JSR crlf
 81
-44
+38
 90  // 8037  LDA #12345
 30
 39
@@ -62,7 +62,7 @@ e1
 49
 79  // 803d  JSR crlf
 81
-44
+38
 90  // 8040  LDA #$0001
 00
 01
@@ -80,213 +80,201 @@ d0  // 804c  LDB #0
 00
 50  // 804f  ADD B,A
 20
-17  // 8051  BM prneg
+16  // 8051  BM prneg
 03
-71
+71  // 8053  JMP prpos
 80
-59
-71  // 8056  JMP prpos
-80
-67
-90  // 8059  prneg:  LDA #'-'
+64
+90  // 8056  prneg:  LDA #'-'
 00
 2d
-79  // 805c  JSR putc
+79  // 8059  JSR putc
 81
-2f
-91  // 805f  LDA scr1
+23
+91  // 805c  LDA scr1
 b0
 00
-3b  // 8062  IVA                 ; one's complement, then add one
-38  // 8063  INA
-b1  // 8064  STA scr1
+3b  // 805f  IVA                 ; one's complement, then add one
+38  // 8060  INA
+b1  // 8061  STA scr1
 b0
 00
-90  // 8067  prpos:  LDA #0
+90  // 8064  prpos:  LDA #0
 00
 00
-b1  // 806a  STA nz
+b1  // 8067  STA nz
 b0
 96
-90  // 806d  LDA #10000
+90  // 806a  LDA #10000
 27
 10
-79  // 8070  JSR prdig
+79  // 806d  JSR prdig
 80
-96
-90  // 8073  LDA #1000
+93
+90  // 8070  LDA #1000
 03
 e8
-79  // 8076  JSR prdig
+79  // 8073  JSR prdig
 80
-96
-90  // 8079  LDA #100
+93
+90  // 8076  LDA #100
 00
 64
-79  // 807c  JSR prdig
+79  // 8079  JSR prdig
 80
-96
-90  // 807f  LDA #10
+93
+90  // 807c  LDA #10
 00
 0a
-79  // 8082  JSR prdig
+79  // 807f  JSR prdig
 80
-96
-91  // 8085  LDA scr1            ; the units digit always prints
+93
+91  // 8082  LDA scr1            ; the units digit always prints
 b0
 00
-d0  // 8088  LDB #'0'
+d0  // 8085  LDB #'0'
 00
 30
-50  // 808b  ADD B,A
+50  // 8088  ADD B,A
 20
-f1  // 808d  STB scr2
+f1  // 808a  STB scr2
 b0
 02
-91  // 8090  LDA scr2
+91  // 808d  LDA scr2
 b0
 02
-71  // 8093  JMP putc
+71  // 8090  JMP putc
 81
-2f
-b1  // 8096  prdig:  STA ndig
+23
+b1  // 8093  prdig:  STA ndig
 b0
 92
-90  // 8099  LDA #0
+90  // 8096  LDA #0
 00
 00
-b1  // 809c  STA nq
+b1  // 8099  STA nq
 b0
 94
-91  // 809f  pd1:    LDA ndig
+91  // 809c  pd1:    LDA ndig
 b0
 92
-d1  // 80a2  LDB scr1
+d1  // 809f  LDB scr1
 b0
 00
-51  // 80a5  SUB B,A             ; B = what is left, minus this power of ten
+51  // 80a2  SUB B,A             ; B = what is left, minus this power of ten
 20
-17  // 80a7  BM pd2              ; gone negative: this digit is finished
-03
-71
-80
-b9
-f1  // 80ac  STB scr1
+16  // 80a4  BM pd2              ; gone negative: this digit is finished
+0d
+f1  // 80a6  STB scr1
 b0
 00
-91  // 80af  LDA nq
+91  // 80a9  LDA nq
 b0
 94
-38  // 80b2  INA
-b1  // 80b3  STA nq
+38  // 80ac  INA
+b1  // 80ad  STA nq
 b0
 94
-71  // 80b6  JMP pd1
+71  // 80b0  JMP pd1
 80
-9f
-91  // 80b9  pd2:    LDA nq
+9c
+91  // 80b3  pd2:    LDA nq
 b0
 94
-15  // 80bc  BZ pd3
-03
-71
-80
-c7
-90  // 80c1  LDA #1
+14  // 80b6  BZ pd3
+06
+90  // 80b8  LDA #1
 00
 01
-b1  // 80c4  STA nz              ; a non-zero digit, so print the rest as well
+b1  // 80bb  STA nz              ; a non-zero digit, so print the rest as well
 b0
 96
-91  // 80c7  pd3:    LDA nz
+91  // 80be  pd3:    LDA nz
 b0
 96
-15  // 80ca  BZ pd4
-03
-71
-80
-e0
-91  // 80cf  LDA nq
+14  // 80c1  BZ pd4
+11
+91  // 80c3  LDA nq
 b0
 94
-d0  // 80d2  LDB #'0'
+d0  // 80c6  LDB #'0'
 00
 30
-50  // 80d5  ADD B,A
+50  // 80c9  ADD B,A
 20
-f1  // 80d7  STB scr2
+f1  // 80cb  STB scr2
 b0
 02
-91  // 80da  LDA scr2
+91  // 80ce  LDA scr2
 b0
 02
-79  // 80dd  JSR putc
+79  // 80d1  JSR putc
 81
-2f
-09  // 80e0  pd4:    RSR
-b1  // 80e1  putax:  STA $b010
+23
+09  // 80d4  pd4:    RSR
+b1  // 80d5  putax:  STA $b010
 b0
 10
-3c  // 80e4  SRA
-3c  // 80e5  SRA
-3c  // 80e6  SRA
-3c  // 80e7  SRA
-3c  // 80e8  SRA
-3c  // 80e9  SRA
-3c  // 80ea  SRA
-3c  // 80eb  SRA
-79  // 80ec  JSR puthex
+3c  // 80d8  SRA
+3c  // 80d9  SRA
+3c  // 80da  SRA
+3c  // 80db  SRA
+3c  // 80dc  SRA
+3c  // 80dd  SRA
+3c  // 80de  SRA
+3c  // 80df  SRA
+79  // 80e0  JSR puthex
 80
-fb
-91  // 80ef  LDA $b010
+ef
+91  // 80e3  LDA $b010
 b0
 10
-79  // 80f2  JSR puthex
+79  // 80e6  JSR puthex
 80
-fb
-90  // 80f5  LDA #' '
+ef
+90  // 80e9  LDA #' '
 00
 20
-71  // 80f8  JMP putc
+71  // 80ec  JMP putc
 81
-2f
-a1  // 80fb  puthex: STAB $b012
+23
+a1  // 80ef  puthex: STAB $b012
 b0
 12
-2c  // 80fe  SRAB
-2c  // 80ff  SRAB
-2c  // 8100  SRAB
-2c  // 8101  SRAB
-d0  // 8102  LDB #$000f
+2c  // 80f2  SRAB
+2c  // 80f3  SRAB
+2c  // 80f4  SRAB
+2c  // 80f5  SRAB
+d0  // 80f6  LDB #$000f
 00
 0f
-52  // 8105  AND B,A
+52  // 80f9  AND B,A
 20
-79  // 8107  JSR putnib
+79  // 80fb  JSR putnib
 81
-15
-81  // 810a  LDAB $b012
+09
+81  // 80fe  LDAB $b012
 b0
 12
-d0  // 810d  LDB #$000f
+d0  // 8101  LDB #$000f
 00
 0f
-52  // 8110  AND B,A
+52  // 8104  AND B,A
 20
-71  // 8112  JMP putnib
+71  // 8106  JMP putnib
 81
-15
-90  // 8115  putnib: LDA #hexd
+09
+90  // 8109  putnib: LDA #hexd
 81
-1f
-50  // 8118  ADD B,A
+13
+50  // 810c  ADD B,A
 20
-85  // 811a  LDAB [B]
+85  // 810e  LDAB [B]
 20
-71  // 811c  JMP putc
+71  // 8110  JMP putc
 81
-2f
-30  // 811f  hexd:   .ascii "0123456789ABCDEF"
+23
+30  // 8113  hexd:   .ascii "0123456789ABCDEF"
 31
 32
 33
@@ -302,36 +290,36 @@ d0  // 810d  LDB #$000f
 44
 45
 46
-a1  // 812f  putc:   STAB pcsave         ; the low half of A is the character
+a1  // 8123  putc:   STAB pcsave         ; the low half of A is the character
 b0
 04
-81  // 8132  pc1:    LDAB CTRL
+81  // 8126  pc1:    LDAB CTRL
 f2
 00
-2d  // 8135  SLAB                ; bit 1 up to the sign, so a branch can test it
-2d  // 8136  SLAB
-2d  // 8137  SLAB
-2d  // 8138  SLAB
-2d  // 8139  SLAB
-2d  // 813a  SLAB
-17  // 813b  BP pc1
+2d  // 8129  SLAB                ; bit 1 up to the sign, so a branch can test it
+2d  // 812a  SLAB
+2d  // 812b  SLAB
+2d  // 812c  SLAB
+2d  // 812d  SLAB
+2d  // 812e  SLAB
+17  // 812f  BP pc1
 f5
-81  // 813d  LDAB pcsave
+81  // 8131  LDAB pcsave
 b0
 04
-a1  // 8140  STAB TXDATA
+a1  // 8134  STAB TXDATA
 f2
 01
-09  // 8143  RSR
-90  // 8144  crlf:   LDA #13
+09  // 8137  RSR
+90  // 8138  crlf:   LDA #13
 00
 0d
-79  // 8147  JSR putc
+79  // 813b  JSR putc
 81
-2f
-90  // 814a  LDA #10
+23
+90  // 813e  LDA #10
 00
 0a
-71  // 814d  JMP putc
+71  // 8141  JMP putc
 81
-2f
+23

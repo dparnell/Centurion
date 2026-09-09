@@ -16,107 +16,98 @@ d0  // 800d  LDB #3
 00
 03
 59  // 8010  SAB
-17  // 8011  BM ok1
-03
-71
-80
-1f
-90  // 8016  LDA #'n'
+16  // 8011  BM ok1
+09
+90  // 8013  LDA #'n'
 00
 6e
-79  // 8019  JSR putc
-80
-64
-71  // 801c  JMP t2
-80
-25
-90  // 801f  ok1:    LDA #'y'
-00
-79
-79  // 8022  JSR putc
-80
-64
-90  // 8025  t2:     LDA #3              ; B = 5 - 3, which is positive
-00
-03
-d0  // 8028  LDB #5
-00
-05
-59  // 802b  SAB
-17  // 802c  BM bad2
-03
-71
-80
-3a
-90  // 8031  LDA #'y'
-00
-79
-79  // 8034  JSR putc
-80
-64
-71  // 8037  JMP t3
-80
-40
-90  // 803a  bad2:   LDA #'n'
-00
-6e
-79  // 803d  JSR putc
-80
-64
-90  // 8040  t3:     LDA #5              ; B = 5 - 5, which is zero
-00
-05
-d0  // 8043  LDB #5
-00
-05
-59  // 8046  SAB
-15  // 8047  BZ ok3
-03
-71
-80
-55
-90  // 804c  LDA #'n'
-00
-6e
-79  // 804f  JSR putc
-80
-64
-71  // 8052  JMP t4
+79  // 8016  JSR putc
 80
 5b
-90  // 8055  ok3:    LDA #'y'
+71  // 8019  JMP t2
+80
+22
+90  // 801c  ok1:    LDA #'y'
 00
 79
-79  // 8058  JSR putc
+79  // 801f  JSR putc
 80
-64
-90  // 805b  t4:     LDA #$0001
+5b
+90  // 8022  t2:     LDA #3              ; B = 5 - 3, which is positive
+00
+03
+d0  // 8025  LDB #5
+00
+05
+59  // 8028  SAB
+16  // 8029  BM bad2
+09
+90  // 802b  LDA #'y'
+00
+79
+79  // 802e  JSR putc
+80
+5b
+71  // 8031  JMP t3
+80
+3a
+90  // 8034  bad2:   LDA #'n'
+00
+6e
+79  // 8037  JSR putc
+80
+5b
+90  // 803a  t3:     LDA #5              ; B = 5 - 5, which is zero
+00
+05
+d0  // 803d  LDB #5
+00
+05
+59  // 8040  SAB
+14  // 8041  BZ ok3
+09
+90  // 8043  LDA #'n'
+00
+6e
+79  // 8046  JSR putc
+80
+5b
+71  // 8049  JMP t4
+80
+52
+90  // 804c  ok3:    LDA #'y'
+00
+79
+79  // 804f  JSR putc
+80
+5b
+90  // 8052  t4:     LDA #$0001
 00
 01
-b1  // 805e  STA $f900
+b1  // 8055  STA $f900
 f9
 00
-71  // 8061  halt:   JMP halt
+71  // 8058  halt:   JMP halt
 80
-61
-a1  // 8064  putc:   STAB pcsave
+58
+a1  // 805b  putc:   STAB pcsave
 b0
 04
-81  // 8067  pc1:    LDAB CTRL
+81  // 805e  pc1:    LDAB CTRL
 f2
 00
-2d  // 806a  SLAB
-2d  // 806b  SLAB
-2d  // 806c  SLAB
-2d  // 806d  SLAB
-2d  // 806e  SLAB
-2d  // 806f  SLAB
-17  // 8070  BP pc1
+2d  // 8061  SLAB
+2d  // 8062  SLAB
+2d  // 8063  SLAB
+2d  // 8064  SLAB
+2d  // 8065  SLAB
+2d  // 8066  SLAB
+17  // 8067  BP pc1
 f5
-81  // 8072  LDAB pcsave
+81  // 8069  LDAB pcsave
 b0
 04
-a1  // 8075  STAB TXDATA
+a1  // 806c  STAB TXDATA
 f2
 01
-09  // 8078  RSR
+09  // 806f  RSR

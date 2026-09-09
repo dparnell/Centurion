@@ -16,174 +16,159 @@ d0  // 800d  LDB #3
 00
 03
 59  // 8010  SAB
-11  // 8011  BL l1
-03
-71
-80
-1f
-90  // 8016  LDA #'-'
+10  // 8011  BL l1
+09
+90  // 8013  LDA #'-'
 00
 2d
-79  // 8019  JSR putc
-80
-a7
-71  // 801c  JMP n1
-80
-25
-90  // 801f  l1:     LDA #'L'
-00
-4c
-79  // 8022  JSR putc
-80
-a7
-90  // 8025  n1:     LDA #5
-00
-05
-d0  // 8028  LDB #3
-00
-03
-59  // 802b  SAB
-19  // 802c  BGZ g1
-03
-71
-80
-3a
-90  // 8031  LDA #'-'
-00
-2d
-79  // 8034  JSR putc
-80
-a7
-71  // 8037  JMP t2
-80
-40
-90  // 803a  g1:     LDA #'G'
-00
-47
-79  // 803d  JSR putc
-80
-a7
-90  // 8040  t2:     LDA #' '
-00
-20
-79  // 8043  JSR putc
-80
-a7
-90  // 8046  LDA #3
-00
-03
-d0  // 8049  LDB #5
-00
-05
-59  // 804c  SAB
-11  // 804d  BL l2
-03
-71
-80
-5b
-90  // 8052  LDA #'-'
-00
-2d
-79  // 8055  JSR putc
-80
-a7
-71  // 8058  JMP n2
-80
-61
-90  // 805b  l2:     LDA #'L'
-00
-4c
-79  // 805e  JSR putc
-80
-a7
-90  // 8061  n2:     LDA #3
-00
-03
-d0  // 8064  LDB #5
-00
-05
-59  // 8067  SAB
-19  // 8068  BGZ g2
-03
-71
-80
-76
-90  // 806d  LDA #'-'
-00
-2d
-79  // 8070  JSR putc
-80
-a7
-71  // 8073  JMP t3
-80
-7c
-90  // 8076  g2:     LDA #'G'
-00
-47
-79  // 8079  JSR putc
-80
-a7
-90  // 807c  t3:     LDA #' '
-00
-20
-79  // 807f  JSR putc
-80
-a7
-90  // 8082  LDA #5
-00
-05
-d0  // 8085  LDB #3
-00
-03
-51  // 8088  SUB B,A
-20
-17  // 808a  BM m3
-03
-71
+79  // 8016  JSR putc
 80
 98
-90  // 808f  LDA #'-'
+71  // 8019  JMP n1
+80
+22
+90  // 801c  l1:     LDA #'L'
+00
+4c
+79  // 801f  JSR putc
+80
+98
+90  // 8022  n1:     LDA #5
+00
+05
+d0  // 8025  LDB #3
+00
+03
+59  // 8028  SAB
+18  // 8029  BGZ g1
+09
+90  // 802b  LDA #'-'
 00
 2d
-79  // 8092  JSR putc
+79  // 802e  JSR putc
 80
-a7
-71  // 8095  JMP done
+98
+71  // 8031  JMP t2
 80
-9e
-90  // 8098  m3:     LDA #'M'
+3a
+90  // 8034  g1:     LDA #'G'
+00
+47
+79  // 8037  JSR putc
+80
+98
+90  // 803a  t2:     LDA #' '
+00
+20
+79  // 803d  JSR putc
+80
+98
+90  // 8040  LDA #3
+00
+03
+d0  // 8043  LDB #5
+00
+05
+59  // 8046  SAB
+10  // 8047  BL l2
+09
+90  // 8049  LDA #'-'
+00
+2d
+79  // 804c  JSR putc
+80
+98
+71  // 804f  JMP n2
+80
+58
+90  // 8052  l2:     LDA #'L'
+00
+4c
+79  // 8055  JSR putc
+80
+98
+90  // 8058  n2:     LDA #3
+00
+03
+d0  // 805b  LDB #5
+00
+05
+59  // 805e  SAB
+18  // 805f  BGZ g2
+09
+90  // 8061  LDA #'-'
+00
+2d
+79  // 8064  JSR putc
+80
+98
+71  // 8067  JMP t3
+80
+70
+90  // 806a  g2:     LDA #'G'
+00
+47
+79  // 806d  JSR putc
+80
+98
+90  // 8070  t3:     LDA #' '
+00
+20
+79  // 8073  JSR putc
+80
+98
+90  // 8076  LDA #5
+00
+05
+d0  // 8079  LDB #3
+00
+03
+51  // 807c  SUB B,A
+20
+16  // 807e  BM m3
+09
+90  // 8080  LDA #'-'
+00
+2d
+79  // 8083  JSR putc
+80
+98
+71  // 8086  JMP done
+80
+8f
+90  // 8089  m3:     LDA #'M'
 00
 4d
-79  // 809b  JSR putc
+79  // 808c  JSR putc
 80
-a7
-90  // 809e  done:   LDA #$0001
+98
+90  // 808f  done:   LDA #$0001
 00
 01
-b1  // 80a1  STA $f900
+b1  // 8092  STA $f900
 f9
 00
-71  // 80a4  halt:   JMP halt
+71  // 8095  halt:   JMP halt
 80
-a4
-a1  // 80a7  putc:   STAB pcsave
+95
+a1  // 8098  putc:   STAB pcsave
 b0
 04
-81  // 80aa  pc1:    LDAB CTRL
+81  // 809b  pc1:    LDAB CTRL
 f2
 00
-2d  // 80ad  SLAB
-2d  // 80ae  SLAB
-2d  // 80af  SLAB
-2d  // 80b0  SLAB
-2d  // 80b1  SLAB
-2d  // 80b2  SLAB
-17  // 80b3  BP pc1
+2d  // 809e  SLAB
+2d  // 809f  SLAB
+2d  // 80a0  SLAB
+2d  // 80a1  SLAB
+2d  // 80a2  SLAB
+2d  // 80a3  SLAB
+17  // 80a4  BP pc1
 f5
-81  // 80b5  LDAB pcsave
+81  // 80a6  LDAB pcsave
 b0
 04
-a1  // 80b8  STAB TXDATA
+a1  // 80a9  STAB TXDATA
 f2
 01
-09  // 80bb  RSR
+09  // 80ac  RSR

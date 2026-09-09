@@ -74,41 +74,38 @@ f9
 46
 51  // 8049  t:      SUB B,A
 20
-17  // 804b  BM tm
-03
-71
-80
-56
-90  // 8050  LDA #'.'
+16  // 804b  BM tm
+06
+90  // 804d  LDA #'.'
 00
 2e
-71  // 8053  JMP putc
+71  // 8050  JMP putc
 80
-5c
-90  // 8056  tm:     LDA #'M'
+59
+90  // 8053  tm:     LDA #'M'
 00
 4d
-71  // 8059  JMP putc
+71  // 8056  JMP putc
 80
-5c
-a1  // 805c  putc:   STAB pcsave
+59
+a1  // 8059  putc:   STAB pcsave
 b0
 04
-81  // 805f  pc1:    LDAB CTRL
+81  // 805c  pc1:    LDAB CTRL
 f2
 00
+2d  // 805f  SLAB
+2d  // 8060  SLAB
+2d  // 8061  SLAB
 2d  // 8062  SLAB
 2d  // 8063  SLAB
 2d  // 8064  SLAB
-2d  // 8065  SLAB
-2d  // 8066  SLAB
-2d  // 8067  SLAB
-17  // 8068  BP pc1
+17  // 8065  BP pc1
 f5
-81  // 806a  LDAB pcsave
+81  // 8067  LDAB pcsave
 b0
 04
-a1  // 806d  STAB TXDATA
+a1  // 806a  STAB TXDATA
 f2
 01
-09  // 8070  RSR
+09  // 806d  RSR

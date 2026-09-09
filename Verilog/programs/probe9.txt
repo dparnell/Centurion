@@ -26,225 +26,207 @@ d0  // 8016  LDB #$1234
 34
 51  // 8019  SUB B,A
 20
-15  // 801b  BZ y1
-03
-71
-80
-26
-90  // 8020  LDA #'a'
+14  // 801b  BZ y1
+06
+90  // 801d  LDA #'a'
 00
 61
-71  // 8023  JMP p1
+71  // 8020  JMP p1
 80
-29
-90  // 8026  y1:     LDA #'1'
+26
+90  // 8023  y1:     LDA #'1'
 00
 31
-79  // 8029  p1:     JSR putc
-80
-e4
-90  // 802c  LDA #5              ; 2: ADD B,A leaves the sum in B
-00
-05
-d0  // 802f  LDB #3
-00
-03
-58  // 8032  AAB
-f1  // 8033  STB $b102
-b1
-02
-91  // 8036  LDA $b102
-b1
-02
-d0  // 8039  LDB #8
-00
-08
-51  // 803c  SUB B,A
-20
-15  // 803e  BZ y2
-03
-71
-80
-49
-90  // 8043  LDA #'b'
-00
-62
-71  // 8046  JMP p2
-80
-4c
-90  // 8049  y2:     LDA #'2'
-00
-32
-79  // 804c  p2:     JSR putc
-80
-e4
-90  // 804f  LDA #$00ff          ; 3: AND B,A leaves it in B
-00
-ff
-d0  // 8052  LDB #$0f0f
-0f
-0f
-5a  // 8055  NAB
-f1  // 8056  STB $b102
-b1
-02
-91  // 8059  LDA $b102
-b1
-02
-d0  // 805c  LDB #$000f
-00
-0f
-51  // 805f  SUB B,A
-20
-15  // 8061  BZ y3
-03
-71
-80
-6c
-90  // 8066  LDA #'c'
-00
-63
-71  // 8069  JMP p3
-80
-6f
-90  // 806c  y3:     LDA #'3'
-00
-33
-79  // 806f  p3:     JSR putc
-80
-e4
-90  // 8072  LDA #tbl            ; 4: LDAB through B
-80
-de
-d0  // 8075  LDB #2
-00
-02
-58  // 8078  AAB
-85  // 8079  LDAB [B]
-20
-a1  // 807b  STAB $b102
-b1
-02
-81  // 807e  LDAB $b102
-b1
-02
-d0  // 8081  LDB #'C'
-00
-43
-51  // 8084  SUB B,A
-20
-15  // 8086  BZ y4
-03
-71
-80
-91
-90  // 808b  LDA #'d'
-00
-64
-71  // 808e  JMP p4
-80
-94
-90  // 8091  y4:     LDA #'4'
-00
-34
-79  // 8094  p4:     JSR putc
-80
-e4
-90  // 8097  LDA #$b200          ; 5: a byte store through Y
-b2
-00
-5c  // 809a  XAY
-90  // 809b  LDA #'Z'
-00
-5a
-a5  // 809e  STAB [Y]
-60
-81  // 80a0  LDAB $b200
-b2
-00
-d0  // 80a3  LDB #'Z'
-00
-5a
-51  // 80a6  SUB B,A
-20
-15  // 80a8  BZ y5
-03
-71
-80
-b3
-90  // 80ad  LDA #'e'
-00
-65
-71  // 80b0  JMP p5
-80
-b6
-90  // 80b3  y5:     LDA #'5'
-00
-35
-79  // 80b6  p5:     JSR putc
-80
-e4
-90  // 80b9  LDA #9              ; 6: DCA and INA
-00
-09
-39  // 80bc  DCA
-39  // 80bd  DCA
-38  // 80be  INA
-d0  // 80bf  LDB #8
-00
-08
-51  // 80c2  SUB B,A
-20
-15  // 80c4  BZ y6
-03
-71
-80
-cf
-90  // 80c9  LDA #'f'
-00
-66
-71  // 80cc  JMP p6
+79  // 8026  p1:     JSR putc
 80
 d2
-90  // 80cf  y6:     LDA #'6'
+90  // 8029  LDA #5              ; 2: ADD B,A leaves the sum in B
+00
+05
+d0  // 802c  LDB #3
+00
+03
+58  // 802f  AAB
+f1  // 8030  STB $b102
+b1
+02
+91  // 8033  LDA $b102
+b1
+02
+d0  // 8036  LDB #8
+00
+08
+51  // 8039  SUB B,A
+20
+14  // 803b  BZ y2
+06
+90  // 803d  LDA #'b'
+00
+62
+71  // 8040  JMP p2
+80
+46
+90  // 8043  y2:     LDA #'2'
+00
+32
+79  // 8046  p2:     JSR putc
+80
+d2
+90  // 8049  LDA #$00ff          ; 3: AND B,A leaves it in B
+00
+ff
+d0  // 804c  LDB #$0f0f
+0f
+0f
+5a  // 804f  NAB
+f1  // 8050  STB $b102
+b1
+02
+91  // 8053  LDA $b102
+b1
+02
+d0  // 8056  LDB #$000f
+00
+0f
+51  // 8059  SUB B,A
+20
+14  // 805b  BZ y3
+06
+90  // 805d  LDA #'c'
+00
+63
+71  // 8060  JMP p3
+80
+66
+90  // 8063  y3:     LDA #'3'
+00
+33
+79  // 8066  p3:     JSR putc
+80
+d2
+90  // 8069  LDA #tbl            ; 4: LDAB through B
+80
+cc
+d0  // 806c  LDB #2
+00
+02
+58  // 806f  AAB
+85  // 8070  LDAB [B]
+20
+a1  // 8072  STAB $b102
+b1
+02
+81  // 8075  LDAB $b102
+b1
+02
+d0  // 8078  LDB #'C'
+00
+43
+51  // 807b  SUB B,A
+20
+14  // 807d  BZ y4
+06
+90  // 807f  LDA #'d'
+00
+64
+71  // 8082  JMP p4
+80
+88
+90  // 8085  y4:     LDA #'4'
+00
+34
+79  // 8088  p4:     JSR putc
+80
+d2
+90  // 808b  LDA #$b200          ; 5: a byte store through Y
+b2
+00
+5c  // 808e  XAY
+90  // 808f  LDA #'Z'
+00
+5a
+a5  // 8092  STAB [Y]
+60
+81  // 8094  LDAB $b200
+b2
+00
+d0  // 8097  LDB #'Z'
+00
+5a
+51  // 809a  SUB B,A
+20
+14  // 809c  BZ y5
+06
+90  // 809e  LDA #'e'
+00
+65
+71  // 80a1  JMP p5
+80
+a7
+90  // 80a4  y5:     LDA #'5'
+00
+35
+79  // 80a7  p5:     JSR putc
+80
+d2
+90  // 80aa  LDA #9              ; 6: DCA and INA
+00
+09
+39  // 80ad  DCA
+39  // 80ae  DCA
+38  // 80af  INA
+d0  // 80b0  LDB #8
+00
+08
+51  // 80b3  SUB B,A
+20
+14  // 80b5  BZ y6
+06
+90  // 80b7  LDA #'f'
+00
+66
+71  // 80ba  JMP p6
+80
+c0
+90  // 80bd  y6:     LDA #'6'
 00
 36
-79  // 80d2  p6:     JSR putc
+79  // 80c0  p6:     JSR putc
 80
-e4
-90  // 80d5  LDA #$0001
+d2
+90  // 80c3  LDA #$0001
 00
 01
-b1  // 80d8  STA $f900
+b1  // 80c6  STA $f900
 f9
 00
-71  // 80db  halt:   JMP halt
+71  // 80c9  halt:   JMP halt
 80
-db
-41  // 80de  tbl:    .ascii "ABCDEF"
+c9
+41  // 80cc  tbl:    .ascii "ABCDEF"
 42
 43
 44
 45
 46
-a1  // 80e4  putc:   STAB pcsave
+a1  // 80d2  putc:   STAB pcsave
 b0
 04
-81  // 80e7  pc1:    LDAB CTRL
+81  // 80d5  pc1:    LDAB CTRL
 f2
 00
-2d  // 80ea  SLAB
-2d  // 80eb  SLAB
-2d  // 80ec  SLAB
-2d  // 80ed  SLAB
-2d  // 80ee  SLAB
-2d  // 80ef  SLAB
-17  // 80f0  BP pc1
+2d  // 80d8  SLAB
+2d  // 80d9  SLAB
+2d  // 80da  SLAB
+2d  // 80db  SLAB
+2d  // 80dc  SLAB
+2d  // 80dd  SLAB
+17  // 80de  BP pc1
 f5
-81  // 80f2  LDAB pcsave
+81  // 80e0  LDAB pcsave
 b0
 04
-a1  // 80f5  STAB TXDATA
+a1  // 80e3  STAB TXDATA
 f2
 01
-09  // 80f8  RSR
+09  // 80e6  RSR
