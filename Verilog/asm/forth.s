@@ -723,6 +723,91 @@ comma:  STA scr2
         RSR
 
 ; ---------------------------------------------------------------------------
+; Start a dictionary entry for the next word in the input: the link, the flags
+; and length byte, and the name. Leaves the entry's address in newent with HERE
+; pointing at the code field, which the caller fills in - that is the only thing
+; ":" and CREATE disagree about.
+;
+; Nothing here may touch X. JSR keeps its return address there, so this walks
+; the name with Y, as everything called with JSR in this file has to.
+; ---------------------------------------------------------------------------
+mkhead: JSR parseword
+        LDA HERE
+        STA newent
+        LDA LATEST          ; the link to the entry before this one
+        JSR comma
+        CLA
+        LDAB WORDBUF
+        STA cnt
+        LDA HERE            ; the length byte
+        XAY
+        LDAB WORDBUF
+        STAB [Y]
+        LDA HERE
+        INA
+        STA HERE
+        LDA #0
+        STA ci
+cn1:    LDA ci              ; then the name itself
+        LDB cnt
+        SUB B,A
+        BZ cn2
+        LDA #WORDBUF+1
+        LDB ci
+        AAB
+        STB scr1
+        LDA scr1
+        XAY
+        CLA
+        LDAB [Y]
+        STA cch
+        LDA HERE
+        XAY
+        LDAB cch+1
+        STAB [Y]
+        LDA HERE
+        INA
+        STA HERE
+        LDA ci
+        INA
+        STA ci
+        JMP cn1
+cn2:    RSR
+
+; ---------------------------------------------------------------------------
+; What a CREATEd word does when it runs. NEXT leaves the code field address in
+; X before jumping through it, so a CREATEd word's data starts four bytes on:
+; the code field itself, then the cell DOES> fills in. A colon definition has
+; no such cell and DOCOL steps over two bytes rather than four - each runtime
+; knows the shape of the word it belongs to, and nothing else needs to.
+; ---------------------------------------------------------------------------
+DOVAR:  STX dvtmp           ; X is this word's code field address
+        LDA dvtmp
+        INA
+        INA
+        INA
+        INA
+        STA [--Z]           ; push the parameter field address
+        JMP NEXT
+
+; And what it does once DOES> has been through it: the same push, and then the
+; thread DOES> recorded, entered exactly as DOCOL enters a colon definition.
+DODOES: STX dvtmp
+        LDA dvtmp
+        INA
+        INA
+        INA
+        INA
+        STA [--Z]
+        STB [--S]           ; the caller's instruction pointer
+        LDA dvtmp
+        INA
+        INA
+        XAY
+        LDB [Y]
+        JMP NEXT
+
+; ---------------------------------------------------------------------------
 ; How much memory is there? Map each physical page into the window in turn and
 ; see whether it remembers a signature. The page file is only reachable through
 ; the PAGE instruction, so this keeps a 32 byte image of map 0, edits one entry
@@ -845,6 +930,7 @@ mula    .equ VARS+$dc
 mulb    .equ VARS+$de
 mulr    .equ VARS+$e0
 mulbit  .equ VARS+$e2       ; where a primitive parks the instruction pointer
+dvtmp   .equ VARS+$e4       ; the code field address a CREATEd word was entered with
 
 
 ; ---- the runtime halves of the control structures -------------------------
@@ -1270,48 +1356,8 @@ w_i:    .code
         .ascii ":"
 w_colon: .code
         STB ipsave3         ; B is the instruction pointer
-        JSR parseword
-        LDA HERE
-        STA newent
-        LDA LATEST          ; the link to the entry before this one
-        JSR comma
-        CLA
-        LDAB WORDBUF
-        STA cnt
-        LDA HERE            ; the length byte
-        XAY
-        LDAB WORDBUF
-        STAB [Y]
-        LDA HERE
-        INA
-        STA HERE
-        LDA #0
-        STA ci
-cn1:    LDA ci              ; then the name itself
-        LDB cnt
-        SUB B,A
-        BZ cn2
-        LDA #WORDBUF+1
-        LDB ci
-        AAB
-        STB scr1
-        LDA scr1
-        XAY
-        CLA
-        LDAB [Y]
-        STA cch
-        LDA HERE
-        XAY
-        LDAB cch+1
-        STAB [Y]
-        LDA HERE
-        INA
-        STA HERE
-        LDA ci
-        INA
-        STA ci
-        JMP cn1
-cn2:    LDA #DOCOL          ; and the code field
+        JSR mkhead
+        LDA #DOCOL          ; and the code field
         JSR comma
         LDA newent
         STA LATEST
@@ -1462,7 +1508,94 @@ fls:    LDA #0
         LDB ipsave3
         JMP NEXT
 
-lastword .equ w_imm-12
+        .word w_imm-12
+        .byte 1
+        .ascii ","
+w_dcomma: .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA [Z++]
+        JSR comma
+        LDB ipsave3
+        JMP NEXT
+
+        .word w_dcomma-4
+        .byte 5
+        .ascii "ALLOT"
+w_allot: .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA [Z++]
+        LDB HERE
+        AAB                 ; AAB leaves its answer in B, not in A
+        STB scr1
+        LDA scr1
+        STA HERE
+        LDB ipsave3
+        JMP NEXT
+
+        .word w_allot-8
+        .byte 6
+        .ascii "CREATE"
+w_create: .code
+        STB ipsave3         ; B is the instruction pointer
+        JSR mkhead
+        LDA #DOVAR          ; a plain data word for now
+        JSR comma
+        LDA #0              ; and the empty cell DOES> fills in
+        JSR comma
+        LDA newent
+        STA LATEST
+        LDB ipsave3
+        JMP NEXT
+
+; DOES> is immediate: it runs while the defining word is being compiled, and
+; all it does is compile the runtime below into it.
+        .word w_create-9
+        .byte $85
+        .ascii "DOES>"
+w_does: .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA #r_does
+        JSR comma
+        LDB ipsave3
+        JMP NEXT
+
+; The runtime, which has no dictionary entry of its own because only DOES>
+; compiles it. It runs when the *defining* word runs, at which point NEXT has
+; already stepped the instruction pointer past this cell - so B is the thread
+; that follows DOES>, which from here on belongs to the child rather than to
+; the word being run. Hand it to the child, point the child at DODOES, and
+; leave the defining word at once, because the rest of it is the child's.
+r_does: .word rdoes_code
+rdoes_code: STB ipsave3
+        LDA LATEST          ; the newest entry's code field: a link and a flags
+        XAY                 ; byte, then the name, so three plus its length
+        CLA
+        LDAB [Y+$02]
+        LDB #$1f
+        NAB
+        STB scr1
+        LDA LATEST
+        LDB scr1
+        AAB
+        STB scr1
+        LDA #3
+        LDB scr1
+        AAB
+        STB scr1
+        LDA scr1
+        XAY
+        LDA #DODOES         ; the child stops being a plain CREATEd word
+        STA [Y]
+        LDA scr1
+        INA
+        INA
+        XAY
+        LDA ipsave3         ; and remembers the thread to run
+        STA [Y]
+        LDB [S++]           ; then return from the defining word, as EXIT does
+        JMP NEXT
+
+lastword .equ w_does-8
 
 ; Print the dictionary entry at fp, followed by a space.
 pr_entry:
