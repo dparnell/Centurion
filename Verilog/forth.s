@@ -1015,8 +1015,10 @@ w_cstore: .code
         .byte 4
         .ascii "EMIT"
 w_emit: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         JSR putc
+        LDB ipsave3
         JMP NEXT
 
         .word w_emit-7
@@ -1035,17 +1037,21 @@ w_key:  .code
         .byte 2
         .ascii "CR"
 w_cr:   .code
+        STB ipsave3         ; B is the instruction pointer
         JSR crlf
+        LDB ipsave3
         JMP NEXT
 
         .word w_cr-5
         .byte 1
         .ascii "."
 w_dot:  .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         JSR prnum
         LDA #' '
         JSR putc
+        LDB ipsave3
         JMP NEXT
 
         .word w_dot-4
@@ -1086,6 +1092,7 @@ w_here: .code
         .byte 5
         .ascii "WORDS"
 w_words: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA LATEST
         STA fp
 ww1:    LDA fp
@@ -1097,6 +1104,7 @@ ww1:    LDA fp
         STA fp
         JMP ww1
 ww2:    JSR crlf
+        LDB ipsave3
         JMP NEXT
 
         .word w_words-8
@@ -1150,6 +1158,7 @@ w_branch: .word rb_code
         .byte 1
         .ascii "="
 w_eq:   .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         LDB [Z++]
         SUB B,A
@@ -1160,6 +1169,7 @@ w_eq:   .code
         .byte 1
         .ascii "<"
 w_lt:   .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]           ; ( a b -- flag ) with b on top
         LDB [Z++]
         SUB B,A             ; A = a - b
@@ -1170,6 +1180,7 @@ w_lt:   .code
         .byte 1
         .ascii ">"
 w_gt:   .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         LDB [Z++]
         SUB B,A             ; A = a - b
@@ -1181,6 +1192,7 @@ w_gt:   .code
         .byte 2
         .ascii "0="
 w_zeq:  .code
+        STB ipsave3         ; B is the instruction pointer
         LDA [Z++]
         LDB #0
         SUB B,A
@@ -1254,22 +1266,26 @@ cn2:    LDA #DOCOL          ; and the code field
         .byte $81
         .ascii ";"
 w_semi: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA #w_exit
         JSR comma
         LDA #0
         STA STATE
+        LDB ipsave3
         JMP NEXT
 
         .word w_semi-4
         .byte $82
         .ascii "IF"
 w_if:   .code
+        STB ipsave3         ; B is the instruction pointer
         LDA #w_qbranch
         JSR comma
         LDA HERE            ; remember the slot to fill in later
         STA [--Z]
         LDA #0
         JSR comma
+        LDB ipsave3
         JMP NEXT
 
         .word w_if-5
@@ -1286,6 +1302,7 @@ w_then: .code
         .byte $84
         .ascii "ELSE"
 w_else: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA #w_branch
         JSR comma
         LDA HERE
@@ -1298,6 +1315,7 @@ w_else: .code
         STA [Y]
         LDA newslot
         STA [--Z]
+        LDB ipsave3
         JMP NEXT
 
         .word w_else-7
@@ -1312,40 +1330,48 @@ w_begin: .code
         .byte $85
         .ascii "UNTIL"
 w_until: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA #w_qbranch
         JSR comma
         LDA [Z++]
         JSR comma
+        LDB ipsave3
         JMP NEXT
 
         .word w_until-8
         .byte $85
         .ascii "AGAIN"
 w_again: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA #w_branch
         JSR comma
         LDA [Z++]
         JSR comma
+        LDB ipsave3
         JMP NEXT
 
         .word w_again-8
         .byte $82
         .ascii "DO"
 w_do:   .code
+        STB ipsave3         ; B is the instruction pointer
         LDA #r_do
         JSR comma
         LDA HERE            ; where LOOP comes back to
         STA [--Z]
+        LDB ipsave3
         JMP NEXT
 
         .word w_do-5
         .byte $84
         .ascii "LOOP"
 w_loop: .code
+        STB ipsave3         ; B is the instruction pointer
         LDA #r_loop
         JSR comma
         LDA [Z++]
         JSR comma
+        LDB ipsave3
         JMP NEXT
 
         .word w_loop-7
@@ -1369,11 +1395,13 @@ w_imm:  .code
         JMP NEXT
 
 ; A flag of all ones is true, and zero is false, as everywhere else.
-tru:    LDA #$ffff
-        STA [--Z]
+tru:    LDA #$ffff          ; the comparisons above all end here, and they
+        STA [--Z]           ; use B, so the instruction pointer comes back
+        LDB ipsave3
         JMP NEXT
 fls:    LDA #0
         STA [--Z]
+        LDB ipsave3
         JMP NEXT
 
 lastword .equ w_imm-12
