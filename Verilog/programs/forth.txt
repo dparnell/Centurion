@@ -21,7 +21,7 @@ b0
 0a
 90  // 8014  LDA #lastword
 8d
-2b
+6c
 b1  // 8017  STA LATEST
 b0
 08
@@ -2414,7 +2414,7 @@ b0
 0f
 79  // 896d  JSR pr_entry
 8d
-5e
+7a
 91  // 8970  LDA fp
 b0
 80
@@ -3421,69 +3421,97 @@ da
 71  // 8d5b  JMP NEXT
 80
 f0
-91  // 8d5e  LDA fp
+8d  // 8d5e  .word w_paren-4
+2b
+02  // 8d60  .byte 2
+3e  // 8d61  .ascii ">R"
+52
+8d  // 8d63  w_tor:  .code
+65
+95  // 8d65  LDA [Z++]
+81
+b5  // 8d67  STA [--S]
+a2
+71  // 8d69  JMP NEXT
+80
+f0
+8d  // 8d6c  .word w_tor-5
+5e
+02  // 8d6e  .byte 2
+52  // 8d6f  .ascii "R>"
+3e
+8d  // 8d71  w_fromr: .code
+73
+95  // 8d73  LDA [S++]
+a1
+b5  // 8d75  STA [--Z]
+82
+71  // 8d77  JMP NEXT
+80
+f0
+91  // 8d7a  LDA fp
 b0
 80
-5c  // 8d61  XAY
-85  // 8d62  LDAB [Y+$02]
+5c  // 8d7d  XAY
+85  // 8d7e  LDAB [Y+$02]
 68
 02
-d0  // 8d65  LDB #$1f
+d0  // 8d81  LDB #$1f
 00
 1f
-5a  // 8d68  NAB
-f1  // 8d69  STB flen2
+5a  // 8d84  NAB
+f1  // 8d85  STB flen2
 b0
 84
-90  // 8d6c  LDA #0
+90  // 8d88  LDA #0
 00
 00
-b1  // 8d6f  STA fi
+b1  // 8d8b  STA fi
 b0
 86
-91  // 8d72  pe1:    LDA fi
+91  // 8d8e  pe1:    LDA fi
 b0
 86
-d1  // 8d75  LDB flen2
+d1  // 8d91  LDB flen2
 b0
 84
-51  // 8d78  SUB B,A
+51  // 8d94  SUB B,A
 20
-14  // 8d7a  BZ pe2
+14  // 8d96  BZ pe2
 1e
-91  // 8d7c  LDA fp
+91  // 8d98  LDA fp
 b0
 80
-d1  // 8d7f  LDB fi
+d1  // 8d9b  LDB fi
 b0
 86
-58  // 8d82  AAB
-f1  // 8d83  STB scr1
+58  // 8d9e  AAB
+f1  // 8d9f  STB scr1
 b0
 00
-91  // 8d86  LDA scr1
+91  // 8da2  LDA scr1
 b0
 00
-5c  // 8d89  XAY
-85  // 8d8a  LDAB [Y+$03]
+5c  // 8da5  XAY
+85  // 8da6  LDAB [Y+$03]
 68
 03
-79  // 8d8d  JSR putc
+79  // 8da9  JSR putc
 81
 19
-91  // 8d90  LDA fi
+91  // 8dac  LDA fi
 b0
 86
-38  // 8d93  INA
-b1  // 8d94  STA fi
+38  // 8daf  INA
+b1  // 8db0  STA fi
 b0
 86
-71  // 8d97  JMP pe1
+71  // 8db3  JMP pe1
 8d
-72
-90  // 8d9a  pe2:    LDA #' '
+8e
+90  // 8db6  pe2:    LDA #' '
 00
 20
-71  // 8d9d  JMP putc
+71  // 8db9  JMP putc
 81
 19

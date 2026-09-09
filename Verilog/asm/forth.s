@@ -12,7 +12,9 @@
 ;   Z   the data stack pointer, growing down.  [--Z] pushes, [Z++] pops.
 ;   S   the return stack pointer, growing down. JSR pushes here too, so machine
 ;       code helpers and the threaded return stack share it, which is fine
-;       because they nest.
+;       because they nest. >R and R> reach it directly, and have to be balanced
+;       within a definition for the same reason: underneath whatever they push
+;       is the caller's instruction pointer, which EXIT is going to pop.
 ;   A   scratch, and the argument to every helper below.
 ;   Y   free.
 ;
@@ -1695,7 +1697,23 @@ pn1:    LDA TOIN            ; up to the next ")", or the end of the line
 pn2:    LDB ipsave3
         JMP NEXT
 
-lastword .equ w_paren-4
+        .word w_paren-4
+        .byte 2
+        .ascii ">R"
+w_tor:  .code
+        LDA [Z++]
+        STA [--S]
+        JMP NEXT
+
+        .word w_tor-5
+        .byte 2
+        .ascii "R>"
+w_fromr: .code
+        LDA [S++]
+        STA [--Z]
+        JMP NEXT
+
+lastword .equ w_fromr-5
 
 ; Print the dictionary entry at fp, followed by a space.
 pr_entry:
