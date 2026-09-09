@@ -186,6 +186,17 @@ OPCODES = {
 # it reads, for the two that count rather than select.
 RC_BIAS = {'INR': 1, 'DCR': 1, 'INRB': 1, 'DCRB': 1}
 
+# A conditional branch reaches 127 bytes either way. When the target is further
+# than that the assembler branches over a jump instead, which is what an
+# assembler is for; writing that out by hand turns readable code into a thicket
+# of skip labels.
+#
+# It uses the same condition rather than the opposite one, over an extra jump.
+# That costs three bytes and is the only safe thing to do here: BM and BP are
+# not complements on this machine - after a subtraction BM behaves and BP does
+# not - so relaxing BM into BP produced a loop that never ended and looked for
+# all the world like a bug in the loop.
+
 WORD_REGS = {'A': 0, 'B': 1, 'X': 2, 'Y': 3, 'Z': 4, 'S': 5, 'C': 6, 'P': 7}
 BYTE_REGS = {}
 for _n, _i in WORD_REGS.items():
@@ -225,6 +236,13 @@ def reg_nibble(name, width):
 
 class Assembler:
     def __init__(self):
+        self.relaxed = set()        # lines whose branch needs the long form
+        # The first sizing pass has no label values yet, so every forward
+        # branch looks impossibly far. Relaxing on that basis marks nearly all
+        # of them, which is merely wasteful - except that it also turned a
+        # perfectly ordinary loop into one that never ended, because BM and BP
+        # are not complements on this machine.
+        self.have_labels = False
         self.labels = {}
         self.out = bytearray()
         self.org = 0
@@ -237,6 +255,10 @@ class Assembler:
         text = text.strip()
         if not text:
             raise AsmError("empty expression")
+        # A quoted character first, before the split below, or '-' and '+'
+        # come apart into their own operators.
+        if len(text) == 3 and text[0] == "'" and text[2] == "'":
+            return ord(text[1])
         total, sign, i = 0, 1, 0
         for part in re.split(r'([+-])', text):
             part = part.strip()
@@ -332,7 +354,7 @@ class Assembler:
             raise AsmError("%s is %d bytes away, too far to reach" % (expr, d))
         return d & 0xff
 
-    def encode(self, mnemonic, arg, here, size_only=False):
+    def encode(self, mnemonic, arg, here, size_only=False, lineno=None):
         mn = mnemonic.upper()
         if mn in EXTENDED:
             args = [a for a in arg.split(',') if a.strip()]
@@ -369,9 +391,21 @@ class Assembler:
         if 'pco' in forms and len(forms) == 1:      # a branch: always relative
             width, op = forms['pco']
             target = self.value(arg.lstrip('*'), not size_only)
+            if lineno in self.relaxed:
+                #   B<cond> over the first jump
+                #   JMP carry on
+                #   JMP the real target
+                # carry on:
+                cont = here + 8
+                return bytes([op, 3,
+                              0x71, (cont >> 8) & 0xff, cont & 0xff,
+                              0x71, (target >> 8) & 0xff, target & 0xff])
             d = (target - (here + 2)) & 0xffff
             d = d - 0x10000 if d > 0x7fff else d
-            if not size_only and not -128 <= d <= 127:
+            if not -128 <= d <= 127 and self.have_labels:
+                self.relaxed.add(lineno)
+                return bytes(8)     # the right size; the value comes next pass
+            if not -128 <= d <= 127 and not size_only:
                 raise AsmError("branch to %s is %d bytes away, too far"
                                % (arg, d))
             return bytes([op, d & 0xff])
@@ -387,7 +421,7 @@ class Assembler:
     # how constants read most naturally.
     LINE_RE = re.compile(r'^\s*(?:(\w+)(?::|(?=\s+\.equ\b)))?\s*(\S+)?\s*(.*)$')
 
-    def line_bytes(self, label, opc, arg, here, size_only):
+    def line_bytes(self, label, opc, arg, here, size_only, lineno=None):
         if opc is None:
             return b''
         o = opc.lower()
@@ -424,16 +458,28 @@ class Assembler:
             return bytes(pad)
         if o == '.equ':
             return b''
-        return self.encode(opc, arg, here, size_only)
+        return self.encode(opc, arg, here, size_only, lineno)
 
     def assemble(self, text):
-        for size_only in (True, False):
+        self.pass_over(text, True)      # a first pass, to learn the labels
+        self.have_labels = True
+        for _ in range(20):
+            before = set(self.relaxed)
+            self.pass_over(text, True)
+            if self.relaxed == before:
+                break
+        else:
+            raise AsmError("branch relaxation did not settle")
+        return self.pass_over(text, False)
+
+    def pass_over(self, text, size_only):
+        for size_only in (size_only,):
             here = self.org
             self.out = bytearray()
             self.listing = []
             first = None
             for lineno, raw in enumerate(text.splitlines(), 1):
-                line = raw.split(';')[0].rstrip()
+                line = strip_comment(raw).rstrip()
                 if not line.strip():
                     continue
                 m = self.LINE_RE.match(line)
@@ -458,11 +504,9 @@ class Assembler:
                             self.labels[label] = here
                         continue
                     if label:
-                        if not size_only and self.labels.get(label) != here:
-                            raise AsmError("label %s moved between passes"
-                                           % label)
                         self.labels[label] = here
-                    data = self.line_bytes(label, opc, arg, here, size_only)
+                    data = self.line_bytes(label, opc, arg, here, size_only,
+                                           lineno)
                 except AsmError as e:
                     raise AsmError("line %d: %s\n    %s" % (lineno, e, raw))
                 if data is None:
@@ -472,6 +516,24 @@ class Assembler:
                 self.out += data
                 here += len(data)
         return bytes(self.out)
+
+
+def strip_comment(line):
+    """Take off a trailing comment, but not one inside a string.
+
+    The comment character is also a perfectly good thing to want in a string -
+    a FORTH kernel has to name a word ";" - and stripping it blindly turned
+    .ascii ";" into a zero length name, which broke a dictionary chain without
+    a word of complaint from anything."""
+    out = []
+    quoted = False
+    for i, ch in enumerate(line):
+        if ch == '"':
+            quoted = not quoted
+        elif ch == ';' and not quoted:
+            break
+        out.append(ch)
+    return ''.join(out)
 
 
 def split_args(text):
