@@ -1,0 +1,157 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$bfe0
+bf
+e0
+5f  // 8009  XAS
+90  // 800a  LDA #'?'            ; so the testbench knows to start typing
+00
+3f
+79  // 800d  JSR putc
+80
+77
+90  // 8010  LDA #0
+00
+00
+b1  // 8013  STA n
+b0
+08
+79  // 8016  loop:   JSR getc            ; eight characters, printed as hex
+80
+46
+d0  // 8019  LDB #$7f
+00
+7f
+5a  // 801c  NAB
+f1  // 801d  STB scr1
+b0
+06
+91  // 8020  LDA scr1
+b0
+06
+79  // 8023  JSR puthex
+80
+56
+90  // 8026  LDA #' '
+00
+20
+79  // 8029  JSR putc
+80
+77
+91  // 802c  LDA n
+b0
+08
+38  // 802f  INA
+b1  // 8030  STA n
+b0
+08
+d0  // 8033  LDB #8
+00
+08
+51  // 8036  SUB B,A
+20
+14  // 8038  BZ fin
+03
+71  // 803a  JMP loop
+80
+16
+90  // 803d  fin:    LDA #$0001
+00
+01
+b1  // 8040  STA $f900
+f9
+00
+71  // 8043  halt:   JMP halt
+80
+43
+81  // 8046  getc:   LDAB CTRL
+f2
+00
+2d  // 8049  SLAB
+2d  // 804a  SLAB
+2d  // 804b  SLAB
+2d  // 804c  SLAB
+2d  // 804d  SLAB
+2d  // 804e  SLAB
+2d  // 804f  SLAB
+17  // 8050  BP getc
+f4
+81  // 8052  LDAB TXDATA
+f2
+01
+09  // 8055  RSR
+a1  // 8056  puthex: STAB scr1+2
+b0
+08
+2c  // 8059  SRAB
+2c  // 805a  SRAB
+2c  // 805b  SRAB
+2c  // 805c  SRAB
+d0  // 805d  LDB #$000f
+00
+0f
+5a  // 8060  NAB
+79  // 8061  JSR putnib
+80
+6e
+81  // 8064  LDAB scr1+2
+b0
+08
+d0  // 8067  LDB #$000f
+00
+0f
+5a  // 806a  NAB
+71  // 806b  JMP putnib
+80
+6e
+90  // 806e  putnib: LDA #digits
+80
+8c
+58  // 8071  AAB
+85  // 8072  LDAB [B]
+20
+71  // 8074  JMP putc
+80
+77
+a1  // 8077  putc:   STAB pcsave
+b0
+04
+81  // 807a  pc1:    LDAB CTRL
+f2
+00
+2d  // 807d  SLAB
+2d  // 807e  SLAB
+2d  // 807f  SLAB
+2d  // 8080  SLAB
+2d  // 8081  SLAB
+2d  // 8082  SLAB
+17  // 8083  BP pc1
+f5
+81  // 8085  LDAB pcsave
+b0
+04
+a1  // 8088  STAB TXDATA
+f2
+01
+09  // 808b  RSR
+30  // 808c  digits: .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46
