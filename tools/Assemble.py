@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A small assembler for the Centurion CPU6.
 
-    python Assemble.py forth.s programs/forth.txt
+    python tools/Assemble.py Verilog/asm/forth.s Verilog/programs/forth.txt
 
 Programs for this machine used to be hand written as hex bytes with comments,
 which is fine for a twenty byte blink loop and hopeless for anything larger.
@@ -10,7 +10,7 @@ This produces the same `programs/*.txt` format, so nothing downstream changes.
 The opcode table below is derived from the CPU6 reference manual's
 data/opcodes.yaml and is embedded rather than read at run time, so that a
 checked in program can be rebuilt without fetching anything. "--verify
-opcodes.yaml" cross checks the two, and "--roundtrip programs/diag.txt 8000"
+opcodes.yaml" cross checks the two, and "--roundtrip Verilog/programs/diag.txt 8000"
 re-encodes every instruction the disassembler can read out of a real program
 and reports any that do not come back byte for byte - which is how the operand
 encodings below were confirmed against six thousand real instructions rather
@@ -47,8 +47,30 @@ which is the one encoding detail worth knowing when reading a hex dump.
 """
 
 import argparse
+import os
 import re
 import sys
+
+# This tool lives in tools/ and the design lives in Verilog/, so the paths it
+# reaches for are worked out from this file's own location rather than from
+# wherever it happens to be run.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_VERILOG = os.path.join(os.path.dirname(_HERE), 'Verilog')
+
+
+def find_opcodes(given=None):
+    """The reference manual's table, which is not vendored here. Look where
+    the caller said, then next to this script, then in the Verilog directory."""
+    for path in ([given] if given else []) + [
+            'opcodes.yaml',
+            os.path.join(_HERE, 'opcodes.yaml'),
+            os.path.join(_VERILOG, 'opcodes.yaml')]:
+        if path and os.path.exists(path):
+            return path
+    raise SystemExit(
+        "cannot find opcodes.yaml. It is the CPU6 reference manual's table,\n"
+        "from https://github.com/mx-shift/centurion-cpu6-reference-manual ,\n"
+        "and is not vendored here. Put it in tools/ or name it on the command line.")
 
 # (addressing mode, width, opcode) for every non-extended instruction.
 OPCODES = {
@@ -598,14 +620,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('source', nargs='?')
     ap.add_argument('output', nargs='?')
-    ap.add_argument('--verify', metavar='OPCODES_YAML',
+    ap.add_argument('--verify', nargs='?', const='', metavar='OPCODES_YAML',
                     help='cross check the embedded table against the manual')
     ap.add_argument('--roundtrip', nargs=2, metavar=('PROGRAM', 'ORG'),
                     help='re-encode a real program and report any differences')
     args = ap.parse_args()
 
-    if args.verify:
-        return verify(args.verify)
+    if args.verify is not None:
+        return verify(find_opcodes(args.verify))
     if args.roundtrip:
         return roundtrip(args.roundtrip[0], int(args.roundtrip[1], 16))
 
@@ -624,7 +646,7 @@ def main():
 
 
 def verify(path):
-    sys.path.insert(0, '.')
+    sys.path.insert(0, _HERE)
     from Disassemble import load_opcodes, eff_mode
     ops = load_opcodes(path)
     theirs = {}
@@ -647,9 +669,9 @@ def verify(path):
 
 def roundtrip(path, org):
     """Re-encode everything the disassembler can read, and compare bytes."""
-    sys.path.insert(0, '.')
+    sys.path.insert(0, _HERE)
     from Disassemble import load_opcodes, text as dis_text
-    ops = load_opcodes('opcodes.yaml')
+    ops = load_opcodes(find_opcodes())
     mem = []
     for line in open(path):
         line = line.split('//')[0].strip()

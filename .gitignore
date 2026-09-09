@@ -4,3 +4,4 @@ __pycache__/
 
 vcd/
 *.vcd
+tools/opcodes.yaml

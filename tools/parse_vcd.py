@@ -1,5 +1,12 @@
 
 from collections import defaultdict
+# These tools live in tools/ and the design lives in Verilog/, so the paths
+# they reach for are worked out from this file's own location rather than from
+# wherever they happen to be run.
+import os
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_VERILOG = os.path.join(os.path.dirname(_HERE), 'Verilog')
+
 
 OP_CODES = {
     0x0: 'HLT', 0x1: 'NOP', 0x2: 'SF', 0x3: 'RF', 0x4: 'EI', 0x5: 'DI', 0x6: 'SL', 0x7: 'RL', 0x8: 'CL',
@@ -307,9 +314,9 @@ class Disassembler(object):
         return f'{comb} f6hf({f6h6}) | {seq} | FL({flags_register:02x}) CC({condition_codes:02x})'
 
 if __name__ == '__main__':
-    vcd = VCDFile('vcd/CPUTestBench.vcd')
+    vcd = VCDFile(os.path.join(_VERILOG, 'vcd', 'CPUTestBench.vcd'))
     dis = Disassembler(vcd.signals, vcd.signalTagMap)
     code = dis.disassembleAll()
-    with open('vcd/CPUTestBench.txt', 'wt') as f:
+    with open(os.path.join(_VERILOG, 'vcd', 'CPUTestBench.txt'), 'wt') as f:
         for c in code:
             f.write(f'{c}\n')

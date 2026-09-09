@@ -1,5 +1,12 @@
 
 import tkinter as tk
+# These tools live in tools/ and the design lives in Verilog/, so the paths
+# they reach for are worked out from this file's own location rather than from
+# wherever they happen to be run.
+import os
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_VERILOG = os.path.join(os.path.dirname(_HERE), 'Verilog')
+
 from tkinter import ttk
 from tkinter import messagebox
 
@@ -219,7 +226,7 @@ class App(tk.Tk):
         return sig[tag]
 
 if __name__ == '__main__':
-    vcd = VCDFile('vcd/CPUTestBench.vcd')
+    vcd = VCDFile(os.path.join(_VERILOG, 'vcd', 'CPUTestBench.vcd'))
     signals = []
     clockTag = vcd.signalTagMap['cg0.clock']
     for sig in vcd.signals:

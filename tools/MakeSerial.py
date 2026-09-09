@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generate programs/serial.txt: print a message on MUX 0, polling the status register.
+"""
+Generate programs/serial.txt: print a message on MUX 0, polling the status register.
 
 Per character:
     LDAL 0xf200     81 f2 00    read the status register
@@ -11,6 +12,13 @@ That is 16 bytes each. Execution starts at address 0 because the reset vector re
 aliases onto the start of the block RAM, and the loop jumps to 0x80xx which aliases
 back into it.
 """
+# These tools live in tools/ and the design lives in Verilog/, so the paths
+# they reach for are worked out from this file's own location rather than from
+# wherever they happen to be run.
+import os
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_VERILOG = os.path.join(os.path.dirname(_HERE), 'Verilog')
+
 MESSAGE = "Hellorld!\r\n"
 START = 0x02
 
@@ -31,7 +39,7 @@ assert len(out) <= 256, f"program is {len(out)} bytes, block RAM holds 256"
 while len(out) < 256:
     out.append(("01", ""))
 
-with open("programs/serial.txt", "w") as f:
+with open(os.path.join(_VERILOG, "programs", "serial.txt"), "w") as f:
     for byte, comment in out:
         f.write(f"{byte} // {comment}\n" if comment else f"{byte}\n")
 print(f"wrote programs/serial.txt, {addr + 3} bytes of code")

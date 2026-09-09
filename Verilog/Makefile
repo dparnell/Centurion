@@ -72,7 +72,7 @@ SRC ?= asm/forth.s
 IN ?=
 FOR ?= 300
 run: ProgramTB
-	python3 Assemble.py $(SRC) programs/$(basename $(notdir $(SRC))).txt
+	python3 ../tools/Assemble.py $(SRC) programs/$(basename $(notdir $(SRC))).txt
 	vvp ProgramTB +prog=programs/$(basename $(notdir $(SRC))).txt \
 	     $(if $(IN),+in=$(IN),) +for=$(FOR)
 

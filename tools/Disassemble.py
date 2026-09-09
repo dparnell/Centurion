@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Disassemble CPU6 machine code.
 
-    python Disassemble.py opcodes.yaml programs/diag.txt 8000 8001 8060
+    python tools/Disassemble.py tools/opcodes.yaml Verilog/programs/diag.txt 8000 8001 8060
 
 Takes the machine readable opcode table from the CPU6 reference manual, at
 https://github.com/mx-shift/centurion-cpu6-reference-manual/blob/main/data/opcodes.yaml

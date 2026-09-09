@@ -1,5 +1,12 @@
 
 from collections import defaultdict
+# These tools live in tools/ and the design lives in Verilog/, so the paths
+# they reach for are worked out from this file's own location rather than from
+# wherever they happen to be run.
+import os
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_VERILOG = os.path.join(os.path.dirname(_HERE), 'Verilog')
+
 
 ALU_SRC_MAP = [['A', 'Q'], ['A', 'B'], ['0', 'Q'], ['0', 'B'], ['0', 'A'], ['D', 'A'], ['D', 'Q'], ['D', '0']]
 ALU_OP_MAP = ['{r}+{s}', '{s}-{r}', '{r}-{s}', '{r}|{s}', '{r}&{s}', '(~{r})&{s}', '{r}^{s}', '~({r}^{s})']
@@ -9,7 +16,7 @@ ALU_OUT_MAP = ['Y={f}', 'Y={f}', 'Y={a}', 'Y={f}', 'Y={f}', 'Y={f}', 'Y={f}', 'Y
 
 class MicroCode(object):
     def __init__(self):
-        with open('roms/CodeROM.txt') as f:
+        with open(os.path.join(_VERILOG, 'roms', 'CodeROM.txt')) as f:
             lines = f.readlines()
             self.code = [int(line, 16) for line in lines]
             self.selects = defaultdict(int)
