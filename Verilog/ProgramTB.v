@@ -96,9 +96,62 @@ module ProgramTB;
         end
     end
 
-    task send(input [7:0] c);
+    // Wait for the machine to take the byte the receiver is holding. The MUX
+    // holds exactly one, so anything sent before it has been read is lost, and
+    // that is the whole reason typing has to be paced at all. Waiting on the
+    // flag itself is exact where a delay is a guess: a delay long enough for
+    // the slowest line - compiling one colon definition here takes over 200ms,
+    // because every word on it is a linear walk of the dictionary - would be
+    // wasted on every other line, and one tuned to the common case silently
+    // truncates the slow ones, which reads exactly like the definition having
+    // failed rather than like dropped input.
+    // Both halves are needed. Waiting only for the flag to clear is not a
+    // handshake at all: the receiver sets it as the stop bit completes, so a
+    // moment after send() returns it is still low, the next send() sees a free
+    // receiver that is not free, and transmits on top of a byte the machine has
+    // not taken. That loses characters in bursts exactly when the machine is
+    // busiest, which reads like the program mis-parsing its input.
+    // Waiting on the flag's level does not work in either direction. Waiting
+    // only for it to clear is not a handshake at all - the receiver sets it as
+    // the stop bit completes, so a moment after send() returns it is still low,
+    // the next send() sees a receiver that is not really free, and transmits on
+    // top of a byte the machine has not taken. And waiting for it to be set
+    // after sending hangs, because the program can read the byte out within a
+    // few cycles of its arriving, long before the sending task looks again.
+    //
+    // So pair the level with the count, which only ever goes up: wait for the
+    // receiver to be empty before sending, and for the count to move before
+    // calling the byte delivered. Both waits are bounded, so a machine that has
+    // stopped reading costs a delay rather than a hang.
+    task waitempty;
     integer k;
     begin
+        k = 0;
+        while (dut.mux0.byteReady && k < 27000 * 500) begin
+            @(posedge in_clk);
+            k = k + 1;
+        end
+    end
+    endtask
+
+    task waitcount(input [15:0] was);
+    integer k;
+    begin
+        k = 0;
+        while (dut.rx_count == was && k < 27000 * 500) begin
+            @(posedge in_clk);
+            k = k + 1;
+        end
+    end
+    endtask
+
+    task send(input [7:0] c);
+    integer k;
+    reg [15:0] before;
+    begin
+        waitempty;                           // the last byte has been taken
+        before = dut.rx_count;
+        if ($test$plusargs("typetrace")) $write("<%s>", c);
         uart_rx = 0;
         repeat (BITP) @(posedge in_clk);
         for (k = 0; k < 7; k = k + 1) begin
@@ -107,6 +160,7 @@ module ProgramTB;
         end
         uart_rx = 1;
         repeat (BITP) @(posedge in_clk);
+        waitcount(before);                   // and this one has arrived
     end
     endtask
 
@@ -126,20 +180,26 @@ module ProgramTB;
                 $display("\ncannot open %0s", infile);
                 $finish;
             end
-            // Typed at something like a human speed. The MUX holds one byte,
-            // so sending a file at full line rate loses most of it while the
-            // program is busy with the character before.
+            // send() paces itself against the machine's own receiver, so
+            // the file can simply be fed in a byte at a time.
             c = $fgetc(fd);
             while (c != -1) begin
                 send(c[7:0]);
-                repeat (BITP * 12) @(posedge in_clk);
-                if (c == 10 || c == 13)
-                    repeat (BITP * 400) @(posedge in_clk);
+                if (c == 10 || c == 13) wait (quiet_for > 27000 * 5);
                 c = $fgetc(fd);
             end
             $fclose(fd);
         end
     end
+
+    // +rxtrace: every read of the MUX data register, with the program counter
+    // that caused it and whether a byte was waiting. A read consumes whatever
+    // the receiver is holding, so a read the program did not ask for loses a
+    // character.
+    always @(posedge in_clk) if ($test$plusargs("rxtrace"))
+        if (dut.mux0.read_data_register)
+            $display("\nrx read at pc=%h mar=%h ready=%b", dut.pc_live0,
+                     dut.addressBus, dut.mux0.byteReady);
 
     // +pctrace: one line per instruction fetch, so a machine that stops can be
     // told from a machine that is stuck in a loop, and the address named.
