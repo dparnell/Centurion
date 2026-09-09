@@ -1,0 +1,95 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$bfe0
+bf
+e0
+5f  // 8009  XAS
+2e  // 800a  PAGE $1c,$f8,MAPIMG     ; point the window at physical page 40
+1c
+f8
+b1
+00
+90  // 800f  LDA #MAPIMG+BANKPG
+b1
+0e
+5c  // 8012  XAY
+80  // 8013  LDAB #40
+28
+a5  // 8015  STAB [Y]
+60
+2e  // 8017  PAGE $0c,$f8,MAPIMG
+0c
+f8
+b1
+00
+90  // 801c  LDA #$7000
+70
+00
+b1  // 801f  STA ptr
+b0
+10
+90  // 8022  LDA #2048
+08
+00
+b1  // 8025  STA cnt
+b0
+12
+91  // 8028  loop:   LDA ptr                 ; read every byte of it in order
+b0
+10
+5c  // 802b  XAY
+85  // 802c  LDAB [Y]
+60
+91  // 802e  LDA ptr
+b0
+10
+38  // 8031  INA
+b1  // 8032  STA ptr
+b0
+10
+91  // 8035  LDA cnt
+b0
+12
+39  // 8038  DCA
+b1  // 8039  STA cnt
+b0
+12
+15  // 803c  BNZ loop
+ea
+90  // 803e  LDA #'d'                ; done
+00
+64
+a1  // 8041  STAB pcsave
+b0
+04
+81  // 8044  pc1:    LDAB CTRL
+f2
+00
+2d  // 8047  SLAB
+2d  // 8048  SLAB
+2d  // 8049  SLAB
+2d  // 804a  SLAB
+2d  // 804b  SLAB
+2d  // 804c  SLAB
+17  // 804d  BP pc1
+f5
+81  // 804f  LDAB pcsave
+b0
+04
+a1  // 8052  STAB TXDATA
+f2
+01
+90  // 8055  LDA #$0001
+00
+01
+b1  // 8058  STA $f900
+f9
+00
+71  // 805b  halt:   JMP halt
+80
+5b
