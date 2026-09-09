@@ -74,7 +74,7 @@ FOR ?= 300
 run: ProgramTB
 	python3 ../tools/Assemble.py $(SRC) programs/$(basename $(notdir $(SRC))).txt
 	vvp ProgramTB +prog=programs/$(basename $(notdir $(SRC))).txt \
-	     $(if $(IN),+in=$(IN),) +for=$(FOR)
+	     $(if $(IN),+in=$(IN),) +for=$(FOR) $(RUNARGS)
 
 ProgramTB: *.v
 	iverilog -o ProgramTB ProgramTB.v

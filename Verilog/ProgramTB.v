@@ -141,9 +141,45 @@ module ProgramTB;
         end
     end
 
+    // +pctrace: one line per instruction fetch, so a machine that stops can be
+    // told from a machine that is stuck in a loop, and the address named.
+    always @(posedge in_clk) if ($test$plusargs("pctrace"))
+        if (dut.instruction_fetch) $display("pc %h", dut.pc_live0);
+
+    // +psramtrace: say what the PSRAM bridge is doing when it holds the core
+    // still for a long time, and report every timeout. A stall here is silent
+    // from outside - the machine simply stops - so there is nothing to see
+    // without this.
+    integer stuck = 0;
+    reg [31:0] last_timeouts = 0;
+    always @(posedge in_clk) if ($test$plusargs("psramtrace")) begin
+        // Count clocks since the last instruction fetch, not since the bridge
+        // last wanted something: a core that has stopped fetching is the
+        // symptom, and the bridge is only one of the things that can cause it.
+        if (!dut.instruction_fetch) begin
+            stuck = stuck + 1;
+            if (stuck % 20000 == 0)
+                $display("\nno fetch for %0d clocks: pc=%h uc=%h mar=%h e7=%b | psram need=%b state=%0d busy=%b addr=%h we=%b sdr=%0d",
+                         stuck, dut.pc_live0, dut.cpu.dbg_uc_address,
+                         dut.cpu.dbg_memory_address, dut.cpu.dbg_e7,
+                         dut.psram_bus.dbg_need, dut.psram_bus.dbg_state,
+                         dut.psram_bus.busy, dut.psram_bus.address,
+                         dut.psram_bus.write_en, dut.psram.state);
+        end else stuck = 0;
+        if (dut.psram_bus.dbg_timeouts != last_timeouts) begin
+            last_timeouts = dut.psram_bus.dbg_timeouts;
+            $display("\npsram timeout #%0d where=%h", last_timeouts,
+                     dut.psram_bus.dbg_timeout_where);
+        end
+    end
+
     initial begin
         #(ms * 1000000);
         $display("\n--- %0d characters printed in %0dms ---", nprinted, ms);
+        if ($test$plusargs("psramtrace"))
+            $display("die: %0d bursts, %0d bytes read, %0d written; bridge: %0d accesses, %0d timeouts",
+                     die.bursts, die.bytes_read, die.bytes_written,
+                     dut.dbg_psram_accesses, dut.dbg_psram_timeouts);
         $finish;
     end
 endmodule
