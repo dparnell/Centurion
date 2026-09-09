@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------------
 ; Centurion FORTH - an indirect threaded FORTH for the CPU6.
 ;
-;   make run SRC=forth.s IN=tests/forth_core.f FOR=400
+;   make run SRC=asm/forth.s IN=asm/tests_forth.f FOR=400
 ;
 ; Register use, which the instruction set rather than taste decides:
 ;
@@ -1124,9 +1124,10 @@ cfa_lit .equ w_lit
         .byte 4
         .ascii "EXIT"
 w_exit: .code
-        STB ipsave3         ; B is the instruction pointer
-        LDB [S++]
-        LDB ipsave3
+        LDB [S++]           ; the caller's instruction pointer, pushed by DOCOL.
+                            ; EXIT must NOT save and restore B around that pop
+                            ; the way the other primitives do - moving B is the
+                            ; whole point of it.
         JMP NEXT
 
         .word w_exit-7
