@@ -935,6 +935,7 @@ mulr    .equ VARS+$e0
 mulbit  .equ VARS+$e2       ; where a primitive parks the instruction pointer
 dvtmp   .equ VARS+$e4       ; the code field address a CREATEd word was entered with
 tkcfa   .equ VARS+$e6       ; what ' looked up
+pnch    .equ VARS+$e8       ; the character ( is scanning
 
 
 ; ---- the runtime halves of the control structures -------------------------
@@ -1618,7 +1619,83 @@ tk_got: LDA tkcfa
         LDB ipsave3
         JMP NEXT
 
-lastword .equ w_tick-4
+        .word w_tick-4
+        .byte 7
+        .ascii "EXECUTE"
+w_execute: .code
+        LDA [Z++]           ; a code field address, as ' leaves
+        XAX                 ; XAX is a move out of A, not an exchange
+        JMP [[X]]           ; and this is the second half of NEXT. B is
+                            ; untouched, so the word returns to the caller's
+                            ; thread by itself.
+
+; [ and ] switch between compiling and interpreting inside a definition. [ has
+; to be immediate to run at all while compiling; ] must not be, because it is
+; met while interpreting.
+        .word w_execute-10
+        .byte $81
+        .ascii "["
+w_lbrack: .code
+        LDA #0
+        STA STATE
+        JMP NEXT
+
+        .word w_lbrack-4
+        .byte 1
+        .ascii "]"
+w_rbrack: .code
+        LDA #1
+        STA STATE
+        JMP NEXT
+
+; What carries a value computed between [ and ] back into the definition being
+; compiled: without it the pair can change state but cannot leave anything
+; behind. Lays down the same LIT that the interpreter compiles a number as.
+        .word w_rbrack-4
+        .byte $87
+        .ascii "LITERAL"
+w_literal: .code
+        STB ipsave3         ; B is the instruction pointer
+        LDA #w_lit
+        JSR comma
+        LDA [Z++]
+        JSR comma
+        LDB ipsave3
+        JMP NEXT
+
+; Comments. Both are immediate so that they work while compiling, which is
+; where they are wanted most.
+        .word w_literal-10
+        .byte $81
+        .ascii "\\"
+w_bslash: .code
+        LDA TIBLEN          ; the rest of the line is a comment
+        STA TOIN
+        JMP NEXT
+
+        .word w_bslash-4
+        .byte $81
+        .ascii "("
+w_paren: .code
+        STB ipsave3         ; B is the instruction pointer
+pn1:    LDA TOIN            ; up to the next ")", or the end of the line
+        LDB TIBLEN
+        SUB B,A
+        BZ pn2
+        JSR tibchar
+        STA pnch
+        LDA TOIN            ; step over it either way
+        INA
+        STA TOIN
+        LDA pnch
+        LDB #$29            ; ")", by value: a bare one here would sit oddly
+        SUB B,A             ; in the middle of this file
+        BZ pn2
+        JMP pn1
+pn2:    LDB ipsave3
+        JMP NEXT
+
+lastword .equ w_paren-4
 
 ; Print the dictionary entry at fp, followed by a space.
 pr_entry:

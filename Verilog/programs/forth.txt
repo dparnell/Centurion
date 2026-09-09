@@ -20,8 +20,8 @@ b1  // 8011  STA HERE
 b0
 0a
 90  // 8014  LDA #lastword
-8c
-9f
+8d
+2b
 b1  // 8017  STA LATEST
 b0
 08
@@ -2413,8 +2413,8 @@ b0
 14  // 896b  BZ ww2
 0f
 79  // 896d  JSR pr_entry
-8c
-cd
+8d
+5e
 91  // 8970  LDA fp
 b0
 80
@@ -3276,69 +3276,214 @@ da
 71  // 8cca  JMP NEXT
 80
 f0
-91  // 8ccd  LDA fp
+8c  // 8ccd  .word w_tick-4
+9f
+07  // 8ccf  .byte 7
+45  // 8cd0  .ascii "EXECUTE"
+58
+45
+43
+55
+54
+45
+8c  // 8cd7  w_execute: .code
+d9
+95  // 8cd9  LDA [Z++]           ; a code field address, as ' leaves
+81
+5b  // 8cdb  XAX                 ; XAX is a move out of A, not an exchange
+75  // 8cdc  JMP [[X]]           ; and this is the second half of NEXT. B is
+44
+8c  // 8cde  .word w_execute-10
+cd
+81  // 8ce0  .byte $81
+5b  // 8ce1  .ascii "["
+8c  // 8ce2  w_lbrack: .code
+e4
+90  // 8ce4  LDA #0
+00
+00
+b1  // 8ce7  STA STATE
+b0
+0c
+71  // 8cea  JMP NEXT
+80
+f0
+8c  // 8ced  .word w_lbrack-4
+de
+01  // 8cef  .byte 1
+5d  // 8cf0  .ascii "]"
+8c  // 8cf1  w_rbrack: .code
+f3
+90  // 8cf3  LDA #1
+00
+01
+b1  // 8cf6  STA STATE
+b0
+0c
+71  // 8cf9  JMP NEXT
+80
+f0
+8c  // 8cfc  .word w_rbrack-4
+ed
+87  // 8cfe  .byte $87
+4c  // 8cff  .ascii "LITERAL"
+49
+54
+45
+52
+41
+4c
+8d  // 8d06  w_literal: .code
+08
+f1  // 8d08  STB ipsave3         ; B is the instruction pointer
+b0
+da
+90  // 8d0b  LDA #w_lit
+89
+1b
+79  // 8d0e  JSR comma
+85
+8f
+95  // 8d11  LDA [Z++]
+81
+79  // 8d13  JSR comma
+85
+8f
+d1  // 8d16  LDB ipsave3
+b0
+da
+71  // 8d19  JMP NEXT
+80
+f0
+8c  // 8d1c  .word w_literal-10
+fc
+81  // 8d1e  .byte $81
+5c  // 8d1f  .ascii "\\"
+8d  // 8d20  w_bslash: .code
+22
+91  // 8d22  LDA TIBLEN          ; the rest of the line is a comment
+b0
+10
+b1  // 8d25  STA TOIN
+b0
+0e
+71  // 8d28  JMP NEXT
+80
+f0
+8d  // 8d2b  .word w_bslash-4
+1c
+81  // 8d2d  .byte $81
+28  // 8d2e  .ascii "("
+8d  // 8d2f  w_paren: .code
+31
+f1  // 8d31  STB ipsave3         ; B is the instruction pointer
+b0
+da
+91  // 8d34  pn1:    LDA TOIN            ; up to the next ")", or the end of the line
+b0
+0e
+d1  // 8d37  LDB TIBLEN
+b0
+10
+51  // 8d3a  SUB B,A
+20
+14  // 8d3c  BZ pn2
+1a
+79  // 8d3e  JSR tibchar
+82
+56
+b1  // 8d41  STA pnch
+b0
+e8
+91  // 8d44  LDA TOIN            ; step over it either way
+b0
+0e
+38  // 8d47  INA
+b1  // 8d48  STA TOIN
+b0
+0e
+91  // 8d4b  LDA pnch
+b0
+e8
+d0  // 8d4e  LDB #$29            ; ")", by value: a bare one here would sit oddly
+00
+29
+51  // 8d51  SUB B,A             ; in the middle of this file
+20
+14  // 8d53  BZ pn2
+03
+71  // 8d55  JMP pn1
+8d
+34
+d1  // 8d58  pn2:    LDB ipsave3
+b0
+da
+71  // 8d5b  JMP NEXT
+80
+f0
+91  // 8d5e  LDA fp
 b0
 80
-5c  // 8cd0  XAY
-85  // 8cd1  LDAB [Y+$02]
+5c  // 8d61  XAY
+85  // 8d62  LDAB [Y+$02]
 68
 02
-d0  // 8cd4  LDB #$1f
+d0  // 8d65  LDB #$1f
 00
 1f
-5a  // 8cd7  NAB
-f1  // 8cd8  STB flen2
+5a  // 8d68  NAB
+f1  // 8d69  STB flen2
 b0
 84
-90  // 8cdb  LDA #0
+90  // 8d6c  LDA #0
 00
 00
-b1  // 8cde  STA fi
+b1  // 8d6f  STA fi
 b0
 86
-91  // 8ce1  pe1:    LDA fi
+91  // 8d72  pe1:    LDA fi
 b0
 86
-d1  // 8ce4  LDB flen2
+d1  // 8d75  LDB flen2
 b0
 84
-51  // 8ce7  SUB B,A
+51  // 8d78  SUB B,A
 20
-14  // 8ce9  BZ pe2
+14  // 8d7a  BZ pe2
 1e
-91  // 8ceb  LDA fp
+91  // 8d7c  LDA fp
 b0
 80
-d1  // 8cee  LDB fi
+d1  // 8d7f  LDB fi
 b0
 86
-58  // 8cf1  AAB
-f1  // 8cf2  STB scr1
+58  // 8d82  AAB
+f1  // 8d83  STB scr1
 b0
 00
-91  // 8cf5  LDA scr1
+91  // 8d86  LDA scr1
 b0
 00
-5c  // 8cf8  XAY
-85  // 8cf9  LDAB [Y+$03]
+5c  // 8d89  XAY
+85  // 8d8a  LDAB [Y+$03]
 68
 03
-79  // 8cfc  JSR putc
+79  // 8d8d  JSR putc
 81
 19
-91  // 8cff  LDA fi
+91  // 8d90  LDA fi
 b0
 86
-38  // 8d02  INA
-b1  // 8d03  STA fi
+38  // 8d93  INA
+b1  // 8d94  STA fi
 b0
 86
-71  // 8d06  JMP pe1
-8c
-e1
-90  // 8d09  pe2:    LDA #' '
+71  // 8d97  JMP pe1
+8d
+72
+90  // 8d9a  pe2:    LDA #' '
 00
 20
-71  // 8d0c  JMP putc
+71  // 8d9d  JMP putc
 81
 19
