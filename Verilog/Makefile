@@ -73,13 +73,15 @@ load-tos:
 load-forth:
 	$(MAKE) PROGRAM=programs/forth.txt load
 
-test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB
+test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB sd_fat32.hex sd_fat32frag.hex
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp PsramTB
 	vvp DmaTB
 	vvp HawkTB
 	vvp SdTB
+	vvp Fat32TB
+	vvp Fat32TB +image=sd_fat32frag.hex +fragmented
 
 # Simulates the real top level, including the LEDs and the UART pin, with stubs for
 # the Gowin hard blocks. The other testbenches build their own replica of the board.
@@ -118,6 +120,22 @@ SdTB: *.v sd_pattern.hex
 
 sd_pattern.hex: ../tools/MakeSdImage.py
 	python3 ../tools/MakeSdImage.py pattern $@
+
+# The FAT32 reader, against a volume built by mkfs.vfat and mcopy - once as a
+# freshly copied file in one extent, once with its clusters deliberately
+# scattered, because the extent table is the part most likely to be wrong.
+fat32test: Fat32TB sd_fat32.hex sd_fat32frag.hex
+	vvp Fat32TB
+	vvp Fat32TB +image=sd_fat32frag.hex +fragmented
+
+Fat32TB: *.v
+	iverilog -o Fat32TB Fat32TB.v
+
+sd_fat32.hex: ../tools/MakeSdImage.py
+	python3 ../tools/MakeSdImage.py fat32 $@
+
+sd_fat32frag.hex: ../tools/MakeSdImage.py
+	python3 ../tools/MakeSdImage.py fat32frag $@
 
 HawkTB: *.v programs/hawktest.txt
 	iverilog -o HawkTB HawkTB.v

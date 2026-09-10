@@ -20,3 +20,5 @@ HawkTB
 SdTB
 sd_pattern.hex
 sd_fat32.hex
+Fat32TB
+sd_fat32frag.hex

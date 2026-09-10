@@ -23,7 +23,11 @@ module SdCardModel #(
     parameter IMAGE = "",                   // $readmemh file, one hex byte per line
     parameter integer BLOCKS = 8192,        // 4MB of model card
     parameter integer ACMD41_TRIES = 3,     // how long to stay in idle
-    parameter integer WRITE_BUSY_BYTES = 4  // how long MISO is held low after a write
+    parameter integer WRITE_BUSY_BYTES = 4, // how long MISO is held low after a write
+    // What an unwritten byte reads as. An erased card gives 0xff, which is the
+    // honest default; a filesystem image's untouched sectors are genuinely
+    // zeros, and a sparse image of one leaves them out, so those tests set 0.
+    parameter [7:0] FILL = 8'hff
 ) (
     input wire clk,
     input wire cs_n,
@@ -64,7 +68,7 @@ module SdCardModel #(
 
     integer i;
     initial begin
-        for (i = 0; i < BYTES; i = i + 1) mem[i] = 8'hff;
+        for (i = 0; i < BYTES; i = i + 1) mem[i] = FILL;
         if (IMAGE != "") $readmemh(IMAGE, mem);
     end
 
