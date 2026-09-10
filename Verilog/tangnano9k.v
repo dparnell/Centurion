@@ -594,6 +594,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [15:0] map_block;
     wire [31:0] map_lba;
     wire [7:0] fat_dbg_state, fat_extents;
+    wire fat_fallback;
     always @(posedge clock) begin
         mount_pulse <= 0;
         if (reset) mount_done <= 0;
@@ -608,7 +609,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         fat_read, fat_lba, sd_busy, sd_ready, sd_error,
         sd_rx_strobe, sd_rx_index, sd_rx_byte,
         file_blocks, map_req, map_block, map_valid, map_lba,
-        fat_dbg_state, fat_extents);
+        fat_dbg_state, fat_extents, fat_fallback);
 
     wire img_req, img_store, img_busy, img_failed, img_flushing;
     wire [15:0] img_block;
@@ -1428,6 +1429,24 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
           compare_failed, timeouts_shown, dbg_psram_addr[18:16], dbg_psram_data };
 
 
+    // Everything the storage stack knows, in one line. The whole of it is
+    // invisible from outside - a machine with no disk and a machine whose card
+    // would not initialise behave identically - and a build, load and capture
+    // cycle is three minutes, so it is worth a dump form of its own.
+    //
+    //   w0  the card's state machine, and the last R1 it answered with
+    //   w1  the flags: ready, error, block addressing, mounted, failed, why
+    //   w2  the mounter's state, and how many extents the image is in
+    //   w3  blocks in the image - 32c0 is a 12992 sector Centurion pack
+    //   w4  the image layer's state, and how many blocks it has fetched
+    wire [79:0] disk_payload =
+        { sd_dbg_state, sd_dbg_r1,
+          4'b0, sd_ready, sd_error, sd_block_addressing, mount_done,
+                img_mounted, mount_failed, fat_fallback, img_failed, mount_reason,
+          fat_dbg_state, fat_extents,
+          file_blocks,
+          img_dbg_state, img_fetches[7:0] };
+
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
     //
@@ -1490,13 +1509,16 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     StatusDump dump(clock, ~btn2 | dump_request,
                     compare_failed ? (dump_form == 2'd0 ? "C"
                                     : dump_form == 2'd1 ? "P" : "W")
-                                   : (dump_form == 2'd1 ? "S"
+                                   : (dump_form == 2'd1
+                                        ? (PSRAM_SELFTEST ? "S" : "D")
                                     : fault_caught ? "F" : "L"),
                     compare_failed ? (dump_form == 2'd0 ? fail_payload
                                     : dump_form == 2'd1 ? psram_payload
                                     : wrongmap_payload)
-                                   : (dump_form == 2'd1 ? selftest_payload
-                                                        : dump_payload),
+                                   : (dump_form == 2'd1
+                                        ? (PSRAM_SELFTEST ? selftest_payload
+                                                          : disk_payload)
+                                        : dump_payload),
                     dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
 
