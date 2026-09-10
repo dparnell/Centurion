@@ -22,13 +22,13 @@ module PsramTB;
     reg resetn = 0;
 
     wire read, write, byte_write;
-    wire [21:0] addr;
+    wire [22:0] addr;
     wire [15:0] din;
     wire [63:0] dout;
     wire busy;
     wire done, pass;
     wire [15:0] got, want;
-    wire [21:0] failed_at;
+    wire [22:0] failed_at;
     wire [2:0] stage, index;
     wire saw_idle;
     wire [15:0] stage_cycles, read0, read1;
@@ -56,7 +56,7 @@ module PsramTB;
                      done, pass, got, want, failed_at,
                      stage, index, saw_idle, stage_cycles, read0, read1);
 
-    HyperRamModel die(.ck(ck[0]), .cs_n(cs_n[0]), .resetn(rst_n[0]),
+    HyperRamModel #(.ADDR_BITS(23)) die(.ck(ck[0]), .cs_n(cs_n[0]), .resetn(rst_n[0]),
                       .rwds(rwds[0]), .dq(dq[7:0]));
 
     // How long an access actually takes, which is the whole point of making it

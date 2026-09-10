@@ -94,7 +94,10 @@ module PsramSdr #(
     input wire resetn,
     input wire read,                     // hold until busy rises
     input wire write,
-    input wire [21:0] addr,              // byte address
+    // Byte address. 23 bits is the whole 8MB part: the CPU can only reach the
+    // bottom 256K of it, because the MMU's physical address is eighteen bits,
+    // and everything above that is free for disk images.
+    input wire [22:0] addr,
     input wire [15:0] din,               // for a byte write, the byte is din[7:0]
     input wire byte_write,               // write only the byte addr[0] selects
     // BURST words, the one at addr in the low half. A write still takes one.
@@ -284,7 +287,7 @@ module PsramSdr #(
                     wodd <= addr[0];
                     // CA: read/write, memory space, linear burst, then the
                     // halfword address split the way the bus wants it.
-                    ca <= { read_s, 2'b01, 11'b0, addr[21:4], 13'b0, addr[3:1] };
+                    ca <= { read_s, 2'b01, 10'b0, addr[22:4], 13'b0, addr[3:1] };
                     cs_n <= 0;
                     ck_en <= 1;
                     dq_oe <= 1;

@@ -18,10 +18,10 @@
  */
 module PsramTest(input wire clk, input wire resetn,
     output reg read, output reg write, output reg byte_write,
-    output reg [21:0] addr, output reg [15:0] din,
+    output reg [22:0] addr, output reg [15:0] din,
     input wire [15:0] dout, input wire busy,
     output reg done, output reg pass,
-    output reg [15:0] got, output reg [15:0] want, output reg [21:0] failed_at,
+    output reg [15:0] got, output reg [15:0] want, output reg [22:0] failed_at,
     // Bring-up visibility: which step it reached, and whether the controller ever
     // became idle at all - that is, whether it finished its own initialisation.
     output wire [2:0] stage, output reg [2:0] index, output reg saw_idle,
@@ -35,7 +35,7 @@ module PsramTest(input wire clk, input wire resetn,
 
     localparam N = 6;
 
-    function [21:0] test_addr(input [2:0] i);
+    function [22:0] test_addr(input [2:0] i);
         case (i)
             0: test_addr = 22'h000000;
             1: test_addr = 22'h000002;
@@ -47,17 +47,17 @@ module PsramTest(input wire clk, input wire resetn,
     endfunction
 
     // Address dependent, so that an aliased access fails rather than passing.
-    function [15:0] test_data(input [21:0] a);
+    function [15:0] test_data(input [22:0] a);
         test_data = { a[15:8] ^ 8'h5a, a[7:0] ^ 8'ha5 };
     endfunction
 
     // A word built out of two byte writes, one to each half. The CPU is byte
     // addressed, so this path carries most of its traffic and is worth proving
     // here rather than discovering through the CPU.
-    localparam [21:0] BYTE_ADDR = 22'h000100;
+    localparam [22:0] BYTE_ADDR = 23'h000100;
     localparam [15:0] BYTE_WANT = 16'ha53c;
 
-    function [21:0] byte_step_addr(input [1:0] b);
+    function [22:0] byte_step_addr(input [1:0] b);
         byte_step_addr = (b == 2'd2) ? BYTE_ADDR + 1 : BYTE_ADDR;
     endfunction
 

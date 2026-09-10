@@ -282,7 +282,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // apicula's ODDR/IDDR cannot be used here. That keeps the whole design in one
     // clock domain and sidesteps the apicula PLL packing bug as a bonus.
     wire read, write, byte_write;
-    wire [21:0] address;
+    wire [22:0] address;
     wire [15:0] din;
     wire [63:0] dout;          // four words: see PsramSdr's BURST
     // ClockEnable's output before the PSRAM has had a chance to hold it back.
@@ -326,7 +326,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // with "make PSRAM_SELFTEST=1"; the status dump then reports its result
     // instead of the bus counters.
     wire tst_read, tst_write, tst_byte_write;
-    wire [21:0] tst_addr;
+    wire [22:0] tst_addr;
     wire [15:0] tst_din;
     // The part needs 600us to come out of its own reset, and the core's power on
     // reset is only 1024 clocks, so without this the CPU reaches the memory before
@@ -346,7 +346,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
 
     wire psram_done, psram_pass;
     wire [15:0] psram_got, psram_want;
-    wire [21:0] psram_failed_at;
+    wire [22:0] psram_failed_at;
     wire [2:0] psram_stage, psram_index;
     wire psram_saw_idle;
     wire [15:0] psram_cycles, psram_read0, psram_read1;
@@ -360,7 +360,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // The bus side. PsramBus owns the core's clock enable, because stalling the
     // core is how a 2.8us memory access is made to fit in a bus cycle.
     wire bus_read, bus_write, bus_byte_write;
-    wire [21:0] bus_addr;
+    wire [22:0] bus_addr;
     wire [15:0] bus_din;
     wire [7:0] psram_data;
     wire [15:0] dbg_psram_accesses, dbg_psram_timeouts;

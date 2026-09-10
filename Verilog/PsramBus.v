@@ -41,7 +41,7 @@ module PsramBus #(
 
     // To PsramSdr.
     output reg read, output reg write, output reg byte_write,
-    output reg [21:0] addr, output reg [15:0] din,
+    output reg [22:0] addr, output reg [15:0] din,
     input wire [63:0] dout, input wire busy,
 
     // How many accesses have been made, and where the last one went. Zero
