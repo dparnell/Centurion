@@ -73,10 +73,11 @@ load-tos:
 load-forth:
 	$(MAKE) PROGRAM=programs/forth.txt load
 
-test: CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB
+test: CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB DmaTB
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp PsramTB
+	vvp DmaTB
 
 # Simulates the real top level, including the LEDs and the UART pin, with stubs for
 # the Gowin hard blocks. The other testbenches build their own replica of the board.
@@ -87,6 +88,13 @@ TopTestBench: *.v
 # test": it simulates hundreds of milliseconds of a 27MHz board and takes minutes.
 diagtest: DiagTestBench
 	vvp DiagTestBench
+
+# The DMA path, both directions, against the pattern device in DmaTest.v.
+dmatest: DmaTB
+	vvp DmaTB
+
+DmaTB: *.v programs/dmatest.txt
+	iverilog -o DmaTB DmaTB.v
 
 DiagTestBench: *.v
 	iverilog -o DiagTestBench DiagTestBench.v
