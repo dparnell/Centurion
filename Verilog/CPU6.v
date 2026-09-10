@@ -39,6 +39,12 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // emulator calls it dma_12, after the controller register that raises it.
     // Several devices would simply be OR-ed onto it.
     input wire dma_int,
+
+    // A device that cannot supply or take a byte right now raises this instead
+    // of dropping its request. Dropping it is not an option: the microcode's
+    // DMA wait loop watches the request, so lowering it says the transfer is
+    // over. This is what lets a disk controller cross a sector boundary.
+    input wire dma_hold,
     // Page table initialiser. Only the write path is muxed: the read path is the
     // critical path of the whole design and must not gain a mux.
     // For the board level status dump: where the machine is, at both levels.
@@ -235,7 +241,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // A transfer runs while the DMA control bit is set, the DMA address increment
     // is not inhibited, and a device is actually asking - the same
     // (busctl & 0x14) == 0x10 condition Meisaka's emulator uses.
-    wire dma_on = f11[4] & ~f11[2] & dma_req;
+    wire dma_on = f11[4] & ~f11[2] & dma_req & ~dma_hold;
 
     // A byte moves every three enabled cycles, because that is how long one of
     // this machine's bus cycles takes to resolve:

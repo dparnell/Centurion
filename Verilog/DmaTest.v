@@ -46,7 +46,10 @@ module DmaTest(
     // rather than polling. Controlled the way the emulator's disk controller
     // does it: register 14 arms it, 12 forces it, 13 disarms and clears, 15
     // clears. This is the core's dma_int, not its dma_req.
-    output wire dma_int
+    output wire dma_int,
+    // This device is always ready, so it never holds the core still. A disk
+    // controller does, crossing a sector boundary.
+    output wire dma_hold
 );
     // What the byte at offset N should be. Any function of N would do; this one
     // is cheap and makes a wrong offset obvious by eye in a trace.
@@ -73,6 +76,7 @@ module DmaTest(
 
     assign dma_req = busy;
     assign dma_int = int_pending;
+    assign dma_hold = 1'b0;
     assign dma_write = (cmd == CMD_TO_MEMORY);
     assign dma_wdata = pattern(offset);
 
