@@ -103,6 +103,56 @@ module DiagTestTB;
         end
     end
 
+    // +iotrace: a histogram of every address in the I/O page the machine touches.
+    // "the test does not talk to the controller" is only half an answer; this is
+    // the other half, and it says where a device diag is looking for actually
+    // lives without any guessing.
+    integer io_hits [0:4095];
+    integer io_writes [0:4095];
+    integer k;
+    reg io_last = 0;
+    initial for (k = 0; k < 4096; k = k + 1) begin io_hits[k] = 0; io_writes[k] = 0; end
+    always @(posedge in_clk)
+        if (dut.cpu_en && dut.addressBus[18:12] == 7'h3f) begin
+            if (dut.writeEnBus) io_writes[dut.addressBus[11:0]] = io_writes[dut.addressBus[11:0]] + 1;
+            else if (!io_last) io_hits[dut.addressBus[11:0]] = io_hits[dut.addressBus[11:0]] + 1;
+            io_last <= 1;
+        end else if (dut.cpu_en) io_last <= 0;
+
+    task io_report;
+        begin
+            $display("--- I/O page accesses (physical 0x3f000 + offset) ---");
+            for (k = 0; k < 4096; k = k + 1)
+                if (io_hits[k] != 0 || io_writes[k] != 0)
+                    $display("  3f%03h  %0d reads  %0d writes", k, io_hits[k], io_writes[k]);
+        end
+    endtask
+
+    // +hawktrace: every access diag makes to the Hawk controller's registers.
+    // Whether a disk test is talking to this controller at all, and what it makes
+    // of the answers, is invisible from the serial line - these tests run until
+    // interrupted and print a verdict only at the end.
+    integer hawk_reads = 0, hawk_writes = 0, hawk_cmds = 0;
+    integer shown = 0;
+    reg last_sel = 0;
+    always @(posedge in_clk) if (dut.cpu_en && dut.hawk_select) begin
+        if (dut.writeEnBus) begin
+            hawk_writes = hawk_writes + 1;
+            if (dut.addressBus[3:0] == 8) hawk_cmds = hawk_cmds + 1;
+            if ($test$plusargs("hawktrace") && shown < 60) begin
+                $display("hawk W %h <= %h", dut.addressBus[3:0], dut.data_c2r);
+                shown = shown + 1;
+            end
+        end else if (!last_sel) begin
+            hawk_reads = hawk_reads + 1;
+            if ($test$plusargs("hawktrace") && shown < 60) begin
+                $display("hawk R %h => %h", dut.addressBus[3:0], dut.hawk_data);
+                shown = shown + 1;
+            end
+        end
+        last_sel <= 1;
+    end else if (dut.cpu_en) last_sel <= 0;
+
     initial begin
         wait (prompt_seen);                // wait for "ENTER TEST NUMBER:"
         #2000000;
@@ -120,6 +170,9 @@ module DiagTestTB;
         repeat (600) #1000000;
         $display("");
         $display("--- %0d characters total ---", n);
+        $display("hawk: %0d register reads, %0d writes, %0d of them commands",
+                 hawk_reads, hawk_writes, hawk_cmds);
+        if ($test$plusargs("iotrace")) io_report;
         if (failures == 0)
             $display("ok: %0d mapping test passes, no compare failure", npass);
         else
