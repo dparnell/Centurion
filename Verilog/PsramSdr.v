@@ -71,7 +71,9 @@ module PsramSdr #(
     // CK a phase is 37ns and swallows it whole, while at 27MHz it is 9.3ns and
     // the sample can land before the data has arrived. Setting this to 1 samples
     // a phase later, giving the round trip 18.5ns at 27MHz instead.
-    parameter integer SAMPLE_LATE = 0,
+    // Which tap of the capture below makes up a word; see there. The default is
+    // what the fixed latches it replaced did.
+    parameter integer RX_TAP = 2,
     // The bring-up scan: which CK the data turned up on, what the bus looked
     // like on every other CK, and whether the command echoed back. It is how the
     // latency was established and it costs nothing at 6.75MHz, but it runs on
@@ -141,7 +143,8 @@ module PsramSdr #(
     reg wbyte, wodd;
     reg [4:0] scan_idx;
 
-    reg [7:0] rx_a, rx_b, rx_a_held;
+    reg [7:0] cap [0:7];                 // see the capture path below
+    integer c;
     reg cs_n, ck_en, dq_oe, rwds_oe, rst_n;
     reg [15:0] tx;                       // the two bytes for this CK cycle
     reg [1:0] tx_mask;                   // and their RWDS write masks, A then B
@@ -164,7 +167,7 @@ module PsramSdr #(
         cs_n = 1; ck_en = 0; dq_oe = 0; rwds_oe = 0; rst_n = 0;
         dout = 0; is_read = 0; wbyte = 0; wodd = 0;
         ca = 0; wdata = 0; tx = 0; tx_mask = 0; dq_drive = 0; rwds_drive = 0;
-        rx_a = 0; rx_b = 0; rx_a_held = 0;
+        for (c = 0; c < 8; c = c + 1) cap[c] = 0;
         dbg_match = 5'h1f; dbg_first = 0; dbg_nonff = 0;
         scan_idx = 0; dbg_ca_echo = 0;
     end
@@ -213,19 +216,28 @@ module PsramSdr #(
     IOBUF rwds_io_hi(.O(), .IO(IO_psram_rwds[1]), .I(1'b0), .OEN(1'b1));
 
     // One phase after each CK edge, by a plain flop. This is the whole point of
-    // the design: no IOLOGIC anywhere on the input path. rx_a is held as byte B
-    // is captured so that the two halves of one CK cycle's word are available
-    // together, one cycle after that word went past.
-    localparam [1:0] PH_A = SAMPLE_LATE ? 2'd3 : 2'd2;
-    localparam [1:0] PH_B = SAMPLE_LATE ? 2'd1 : 2'd0;
-    // On sample_clk rather than clk: same rate, shifted phase. ph is stable well
-    // before either edge of it, so using it to choose the cycle is safe, and the
-    // shift only moves *when in the cycle* the pins are looked at.
+    // the design: no IOLOGIC anywhere on the input path.
+    // Capture every phase, and choose which two make the word afterwards.
+    //
+    // The old arrangement latched at two fixed points - one phase after each CK
+    // edge - which assumes the die's byte is at the pin by then. The round trip
+    // out and back is a fixed number of nanoseconds, so at 6.75MHz CK, where a
+    // phase is 37ns, that assumption holds with room to spare; at 27MHz, where a
+    // phase is 9.3ns, the byte can still be in flight, and worse, it can land
+    // the far side of a cycle boundary. Then the two halves of a word come from
+    // different CK cycles and the data is wrong in a way no amount of moving the
+    // sampling *phase* can fix, because the fault is which *cycle* each byte was
+    // attributed to.
+    //
+    // Taking every phase into a shift register and picking the pair makes both
+    // of those one parameter. RX_TAP names where byte B - the falling edge one -
+    // has got to by the time the state machine looks; byte A is half a CK, which
+    // is two phases, older. RX_TAP of 2 is what the fixed latches used to do.
     always @(posedge sample_clk) begin
-        if (ph == PH_A) rx_a <= dq_in;
-        if (ph == PH_B) begin rx_b <= dq_in; rx_a_held <= rx_a; end
+        cap[0] <= dq_in;
+        for (c = 1; c < 8; c = c + 1) cap[c] <= cap[c-1];
     end
-    wire [15:0] rx_word = { rx_a_held, rx_b };   // the previous CK cycle's word
+    wire [15:0] rx_word = { cap[RX_TAP + 2], cap[RX_TAP] };
 
     // Crossing into this domain. The clock here is the board clock multiplied,
     // so read and write arrive from a slower domain of their own; two flip flops

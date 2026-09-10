@@ -145,7 +145,13 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // Whole phases, on top of PSRAM_PHASE's sixteenths. The two
                     // together are a coarse and a fine control over one thing:
                     // where in the cycle the pins are looked at.
-                    parameter integer PSRAM_LATE = 0)
+                    parameter integer PSRAM_LATE = 0,
+                    // Which pair of captured phases makes up a word. 2 is what
+                    // the PHY has always effectively used; moving it shifts the
+                    // capture a whole phase at a time, which is what a byte
+                    // landing the far side of a cycle boundary needs and no
+                    // amount of phase shifting can give.
+                    parameter integer PSRAM_TAP = 2)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -292,7 +298,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // At 27MHz CK one phase is 9.3ns, which is not enough for the round trip out
     // to the die and back: the memory then reads correctly most of the time and
     // wrong occasionally, which maptest catches in seconds.
-    PsramSdr #(.SAMPLE_LATE(PSRAM_LATE), .RESET_CLOCKS(8100 * PSRAM_MULT),
+    PsramSdr #(.RX_TAP(PSRAM_TAP), .RESET_CLOCKS(8100 * PSRAM_MULT),
                    .DEBUG_SCAN(PSRAM_MULT >= 4 ? 0 : 1)) psram(
         .clk(psram_clk), .sample_clk(psram_sample_clk),
         .resetn(reset_btn & psram_lock),
