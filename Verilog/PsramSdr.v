@@ -38,8 +38,14 @@
  * The interface matches PsramController so the two can be swapped.
  */
 module PsramSdr #(
-    parameter RESET_CLOCKS = 8100,       // 300us at 27MHz, comfortably past the
-                                         // 150us the part wants after power up
+    // Clocks to hold RESET# low, and again to leave the part alone afterwards.
+    // This counts *this module's* clock, which is no longer the board clock, so
+    // it has to be scaled with it - at 108MHz the old 8100 is 75us, half of the
+    // 150us the part wants after power up. The counter is sized from it for the
+    // same reason: the vendor controller this replaced had a 160us timer whose
+    // width was hardcoded for one frequency, and at any other it never reached
+    // its limit and the controller sat in reset for ever.
+    parameter RESET_CLOCKS = 8100,       // 300us at 27MHz
     parameter [4:0] LATENCY = 6,         // initial latency, in CK; fixed means 2x
     // How many CK a read samples for. It only has to reach the cycle the data is
     // in, which is what the default is; widening it turns a read into a scan
@@ -56,6 +62,22 @@ module PsramSdr #(
     // 6.75MHz, 3 command + 12 latency + BURST + 2 tail is 3.1us at four and
     // over the limit at eight.
     parameter integer BURST = 4,
+    // Which phase after each CK edge the incoming byte is captured on. The data
+    // is valid from one CK edge to the next - half a CK - so one phase after the
+    // edge is the middle of that window when the bus turns round instantly. It
+    // does not: the FPGA has to drive CK out to the die, the die has to respond,
+    // and the data has to get back to a fabric flip flop. That round trip is
+    // fixed in nanoseconds while the phase shrinks with the clock, so at 6.75MHz
+    // CK a phase is 37ns and swallows it whole, while at 27MHz it is 9.3ns and
+    // the sample can land before the data has arrived. Setting this to 1 samples
+    // a phase later, giving the round trip 18.5ns at 27MHz instead.
+    parameter integer SAMPLE_LATE = 0,
+    // The bring-up scan: which CK the data turned up on, what the bus looked
+    // like on every other CK, and whether the command echoed back. It is how the
+    // latency was established and it costs nothing at 6.75MHz, but it runs on
+    // every data cycle - a 16 bit compare and an indexed write - and at 108MHz
+    // it is in the way of closing timing. Off, the outputs read zero.
+    parameter integer DEBUG_SCAN = 1,
     parameter [4:0] SCAN_CK = 2*LATENCY + BURST
 ) (
     input wire clk,                      // 27MHz, the board clock
@@ -102,7 +124,8 @@ module PsramSdr #(
     localparam [3:0] S_RESET = 0, S_WAIT = 1, S_IDLE = 2, S_CA = 3,
                      S_LATENCY = 4, S_DATA = 5, S_TAIL = 6, S_END = 7;
     reg [3:0] state;
-    reg [13:0] delay;                    // reset and power up timer, in clocks
+    localparam integer DELAY_BITS = $clog2(RESET_CLOCKS + 1);
+    reg [DELAY_BITS-1:0] delay;          // reset and power up timer, in clocks
     reg [4:0] count;                     // CK cycles left in the current phase
     reg is_read;
     reg [47:0] ca;
@@ -185,9 +208,11 @@ module PsramSdr #(
     // the design: no IOLOGIC anywhere on the input path. rx_a is held as byte B
     // is captured so that the two halves of one CK cycle's word are available
     // together, one cycle after that word went past.
+    localparam [1:0] PH_A = SAMPLE_LATE ? 2'd3 : 2'd2;
+    localparam [1:0] PH_B = SAMPLE_LATE ? 2'd1 : 2'd0;
     always @(posedge clk) begin
-        if (ph == 2'd2) rx_a <= dq_in;
-        if (ph == 2'd0) begin rx_b <= dq_in; rx_a_held <= rx_a; end
+        if (ph == PH_A) rx_a <= dq_in;
+        if (ph == PH_B) begin rx_b <= dq_in; rx_a_held <= rx_a; end
     end
     wire [15:0] rx_word = { rx_a_held, rx_b };   // the previous CK cycle's word
 
@@ -218,7 +243,7 @@ module PsramSdr #(
                 S_RESET: begin
                     rst_n <= 0;
                     delay <= delay + 1;
-                    if (delay == RESET_CLOCKS[13:0]) begin
+                    if (delay == RESET_CLOCKS[DELAY_BITS-1:0]) begin
                         delay <= 0;
                         state <= S_WAIT;
                     end
@@ -226,7 +251,7 @@ module PsramSdr #(
                 S_WAIT: begin
                     rst_n <= 1;
                     delay <= delay + 1;
-                    if (delay == RESET_CLOCKS[13:0]) state <= S_IDLE;
+                    if (delay == RESET_CLOCKS[DELAY_BITS-1:0]) state <= S_IDLE;
                 end
 
                 S_IDLE: if (step && (read_s || write_s)) begin
@@ -252,7 +277,7 @@ module PsramSdr #(
                 S_CA: if (step) begin
                     // rx_word lags one CK, so the step that leaves the second
                     // command cycle is the one that can see the first.
-                    if (count == 2) dbg_ca_echo <= rx_word;
+                    if (DEBUG_SCAN && count == 2) dbg_ca_echo <= rx_word;
                     ca <= { ca[31:0], 16'b0 };
                     count <= count - 1;
                     if (count == 1) begin
@@ -278,14 +303,16 @@ module PsramSdr #(
                 // records what it saw everywhere else.
                 S_DATA: if (step) begin
                     if (is_read) begin
-                        if (scan_idx == 0) dbg_first <= rx_word;
                         // Each word shifts in at the top, so when the last one
                         // arrives the first is sitting in the low half.
                         if (scan_idx >= DATA_IDX && scan_idx < DATA_IDX + BURST)
                             dout <= { rx_word, dout[16*BURST-1:16] };
-                        if (rx_word != 16'hffff) dbg_nonff[scan_idx[3:0]] <= 1;
-                        if (rx_word == wdata && dbg_match == 5'h1f)
-                            dbg_match <= scan_idx;
+                        if (DEBUG_SCAN) begin
+                            if (scan_idx == 0) dbg_first <= rx_word;
+                            if (rx_word != 16'hffff) dbg_nonff[scan_idx[3:0]] <= 1;
+                            if (rx_word == wdata && dbg_match == 5'h1f)
+                                dbg_match <= scan_idx;
+                        end
                         scan_idx <= scan_idx + 1;
                     end
                     count <= count - 1;

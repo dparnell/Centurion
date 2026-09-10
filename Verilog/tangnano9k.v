@@ -123,7 +123,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // at 2 and 9.3 at 4. Simulation cannot answer where that
                     // stops working, because the behavioural die has no timing
                     // - only the board can, which is what maptest.s is for.
-                    parameter PSRAM_MULT = 1)
+                    parameter PSRAM_MULT = 2)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -264,7 +264,11 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     always @(posedge clock) busy_sync <= { busy_sync[0], busy_raw };
     wire busy = busy_sync[1];
 
-    PsramSdr psram(
+    // At 27MHz CK one phase is 9.3ns, which is not enough for the round trip out
+    // to the die and back: the memory then reads correctly most of the time and
+    // wrong occasionally, which maptest catches in seconds.
+    PsramSdr #(.SAMPLE_LATE(0), .RESET_CLOCKS(8100 * PSRAM_MULT),
+                   .DEBUG_SCAN(PSRAM_MULT >= 4 ? 0 : 1)) psram(
         .clk(psram_clk), .resetn(reset_btn & psram_lock),
         .read(read), .write(write), .addr(address), .din(din),
         .byte_write(byte_write), .dout(dout), .busy(busy_raw),
