@@ -73,7 +73,7 @@ load-tos:
 load-forth:
 	$(MAKE) PROGRAM=programs/forth.txt load
 
-test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB sd_fat32.hex sd_fat32frag.hex
+test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB sd_fat32.hex sd_fat32frag.hex
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp PsramTB
@@ -82,6 +82,8 @@ test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB sd_
 	vvp SdTB
 	vvp Fat32TB
 	vvp Fat32TB +image=sd_fat32frag.hex +fragmented
+	vvp DiskTB
+	vvp DiskTB +image=sd_fat32frag.hex
 
 # Simulates the real top level, including the LEDs and the UART pin, with stubs for
 # the Gowin hard blocks. The other testbenches build their own replica of the board.
@@ -136,6 +138,15 @@ sd_fat32.hex: ../tools/MakeSdImage.py
 
 sd_fat32frag.hex: ../tools/MakeSdImage.py
 	python3 ../tools/MakeSdImage.py fat32frag $@
+
+# The whole storage stack with no CPU: card, filesystem and PSRAM cache, run
+# against both a contiguous image and a fragmented one.
+disktest: DiskTB sd_fat32.hex sd_fat32frag.hex
+	vvp DiskTB
+	vvp DiskTB +image=sd_fat32frag.hex
+
+DiskTB: *.v
+	iverilog -o DiskTB DiskTB.v
 
 HawkTB: *.v programs/hawktest.txt
 	iverilog -o HawkTB HawkTB.v
