@@ -69,9 +69,10 @@ module DiskTB;
     reg mount = 0;
     wire mounted, mount_failed;
     wire [3:0] fail_reason;
-    wire [31:0] file_blocks;
+    wire [15:0] file_blocks;
     wire map_req, map_valid;
-    wire [31:0] map_block, map_lba;
+    wire [15:0] map_block;
+    wire [31:0] map_lba;
     wire [7:0] fat_state, fat_extents;
 
     Fat32 #(.FILENAME("HAWK0   IMG")) fat(

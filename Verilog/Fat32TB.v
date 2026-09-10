@@ -63,9 +63,9 @@ module Fat32TB;
     reg mount = 0;
     wire mounted, failed;
     wire [3:0] fail_reason;
-    wire [31:0] file_blocks;
+    wire [15:0] file_blocks;
     reg map_req = 0;
-    reg [31:0] map_block = 0;
+    reg [15:0] map_block = 0;
     wire map_valid;
     wire [31:0] map_lba;
 

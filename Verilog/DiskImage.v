@@ -42,16 +42,18 @@ module DiskImage #(
 
     // The mounter.
     input wire mounted,
-    input wire [31:0] file_blocks,
+    // Blocks in the image. Sixteen bits is a 32MB image, which covers every
+    // drive this machine had - a Hawk platter is 12800 blocks.
+    input wire [15:0] file_blocks,
     output reg map_req,
-    output reg [31:0] map_block,
+    output reg [15:0] map_block,
     input wire map_valid,
     input wire [31:0] map_lba,
 
     // The card.
     output reg sd_read,
     output reg sd_write,
-    output reg [31:0] sd_block,
+    output wire [31:0] sd_block,
     input wire sd_busy,
     input wire sd_error,
     input wire rx_strobe,
@@ -123,6 +125,9 @@ module DiskImage #(
         meta_q <= meta[meta_addr];
     end
 
+    // Card block numbers are 26 bits here as in Fat32 - a 32GB card - because
+    // every adder and comparator in this module is one of them.
+    localparam integer LBA = 26;
     reg [15:0] block;
     reg [9:0]  index;               // 0..512, so ten bits
     reg [7:0]  lo_byte;
@@ -130,7 +135,7 @@ module DiskImage #(
     // path issues its request before a PSRAM read that takes hundreds of
     // microseconds - so the answer arrives long before anything is waiting for
     // it. Latch it wherever we are and let S_MAP wait on the latch.
-    reg [31:0] lba;
+    reg [LBA-1:0] lba;
     reg lba_valid;
     reg [15:0] map_timer;
     reg [7:0]  hold [0:7];
@@ -140,6 +145,9 @@ module DiskImage #(
     reg [15:0] clear_i;
 
     assign tx_byte = buf_rdata;
+    // The card interface is 32 bits wide because a card can be; everything in
+    // here is narrower, so widen on the way out.
+    assign sd_block = { {(32-LBA){1'b0}}, lba };
     wire [22:0] block_base = IMAGE_BASE + { block, 9'b0 };
 
     integer i;
@@ -178,7 +186,13 @@ module DiskImage #(
 
         S_IDLE: begin
             busy <= 0;
-            if (req && mounted) begin
+            if (req && mounted && req_block >= file_blocks) begin
+                // Past the end of the image. Saying so at once beats waiting out
+                // the map timeout for an answer that is never coming.
+                busy <= 1;
+                failed <= 1;
+                state <= S_FAIL;
+            end else if (req && mounted) begin
                 busy <= 1;
                 failed <= 0;
                 block <= req_block;
@@ -228,7 +242,6 @@ module DiskImage #(
 
         // ------------------------------------------------ read from the card
         S_CARD_RD: begin
-            sd_block <= lba;
             sd_read <= 1;
             if (sd_busy) begin
                 sd_read <= 0;
@@ -274,7 +287,12 @@ module DiskImage #(
 
         S_FILL_GO: begin
             ps_addr <= block_base + index;
-            ps_din <= { buf_rdata, lo_byte };
+            // The byte at the lower address goes in the *high* half of the
+            // word: that is HyperBus's own order and it is what PsramBus's cache
+            // already assumes. Reversing it here is invisible end to end,
+            // because the read path would reverse it back, and only shows up
+            // when something else looks at the image in memory.
+            ps_din <= { lo_byte, buf_rdata };
             ps_byte_write <= 0;
             ps_write <= 1;
             if (ps_busy) begin
@@ -308,10 +326,10 @@ module DiskImage #(
         end
 
         S_DRAW_W: if (!ps_busy) begin
-            hold[0] <= ps_dout[7:0];   hold[1] <= ps_dout[15:8];
-            hold[2] <= ps_dout[23:16]; hold[3] <= ps_dout[31:24];
-            hold[4] <= ps_dout[39:32]; hold[5] <= ps_dout[47:40];
-            hold[6] <= ps_dout[55:48]; hold[7] <= ps_dout[63:56];
+            hold[0] <= ps_dout[15:8];  hold[1] <= ps_dout[7:0];
+            hold[2] <= ps_dout[31:24]; hold[3] <= ps_dout[23:16];
+            hold[4] <= ps_dout[47:40]; hold[5] <= ps_dout[39:32];
+            hold[6] <= ps_dout[63:56]; hold[7] <= ps_dout[55:48];
             hold_i <= 0;
             state <= S_DRAIN;
         end
@@ -331,7 +349,6 @@ module DiskImage #(
 
         // ----------------------------------------------- write back to the card
         S_CARD_WR: begin
-            sd_block <= lba;
             sd_write <= 1;
             if (sd_busy) begin
                 sd_write <= 0;
@@ -375,7 +392,7 @@ module DiskImage #(
             end else begin
                 // Dirty: pull it out of PSRAM into the buffer, then send it.
                 block <= scan;
-                map_block <= scan;
+                map_block <= { {(16-META_BITS){1'b0}}, scan };
                 map_req <= 1;
                 lba_valid <= 0;
                 map_timer <= 16'hffff;
@@ -399,7 +416,7 @@ module DiskImage #(
         endcase
 
         if (map_valid) begin
-            lba <= map_lba;
+            lba <= map_lba[LBA-1:0];
             lba_valid <= 1;
         end
 

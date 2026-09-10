@@ -37,7 +37,11 @@ module Fat32 #(
     // The 8.3 name to look for, padded to eleven characters exactly as it is
     // stored in the directory: name left justified in eight, extension in three.
     parameter [87:0] FILENAME = "HAWK0   IMG",
-    parameter integer MAX_EXTENTS = 16
+    // Four is generous: an image copied onto a freshly formatted card in one go
+    // is a single extent, and the design note's own advice is that refusing a
+    // badly fragmented file and saying so beats carrying a large table for a
+    // case that should not arise.
+    parameter integer MAX_EXTENTS = 4
 ) (
     input wire clock,
     input wire reset,
@@ -49,7 +53,7 @@ module Fat32 #(
 
     // The card, driven through SdSpi.
     output reg sd_read,
-    output reg [31:0] sd_block,
+    output wire [31:0] sd_block,
     input wire sd_busy,
     input wire sd_ready,
     input wire sd_error,
@@ -58,9 +62,9 @@ module Fat32 #(
     input wire [7:0] rx_byte,
 
     // The answer: how big the file is, and where any block of it lives.
-    output reg [31:0] file_blocks,
+    output reg [15:0] file_blocks,
     input wire map_req,
-    input wire [31:0] map_block,
+    input wire [15:0] map_block,
     output reg map_valid,
     output reg [31:0] map_lba,
 
@@ -70,7 +74,7 @@ module Fat32 #(
     localparam [3:0]
         FAIL_NONE = 0, FAIL_NO_MBR = 1, FAIL_NO_PARTITION = 2, FAIL_NOT_FAT32 = 3,
         FAIL_SECTOR_SIZE = 4, FAIL_NO_FILE = 5, FAIL_TOO_FRAGMENTED = 6,
-        FAIL_CARD = 7, FAIL_EMPTY_FILE = 8;
+        FAIL_CARD = 7, FAIL_EMPTY_FILE = 8, FAIL_TOO_BIG = 9;
 
     localparam [7:0]
         S_IDLE = 0, S_READ = 1, S_WAIT = 2, S_MBR = 3, S_BPB = 4,
@@ -80,30 +84,42 @@ module Fat32 #(
     reg [7:0] state, after_read;
     assign dbg_state = state;
 
-    // Volume geometry, all of it from the BPB.
-    reg [31:0] part_lba, fat0, data0, fat_sectors;
+    // Volume geometry, all of it from the BPB. Block numbers are 26 bits, which
+    // is a 32GB card - every adder and comparator in here is one of these, and
+    // at 32 bits this module was the largest thing on the device by a wide
+    // margin. Nothing about these drives wants a card that big anyway.
+    localparam integer LBA = 26;
+    reg [LBA-1:0] part_lba, fat0, data0, fat_sectors;
     reg [7:0]  spc;                     // sectors per cluster, a power of two
     reg [2:0]  spc_log2;
     reg [7:0]  num_fats;
     reg [15:0] reserved, bytes_per_sector;
-    reg [31:0] root_cluster;
+    reg [27:0] root_cluster;
 
     // Scratch for the field being assembled out of the stream.
     reg [31:0] acc;
+    // The card interface is 32 bits wide because a card can be; everything in
+    // here is narrower, so the block number is widened on the way out.
+    reg [LBA-1:0] block_no;
     reg part_found;
+    // A field that does not fit the narrowed widths above. Saying so is much
+    // better than truncating: a partition starting past 32GB would otherwise be
+    // read from the wrong place on the card and look like a corrupt filesystem.
+    reg too_big;
     reg pe_take;
     wire [3:0] pe_off = rx_index[3:0] - 4'd14;   // the entries start at 446
 
     // Directory scan.
     reg name_ok, dir_end, found;
-    reg [31:0] found_cluster, found_size;
-    reg [31:0] dir_cluster;
+    reg [27:0] found_cluster;
+    reg [31:0] found_size;
+    reg [27:0] dir_cluster;
     reg [7:0]  dir_sector;              // which sector within the cluster
 
     // Chain walking. want is the cluster whose successor we are after; the
     // parser updates it in place as the FAT sector streams by, so a run of
     // consecutive clusters is followed without reading the sector again.
-    reg [31:0] want;
+    reg [27:0] want;
     reg chain_done;                     // the chain genuinely ended
     reg chain_halt;                     // stop following within this sector
     reg [7:0] chain_return;
@@ -111,35 +127,46 @@ module Fat32 #(
     // from after_read, which had to mean two things at once.
     reg [7:0] parse_mode;
     // A corrupt FAT can point a cluster at itself. Nothing else bounds the walk.
-    reg [31:0] steps;
+    reg [23:0] steps;
     localparam integer MAX_STEPS = 1 << 20;
 
     // Extents.
-    reg [31:0] ext_lba  [0:MAX_EXTENTS-1];
-    reg [31:0] ext_len  [0:MAX_EXTENTS-1];
+    reg [LBA-1:0] ext_lba [0:MAX_EXTENTS-1];
+    reg [LBA-1:0] ext_len [0:MAX_EXTENTS-1];
     reg [7:0]  n_extents;
-    reg [31:0] run_start, run_len, run_first_cluster;
+    reg [LBA-1:0] run_start, run_len;
 
     // Map lookup: walk the table an entry per clock. This only happens once per
     // block moved, against a transfer that takes thousands of clocks, so a
     // sequential walk costs nothing and saves a sixteen way comparator.
     reg [7:0] map_i;
-    reg [31:0] map_left;
+    reg [LBA-1:0] map_left;
+
+    assign sd_block = { {(32-LBA){1'b0}}, block_no };
 
     integer e;
 
-    function [7:0] name_byte(input [3:0] i);
-        name_byte = FILENAME >> (8 * (10 - i));
-    endfunction
+    // The name to match, shifted a byte at a time as the directory entry streams
+    // past. Indexing the parameter instead - FILENAME >> (8 * (10 - i)) with a
+    // variable i - is an eighty eight bit barrel shifter, which is one of the
+    // more expensive things it is possible to write by accident.
+    reg [87:0] name_shift;
 
-    // cluster -> LBA. spc is a power of two so this is a shift.
-    function [31:0] cluster_lba(input [31:0] c);
-        cluster_lba = data0 + ((c - 32'd2) << spc_log2);
-    endfunction
+    // cluster -> LBA, computed in exactly one place. As a function it was
+    // inlined at each of its three call sites, and since the shift amount is a
+    // register rather than a constant that is three 32 bit barrel shifters -
+    // which made this module four times the size of everything else in the
+    // storage stack put together and pushed the design off the end of the chip.
+    // A three way multiplexer in front of one shifter costs a fraction of that.
+    wire [27:0] fat_next = { rx_byte[3:0], acc[23:0] };
+    wire [27:0] conv_cluster = (state == S_DIR_NEXT) ? dir_cluster :
+                               (state == S_DIR)      ? found_cluster :
+                                                       fat_next;
+    wire [LBA-1:0] conv_lba = data0 + ((conv_cluster[LBA-1:0] - 2) << spc_log2);
 
     initial begin
         state = S_IDLE; mounted = 0; failed = 0; fail_reason = FAIL_NONE;
-        sd_read = 0; sd_block = 0; file_blocks = 0; map_valid = 0; map_lba = 0;
+        sd_read = 0; block_no = 0; file_blocks = 0; map_valid = 0; map_lba = 0;
         n_extents = 0; dbg_extents = 0;
     end
 
@@ -156,16 +183,16 @@ module Fat32 #(
             map_valid <= 0;
             if (start && sd_ready) begin
                 mounted <= 0; failed <= 0; fail_reason <= FAIL_NONE;
-                part_found <= 0; found <= 0; n_extents <= 0;
+                part_found <= 0; found <= 0; n_extents <= 0; too_big <= 0;
                 acc <= 0;
-                sd_block <= 0;
+                block_no <= 0;
                 after_read <= S_MBR;
                 parse_mode <= S_MBR;
                 steps <= 0;
                 state <= S_READ;
             end else if (map_req && mounted) begin
                 map_i <= 0;
-                map_left <= map_block;
+                map_left <= map_block;   // widened, not truncated
                 map_valid <= 0;
                 state <= S_MAP;
             end
@@ -197,7 +224,7 @@ module Fat32 #(
                 if (fail_reason == FAIL_NONE) fail_reason <= FAIL_NO_PARTITION;
                 state <= S_FAILED;
             end else begin
-                sd_block <= part_lba;
+                block_no <= part_lba;
                 after_read <= S_BPB;
                 parse_mode <= S_BPB;
                 state <= S_READ;
@@ -206,8 +233,14 @@ module Fat32 #(
 
         // -------------------------------------------------------------- BPB
         S_BPB: begin
-            if (bytes_per_sector != 512) begin
+            if (too_big) begin
+                fail_reason <= FAIL_TOO_BIG;
+                state <= S_FAILED;
+            end else if (bytes_per_sector != 512) begin
                 fail_reason <= FAIL_SECTOR_SIZE;
+                state <= S_FAILED;
+            end else if (num_fats != 1 && num_fats != 2) begin
+                fail_reason <= FAIL_NOT_FAT32;
                 state <= S_FAILED;
             end else if (fat_sectors == 0 || spc == 0) begin
                 // A zero 32 bit FAT size means FAT12 or FAT16, whose layout is
@@ -216,7 +249,11 @@ module Fat32 #(
                 state <= S_FAILED;
             end else begin
                 fat0 <= part_lba + reserved;
-                data0 <= part_lba + reserved + num_fats * fat_sectors;
+                // One FAT or two; nothing else exists in practice, and a
+                // multiply here costs two hardware multipliers to support a
+                // case that never occurs.
+                data0 <= part_lba + reserved +
+                         (num_fats == 2 ? { fat_sectors[LBA-2:0], 1'b0 } : fat_sectors);
                 dir_cluster <= root_cluster;
                 dir_sector <= 0;
                 state <= S_DIR_NEXT;
@@ -225,7 +262,7 @@ module Fat32 #(
 
         // ------------------------------------------------- the root directory
         S_DIR_NEXT: begin
-            sd_block <= cluster_lba(dir_cluster) + dir_sector;
+            block_no <= conv_lba + dir_sector;
             after_read <= S_DIR;
             parse_mode <= S_DIR;
             name_ok <= 0; dir_end <= 0;
@@ -240,7 +277,7 @@ module Fat32 #(
                 end else begin
                     // Start the chain walk at the file's first cluster.
                     want <= found_cluster;
-                    run_start <= cluster_lba(found_cluster);
+                    run_start <= conv_lba;
                     run_len <= spc;
                     n_extents <= 0;
                     chain_return <= S_CHAIN_STEP;
@@ -270,7 +307,7 @@ module Fat32 #(
         // so a contiguous file costs one read per 128 clusters rather than one
         // per cluster: the 128 cluster test image needs two.
         S_CHAIN: begin
-            sd_block <= fat0 + want[31:7];
+            block_no <= fat0 + want[27:7];
             after_read <= chain_return;
             parse_mode <= S_CHAIN;
             chain_done <= 0;
@@ -306,7 +343,7 @@ module Fat32 #(
                 ext_len[n_extents] <= run_len;
                 n_extents <= n_extents + 1;
                 dbg_extents <= n_extents + 1;
-                file_blocks <= found_size[31:9] + (found_size[8:0] != 0);
+                file_blocks <= found_size[24:9] + (found_size[8:0] != 0);
                 mounted <= 1;
                 state <= S_IDLE;
             end else begin
@@ -327,7 +364,7 @@ module Fat32 #(
                 map_valid <= 0;             // past the end of the file
                 state <= S_IDLE;
             end else if (map_left < ext_len[map_i]) begin
-                map_lba <= ext_lba[map_i] + map_left;
+                map_lba <= { {(32-LBA){1'b0}}, ext_lba[map_i] + map_left };
                 map_valid <= 1;
                 state <= S_IDLE;
             end else begin
@@ -355,7 +392,8 @@ module Fat32 #(
                 if (pe_off[3:0] == 9  && pe_take) acc[15:8]  <= rx_byte;
                 if (pe_off[3:0] == 10 && pe_take) acc[23:16] <= rx_byte;
                 if (pe_off[3:0] == 11 && pe_take) begin
-                    part_lba <= { rx_byte, acc[23:0] };
+                    part_lba <= { acc[LBA-9:0] };
+                    if (rx_byte != 0 || acc[23:LBA-8] != 0) too_big <= 1;
                     part_found <= 1;
                     pe_take <= 0;
                 end
@@ -382,11 +420,17 @@ module Fat32 #(
                 36: fat_sectors[7:0]   <= rx_byte;
                 37: fat_sectors[15:8]  <= rx_byte;
                 38: fat_sectors[23:16] <= rx_byte;
-                39: fat_sectors[31:24] <= rx_byte;
+                39: begin
+                    fat_sectors[LBA-1:24] <= rx_byte[LBA-25:0];
+                    if (rx_byte[7:LBA-24] != 0) too_big <= 1;
+                end
                 44: root_cluster[7:0]   <= rx_byte;
                 45: root_cluster[15:8]  <= rx_byte;
                 46: root_cluster[23:16] <= rx_byte;
-                47: root_cluster[31:24] <= rx_byte;
+                47: begin
+                    root_cluster[27:24] <= rx_byte[3:0];
+                    if (rx_byte[7:4] != 0) too_big <= 1;
+                end
                 default: ;
             endcase
         end
@@ -397,7 +441,8 @@ module Fat32 #(
             // fragment and bit 3 is the volume label, and both are skipped.
             case (rx_index[4:0])
                 0: begin
-                    name_ok <= (rx_byte == name_byte(0));
+                    name_ok <= (rx_byte == FILENAME[87:80]);
+                    name_shift <= { FILENAME[79:0], 8'h00 };
                     if (rx_byte == 0) dir_end <= 1;
                 end
                 11: begin
@@ -418,8 +463,10 @@ module Fat32 #(
                     end
                 end
                 default:
-                    if (rx_index[4:0] < 11)
-                        name_ok <= name_ok && (rx_byte == name_byte(rx_index[3:0]));
+                    if (rx_index[4:0] < 11) begin
+                        name_ok <= name_ok && (rx_byte == name_shift[87:80]);
+                        name_shift <= { name_shift[79:0], 8'h00 };
+                    end
             endcase
         end
 
@@ -457,7 +504,7 @@ module Fat32 #(
                             ext_len[n_extents] <= run_len;
                             n_extents <= n_extents + 1;
                         end
-                        run_start <= cluster_lba(nxt);
+                        run_start <= conv_lba;
                         run_len <= spc;
                     end
                 end else begin
