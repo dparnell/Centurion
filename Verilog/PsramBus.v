@@ -74,8 +74,16 @@ module PsramBus #(
     // hits 79.9% of the time and two hit 99.9%. Four is two doublings of margin
     // over that for the price of a wider multiplexer, and the real test is an
     // operating system with a working set far larger than a loop.
-    localparam integer LINES = 4;
-    localparam integer IDXBITS = 2;      // must be $clog2(LINES)
+    // Sixteen lines of four words: 128 bytes, where four lines held 32.
+    //
+    // Deliberately modest. This lives in LUTRAM, which the disk controllers
+    // still to be built are unlikely to want much of, and it leaves the block
+    // RAM alone: the floppy, Finch and Hawk controllers all need sector buffers
+    // - a Hawk sector is about 400 bytes - and only eight of the device's
+    // twenty six BSRAM blocks are still free. Growing this is a one line change
+    // if a workload ever justifies it, but those blocks are spoken for.
+    localparam integer LINES = 32;
+    localparam integer IDXBITS = 5;      // must be $clog2(LINES)
     reg [15-IDXBITS:0] cache_tag [0:LINES-1];
     reg [63:0] cache_data [0:LINES-1];
     reg [LINES-1:0] cache_valid;
@@ -207,18 +215,16 @@ module PsramBus #(
             wbuf_data[wr_in[WPTR-1:0]] <= data_in;
             wr_in <= wr_in + 1;
             wr_done <= 1;
-            if (cache_valid[idx] && cache_tag[idx] == tag) begin
-                case ({ address[2:1], address[0] })
-                    3'b000: cache_data[idx][15:8]  <= data_in;
-                    3'b001: cache_data[idx][7:0]   <= data_in;
-                    3'b010: cache_data[idx][31:24] <= data_in;
-                    3'b011: cache_data[idx][23:16] <= data_in;
-                    3'b100: cache_data[idx][47:40] <= data_in;
-                    3'b101: cache_data[idx][39:32] <= data_in;
-                    3'b110: cache_data[idx][63:56] <= data_in;
-                    3'b111: cache_data[idx][55:48] <= data_in;
-                endcase
-            end
+            // Drop the line rather than patching the byte into it. Patching
+            // is a read-modify-write of one byte inside a sixty four bit word,
+            // which is not something LUTRAM can do, so yosys built the whole
+            // cache out of flip flops and a thirty two way multiplexer instead
+            // - 94% of the LUT4 on the device, with three disk controllers
+            // still to find room for. Invalidating is correct because a read
+            // drains the write buffer before it is issued, so the refetch sees
+            // the write that just went past.
+            if (cache_valid[idx] && cache_tag[idx] == tag)
+                cache_valid[idx] <= 0;
         end
 
         // A memory that stops answering must not be able to wedge the machine.
