@@ -73,12 +73,13 @@ load-tos:
 load-forth:
 	$(MAKE) PROGRAM=programs/forth.txt load
 
-test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB
+test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp PsramTB
 	vvp DmaTB
 	vvp HawkTB
+	vvp SdTB
 
 # Simulates the real top level, including the LEDs and the UART pin, with stubs for
 # the Gowin hard blocks. The other testbenches build their own replica of the board.
@@ -106,6 +107,17 @@ DmaTB: *.v programs/dmatest.txt
 # The Hawk disk controller: registers, seek, and a sector out and back over DMA.
 hawktest: HawkTB
 	vvp HawkTB
+
+# The SD card layer on its own, with no CPU and no bus: initialisation against a
+# strict card model, then reads and writes.
+sdtest: SdTB
+	vvp SdTB
+
+SdTB: *.v sd_pattern.hex
+	iverilog -o SdTB SdTB.v
+
+sd_pattern.hex: ../tools/MakeSdImage.py
+	python3 ../tools/MakeSdImage.py pattern $@
 
 HawkTB: *.v programs/hawktest.txt
 	iverilog -o HawkTB HawkTB.v

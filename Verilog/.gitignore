@@ -17,3 +17,6 @@ opcodes.yaml
 ProgramTB
 DmaTB
 HawkTB
+SdTB
+sd_pattern.hex
+sd_fat32.hex
