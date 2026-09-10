@@ -82,13 +82,29 @@ module PsramBus #(
     wire [IDXBITS-1:0] idx = address[2+IDXBITS:3];
     wire [15-IDXBITS:0] tag = address[18:3+IDXBITS];
     wire [63:0] cache_line = cache_data[idx];
+    // Writes are posted. The core hands one over and carries on; the bridge puts
+    // it away in its own time. Waiting for a write to reach the memory cost the
+    // core 2.55us every time, and nothing about a store needs it to wait - the
+    // burst and the cache both help reads only, so this is the writes' turn.
+    //
+    // What makes it safe is that a read drains the buffer first. A read that
+    // missed the cache could otherwise overtake a write still sitting here and
+    // fetch the old contents of the line. It costs little in practice, because a
+    // write patches the cache on its way in, so a read of what was just written
+    // hits and never reaches the memory at all.
+    localparam integer WBUF = 8;
+    localparam integer WPTR = 3;         // must be $clog2(WBUF)
+    reg [18:0] wbuf_addr [0:WBUF-1];
+    reg [7:0]  wbuf_data [0:WBUF-1];
+    reg [WPTR:0] wr_in, wr_out;          // one bit wider than the index, so that
+                                         // full and empty can be told apart
     reg wr_done;                         // this CPU cycle's write has been made
     reg is_read_acc;                     // the access in flight is a read
     reg [12:0] elapsed;                  // clocks spent on the access in flight
 
     integer k;
     initial begin
-        state = S_IDLE; cache_valid = 0;
+        state = S_IDLE; cache_valid = 0; wr_in = 0; wr_out = 0;
         for (k = 0; k < LINES; k = k + 1) begin
             cache_tag[k] = 0; cache_data[k] = 0;
         end
@@ -101,11 +117,21 @@ module PsramBus #(
     // Nothing is asked of the memory while the core is in reset. The core needs
     // its enable during reset - the sequence is counted in enabled cycles - so
     // stalling it there would be wrong as well as pointless.
+    wire wbuf_empty = (wr_in == wr_out);
+    wire wbuf_full = (wr_in[WPTR-1:0] == wr_out[WPTR-1:0]) && (wr_in[WPTR] != wr_out[WPTR]);
+
     wire active = select && !reset;
     wire hit = cache_valid[idx] && (cache_tag[idx] == tag);
+    // A read waits for the buffer to empty; a write only waits if it is full.
     wire want_read  = active && !write_en && !hit;
     wire want_write = active &&  write_en && !wr_done;
-    wire need = want_read || want_write;
+    // A read stalls the core until it is satisfied; a write only stalls it when
+    // there is nowhere to put it.
+    wire need = want_read || (want_write && wbuf_full);
+    // Something for the memory to do: a read once the buffer is clear, or a
+    // buffered write whenever there is one.
+    wire issue_read = want_read && wbuf_empty;
+    wire issue_write = !wbuf_empty;
 
     // The access in flight refers to the address latched when it started, not
     // to wherever the core has since pointed.
@@ -160,12 +186,40 @@ module PsramBus #(
         // of fault that made diag's mapping test pass once and then fail for ever.
         state <= S_IDLE;
         cache_valid <= 0;
+        // Everything with state follows the core's reset, the buffer included:
+        // a write left over from before a reset would land in a machine that
+        // has forgotten asking for it.
+        wr_in <= 0;
+        wr_out <= 0;
         wr_done <= 0;
         read <= 0;
         write <= 0;
         elapsed <= 0;
       end else begin
         if (cpu_en_out) wr_done <= 0;    // the core moves on to the next cycle
+
+        // Take the core's write into the buffer and let it go. The cache is
+        // patched here rather than when the write reaches the memory, so that a
+        // read of what was just written hits immediately instead of waiting for
+        // the buffer to drain.
+        if (active && write_en && !wr_done && !wbuf_full) begin
+            wbuf_addr[wr_in[WPTR-1:0]] <= address;
+            wbuf_data[wr_in[WPTR-1:0]] <= data_in;
+            wr_in <= wr_in + 1;
+            wr_done <= 1;
+            if (cache_valid[idx] && cache_tag[idx] == tag) begin
+                case ({ address[2:1], address[0] })
+                    3'b000: cache_data[idx][15:8]  <= data_in;
+                    3'b001: cache_data[idx][7:0]   <= data_in;
+                    3'b010: cache_data[idx][31:24] <= data_in;
+                    3'b011: cache_data[idx][23:16] <= data_in;
+                    3'b100: cache_data[idx][47:40] <= data_in;
+                    3'b101: cache_data[idx][39:32] <= data_in;
+                    3'b110: cache_data[idx][63:56] <= data_in;
+                    3'b111: cache_data[idx][55:48] <= data_in;
+                endcase
+            end
+        end
 
         // A memory that stops answering must not be able to wedge the machine.
         // The core is held still by withholding its clock enable, so anything
@@ -179,10 +233,13 @@ module PsramBus #(
         // S_IDLE for a controller that never becomes idle stalls exactly as hard
         // as an access that never finishes, and the first version of this timer
         // only covered the second case.
-        if (need) elapsed <= elapsed + 1;
+        // Time the memory being busy as well as the core being stalled. A
+        // posted write drains while the core runs on, so a write that never
+        // finished would otherwise go unnoticed until the buffer filled.
+        if (need || state != S_IDLE) elapsed <= elapsed + 1;
         else elapsed <= 0;
 
-        if (need && elapsed == TIMEOUT) begin
+        if ((need || state != S_IDLE) && elapsed == TIMEOUT) begin
             dbg_timeouts <= dbg_timeouts + 1;
             dbg_timeout_where <= { busy, state };
             read <= 0;
@@ -193,6 +250,9 @@ module PsramBus #(
             cache_tag[idx] <= tag;
             cache_valid[idx] <= want_read;
             wr_done <= want_write;
+            // Drop whatever was in flight, or the same access is retried for
+            // ever and the buffer never empties.
+            if (state != S_IDLE && !is_read_acc) wr_out <= wr_out + 1;
             state <= S_IDLE;
         end else
 
@@ -206,15 +266,25 @@ module PsramBus #(
             // hold. If that byte is an instruction the machine executes rubbish,
             // which is intermittent because it depends on whether the CPU reaches
             // PSRAM before the part has finished waking up.
-            S_IDLE: if (need && !busy) begin
-                // A read fetches the whole line, so it asks for the start of it.
-                addr <= want_read ? { 3'b0, address[18:3], 3'b000 }
-                                  : { 3'b0, address };
-                din <= { 8'h00, data_in };
-                byte_write <= want_write;
-                read <= want_read;
-                write <= want_write;
-                is_read_acc <= want_read;
+            // Buffered writes go first, which is what keeps a read from
+            // overtaking one. issue_read already requires an empty buffer, so
+            // the two can never both be asking.
+            S_IDLE: if ((issue_write || issue_read) && !busy) begin
+                if (issue_write) begin
+                    addr <= { 3'b0, wbuf_addr[wr_out[WPTR-1:0]] };
+                    din <= { 8'h00, wbuf_data[wr_out[WPTR-1:0]] };
+                    byte_write <= 1;
+                    read <= 0;
+                    write <= 1;
+                    is_read_acc <= 0;
+                end else begin
+                    // A read fetches the whole line, so it asks for its start.
+                    addr <= { 3'b0, address[18:3], 3'b000 };
+                    byte_write <= 0;
+                    read <= 1;
+                    write <= 0;
+                    is_read_acc <= 1;
+                end
                 state <= S_REQ;
             end
 
@@ -233,7 +303,7 @@ module PsramBus #(
                     cache_valid[acc_idx] <= 1;
                     dbg_last_data <= dout[15:8];
                 end else begin
-                    wr_done <= 1;
+                    wr_out <= wr_out + 1;
                     dbg_last_data <= din[7:0];
                     // Keep the cache coherent rather than dropping it: a store
                     // followed by a load of the same byte is common enough that
