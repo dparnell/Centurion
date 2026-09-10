@@ -35,6 +35,7 @@ module Fat32TB;
     wire [8:0] rx_index, tx_index;
     wire [7:0] rx_byte;
     wire [7:0] dbg_state, dbg_r1, fat_state, fat_extents;
+    wire fat_fallback;
     wire dbg_block_addressing;
 
     // The parser never writes, so the transmit side is unused.
@@ -74,7 +75,7 @@ module Fat32TB;
         fat_read, fat_block, busy, ready, error,
         rx_strobe, rx_index, rx_byte,
         file_blocks, map_req, map_block, map_valid, map_lba,
-        fat_state, fat_extents);
+        fat_state, fat_extents, fat_fallback);
 
     reg [7:0] buffer [0:511];
     reg tb_read_active = 0;
@@ -149,8 +150,19 @@ module Fat32TB;
                      fat_state, dbg_state);
             $finish;
         end
-        $display("ok: mounted HAWK0.IMG - %0d blocks in %0d extent%0s",
+        $display("ok: mounted %0s - %0d blocks in %0d extent%0s",
+                 fat_fallback ? "the only file in the root" : "HAWK0.IMG",
                  file_blocks, fat_extents, fat_extents == 1 ? "" : "s");
+        // A long named file is stored under a generated 8.3 alias, so the
+        // configured name cannot match and the fallback is the only way in.
+        if ($test$plusargs("longname") && !fat_fallback) begin
+            $display("FAIL: the long named image was matched by name, so the fallback was not tested");
+            failures = failures + 1;
+        end
+        if (!$test$plusargs("longname") && fat_fallback) begin
+            $display("FAIL: HAWK0.IMG is present by name but the fallback was used");
+            failures = failures + 1;
+        end
 
         if (file_blocks !== 128) begin
             $display("FAIL: the file is %0d blocks, not the 128 that were copied in", file_blocks);

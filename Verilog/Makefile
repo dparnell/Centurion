@@ -74,7 +74,7 @@ load-tos:
 load-forth:
 	$(MAKE) PROGRAM=programs/forth.txt load
 
-test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB sd_fat32.hex sd_fat32frag.hex
+test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB sd_fat32.hex sd_fat32frag.hex sd_fat32long.hex
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp PsramTB
@@ -83,6 +83,7 @@ test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB Dis
 	vvp SdTB
 	vvp Fat32TB
 	vvp Fat32TB +image=sd_fat32frag.hex +fragmented
+	vvp Fat32TB +image=sd_fat32long.hex +longname
 	vvp DiskTB
 	vvp DiskTB +image=sd_fat32frag.hex
 
@@ -127,9 +128,10 @@ sd_pattern.hex: ../tools/MakeSdImage.py
 # The FAT32 reader, against a volume built by mkfs.vfat and mcopy - once as a
 # freshly copied file in one extent, once with its clusters deliberately
 # scattered, because the extent table is the part most likely to be wrong.
-fat32test: Fat32TB sd_fat32.hex sd_fat32frag.hex
+fat32test: Fat32TB sd_fat32.hex sd_fat32frag.hex sd_fat32long.hex
 	vvp Fat32TB
 	vvp Fat32TB +image=sd_fat32frag.hex +fragmented
+	vvp Fat32TB +image=sd_fat32long.hex +longname
 
 Fat32TB: *.v
 	iverilog -o Fat32TB Fat32TB.v
@@ -139,6 +141,9 @@ sd_fat32.hex: ../tools/MakeSdImage.py
 
 sd_fat32frag.hex: ../tools/MakeSdImage.py
 	python3 ../tools/MakeSdImage.py fat32frag $@
+
+sd_fat32long.hex: ../tools/MakeSdImage.py
+	python3 ../tools/MakeSdImage.py fat32longname $@
 
 # The whole storage stack with no CPU: card, filesystem and PSRAM cache, run
 # against both a contiguous image and a fragmented one.

@@ -74,13 +74,14 @@ module DiskTB;
     wire [15:0] map_block;
     wire [31:0] map_lba;
     wire [7:0] fat_state, fat_extents;
+    wire fat_fallback;
 
     Fat32 #(.FILENAME("HAWK0   IMG")) fat(
         clock, reset, mount, mounted, mount_failed, fail_reason,
         fat_read, fat_block, sd_busy, sd_ready, sd_error,
         rx_strobe, rx_index, rx_byte,
         file_blocks, map_req, map_block, map_valid, map_lba,
-        fat_state, fat_extents);
+        fat_state, fat_extents, fat_fallback);
 
     // ------------------------------------------------------------- the PSRAM
     wire [1:0] ps_ck, ps_ck_n, ps_cs_n, ps_rst_n, ps_rwds;

@@ -69,7 +69,9 @@ module Fat32 #(
     output reg [31:0] map_lba,
 
     output wire [7:0] dbg_state,
-    output reg [7:0] dbg_extents
+    output reg [7:0] dbg_extents,
+    // Set when the named file was not there and the only file was taken instead.
+    output wire dbg_fallback
 );
     localparam [3:0]
         FAIL_NONE = 0, FAIL_NO_MBR = 1, FAIL_NO_PARTITION = 2, FAIL_NOT_FAT32 = 3,
@@ -109,8 +111,19 @@ module Fat32 #(
     reg pe_take;
     wire [3:0] pe_off = rx_index[3:0] - 4'd14;   // the entries start at 446
 
-    // Directory scan.
-    reg name_ok, dir_end, found;
+    // Directory scan. `ent_ok' says the entry is a usable regular file at all -
+    // not free, not deleted, not a long name fragment, not the volume label -
+    // which is what the fallback below needs to know.
+    reg name_ok, ent_ok, dir_end, found;
+    // The first regular file in the root directory, remembered in case the named
+    // one is not there. A card dedicated to this machine usually holds exactly
+    // one image, and its name is very often not an 8.3 name: "CENTOS_13.IMG" is
+    // nine characters before the dot, so FAT32 stores it under a generated
+    // alias like CENTOS~1.IMG and only the alias is visible here. Falling back
+    // to the only file beats making the name a build time guess.
+    reg have_first, used_fallback;
+    reg [27:0] first_cluster;
+    reg [31:0] first_size;
     reg [27:0] found_cluster;
     reg [31:0] found_size;
     reg [27:0] dir_cluster;
@@ -143,6 +156,7 @@ module Fat32 #(
     reg [LBA-1:0] map_left;
 
     assign sd_block = { {(32-LBA){1'b0}}, block_no };
+    assign dbg_fallback = used_fallback;
 
     integer e;
 
@@ -184,6 +198,7 @@ module Fat32 #(
             if (start && sd_ready) begin
                 mounted <= 0; failed <= 0; fail_reason <= FAIL_NONE;
                 part_found <= 0; found <= 0; n_extents <= 0; too_big <= 0;
+                have_first <= 0; used_fallback <= 0;
                 acc <= 0;
                 block_no <= 0;
                 after_read <= S_MBR;
@@ -283,6 +298,12 @@ module Fat32 #(
                     chain_return <= S_CHAIN_STEP;
                     state <= S_CHAIN;
                 end
+            end else if (dir_end && have_first) begin
+                // The named file is not here, but a file is. Take it.
+                used_fallback <= 1;
+                found_cluster <= first_cluster;
+                found_size <= first_size;
+                found <= 1;
             end else if (dir_end) begin
                 fail_reason <= FAIL_NO_FILE;
                 state <= S_FAILED;
@@ -443,10 +464,16 @@ module Fat32 #(
                 0: begin
                     name_ok <= (rx_byte == FILENAME[87:80]);
                     name_shift <= { FILENAME[79:0], 8'h00 };
+                    ent_ok <= (rx_byte != 0) && (rx_byte != 8'he5);
                     if (rx_byte == 0) dir_end <= 1;
                 end
                 11: begin
-                    if (rx_byte[3] || rx_byte == 8'h0f) name_ok <= 0;
+                    // Bit 3 is the volume label, 0x0f a long name fragment, and
+                    // bit 4 a subdirectory. None of them is an image.
+                    if (rx_byte[3] || rx_byte[4] || rx_byte == 8'h0f) begin
+                        name_ok <= 0;
+                        ent_ok <= 0;
+                    end
                 end
                 20: acc[23:16] <= rx_byte;
                 21: acc[31:24] <= rx_byte;
@@ -460,6 +487,11 @@ module Fat32 #(
                     if (name_ok) begin
                         found_cluster <= acc;
                         found <= 1;
+                    end else if (ent_ok && !have_first &&
+                                 { rx_byte, found_size[23:0] } != 0) begin
+                        have_first <= 1;
+                        first_cluster <= acc;
+                        first_size <= { rx_byte, found_size[23:0] };
                     end
                 end
                 default:

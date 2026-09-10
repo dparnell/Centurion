@@ -291,6 +291,11 @@ if __name__ == "__main__":
         n = fat32(out)
     elif kind == "fat32frag":
         n = fat32(out, fragment=True)
+    elif kind == "fat32longname":
+        # The name a real Centurion image usually has. Nine characters before
+        # the dot is not an 8.3 name, so FAT32 stores a long name entry plus a
+        # generated alias, and only the alias is visible to the parser.
+        n = fat32(out, name="CENTOS_13.IMG")
     else:
         sys.exit("unknown image kind: %s" % kind)
     print("%s: %d sectors" % (out, n))
