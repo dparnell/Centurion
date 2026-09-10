@@ -6,8 +6,21 @@ megabyte card whose interesting sectors are the boot block, a couple of FAT
 sectors and a directory costs a few thousand lines rather than four million.
 That is what makes simulating a real filesystem affordable.
 
-    MakeSdImage.py pattern OUT.hex     a plain pattern card, for the SPI layer
-    MakeSdImage.py fat32 OUT.hex       a genuine FAT32 volume with an image file
+    MakeSdImage.py pattern OUT.hex          a pattern card, for the SPI layer
+    MakeSdImage.py fat32 OUT.hex            a FAT32 volume with a synthetic image
+    MakeSdImage.py fat32frag OUT.hex        the same, deliberately fragmented
+    MakeSdImage.py hawk SRC.IMG OUT.hex [N] a FAT32 volume holding a real Hawk
+                                            image, or its first N sectors
+
+The Hawk images in the Nakazoto archive under Software/Data Packs are flat
+files of **512 byte records with 400 bytes of sector data used** - which is the
+stride HawkDisk.v uses, so they need no conversion at all. Sectors are ordered
+by flat index, cylinder * 32 + head * 16 + sector. CENTOS_11.IMG and its
+siblings are 6651904 bytes, 12992 sectors, 406 cylinders.
+
+HAWK_DAVE.IMG is a different container: 416 byte records of "HawkDump\r\n", a
+two byte big endian sector number, 400 bytes of data, a two byte checksum and a
+CRLF. unhawkdump() below turns one into the flat form.
 """
 import os
 import sys
@@ -43,6 +56,20 @@ def pattern(path):
     img.put(1, bytes(SECTOR))
     img.put(17, bytes((i ^ 0x5a) & 0xff for i in range(SECTOR)))
     return img.write(path)
+
+
+def _mbr(part_lba, part_sectors):
+    """One FAT32 LBA partition, which is what a card formatted by a PC has."""
+    mbr = bytearray(SECTOR)
+    e = 0x1be
+    mbr[e + 0] = 0x00                          # not bootable
+    mbr[e + 1:e + 4] = b"\xfe\xff\xff"         # CHS, meaningless and ignored
+    mbr[e + 4] = 0x0c                          # FAT32 with LBA, the usual type
+    mbr[e + 5:e + 8] = b"\xfe\xff\xff"
+    mbr[e + 8:e + 12] = part_lba.to_bytes(4, "little")
+    mbr[e + 12:e + 16] = part_sectors.to_bytes(4, "little")
+    mbr[510:512] = b"\x55\xaa"
+    return mbr
 
 
 def _u16(b, o):
@@ -179,18 +206,7 @@ def fat32(path, part_lba=2048, part_sectors=131072, name="HAWK0.IMG",
 
     img = Sparse()
 
-    # An MBR with one FAT32 LBA partition, which is what a card formatted by a
-    # PC actually has. Type 0x0c is "FAT32 with LBA", the usual one.
-    mbr = bytearray(SECTOR)
-    entry = 0x1be
-    mbr[entry + 0] = 0x00                       # not bootable
-    mbr[entry + 1:entry + 4] = b"\xfe\xff\xff"  # CHS, meaningless and ignored
-    mbr[entry + 4] = 0x0c
-    mbr[entry + 5:entry + 8] = b"\xfe\xff\xff"
-    mbr[entry + 8:entry + 12] = part_lba.to_bytes(4, "little")
-    mbr[entry + 12:entry + 16] = part_sectors.to_bytes(4, "little")
-    mbr[510:512] = b"\x55\xaa"
-    img.put(0, mbr)
+    img.put(0, _mbr(part_lba, part_sectors))
 
     # Everything in the partition that is not all zeros. An unwritten sector of
     # a formatted volume genuinely reads as zeros, so leaving them out loses
@@ -202,10 +218,73 @@ def fat32(path, part_lba=2048, part_sectors=131072, name="HAWK0.IMG",
     return img.write(path)
 
 
+def unhawkdump(data):
+    """A HawkDump container -> the flat 512 byte stride form."""
+    REC, TAG = 416, b"HawkDump\r\n"
+    if not data.startswith(TAG):
+        return data                       # already flat
+    out = bytearray()
+    for n in range(len(data) // REC):
+        rec = data[n * REC:(n + 1) * REC]
+        if rec[:10] != TAG:
+            raise RuntimeError("record %d is not a HawkDump record" % n)
+        num = int.from_bytes(rec[10:12], "big")
+        if num != n & 0xffff:
+            raise RuntimeError("record %d says it is sector %d" % (n, num))
+        out += rec[12:412] + bytes(SECTOR - 400)
+    return bytes(out)
+
+
+def hawk(path, src, sectors=None, part_lba=2048, name="HAWK0.IMG"):
+    """A FAT32 volume holding a real Hawk image, or the front of one.
+
+    A whole 6.6MB image is a perfectly good thing to put on a card and a poor
+    thing to simulate, so `sectors` takes just the front of it - enough to prove
+    the controller reads real sectors from real offsets without asking iverilog
+    to load thirteen thousand of them.
+    """
+    import subprocess
+    import tempfile
+
+    data = unhawkdump(open(src, "rb").read())
+    if sectors:
+        data = data[:sectors * SECTOR]
+    # The volume has to hold the file with room for its metadata.
+    part_sectors = max(131072, (len(data) // SECTOR) * 2 + 8192)
+
+    work = tempfile.mkdtemp()
+    part = os.path.join(work, "part.img")
+    with open(part, "wb") as f:
+        f.truncate(part_sectors * SECTOR)
+    subprocess.run(["mkfs.vfat", "-F", "32", "-s", "1", "-n", "CENTURION", part],
+                   check=True, capture_output=True)
+    payload = os.path.join(work, name)
+    open(payload, "wb").write(data)
+    subprocess.run(["mcopy", "-i", part, payload, "::" + name],
+                   check=True, capture_output=True)
+
+    vol = bytearray(open(part, "rb").read())
+    img = Sparse()
+    img.put(0, _mbr(part_lba, part_sectors))
+    for i in range(part_sectors):
+        sec = vol[i * SECTOR:(i + 1) * SECTOR]
+        if any(sec):
+            img.put(part_lba + i, sec)
+    return img.write(path)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         sys.exit(__doc__)
-    kind, out = sys.argv[1], sys.argv[2]
+    kind = sys.argv[1]
+    if kind == "hawk":
+        if len(sys.argv) < 4:
+            sys.exit(__doc__)
+        src, out = sys.argv[2], sys.argv[3]
+        n = hawk(out, src, int(sys.argv[4]) if len(sys.argv) > 4 else None)
+        print("%s: %d sectors" % (out, n))
+        raise SystemExit
+    out = sys.argv[2]
     if kind == "pattern":
         n = pattern(out)
     elif kind == "fat32":

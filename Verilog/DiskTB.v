@@ -158,14 +158,34 @@ module DiskTB;
         end
     endtask
 
+    // With +raw= the expected contents are a real disk image rather than the
+    // synthetic pattern, which is what proves the controller reads real sectors
+    // from real offsets and not merely something self consistent.
+    reg [7:0] raw [0:256*512-1];
+    reg use_raw = 0;
+    reg [8*64:1] raw_file;
+    initial if ($value$plusargs("raw=%s", raw_file)) begin
+        $readmemh(raw_file, raw);
+        use_raw = 1;
+    end
+
+    function [7:0] expected(input [15:0] b, input integer off, input integer bias);
+        // In raw mode the bias perturbs the real data rather than being
+        // ignored, so "write then read back" still tests something: without it
+        // the written block is identical to what was already there and the
+        // check passes whatever happened.
+        expected = use_raw ? (raw[b * 512 + off] ^ bias[7:0])
+                           : ((b * 13 + off + bias) & 8'hff);
+    endfunction
+
     task expect_buffer(input [15:0] b, input integer bias);
         begin
             wrong = 0;
             for (i = 0; i < 512; i = i + 1)
-                if (sector_buf[i] !== ((b * 13 + i + bias) & 8'hff)) begin
+                if (sector_buf[i] !== expected(b, i, bias)) begin
                     if (wrong < 3)
                         $display("FAIL: buffer[%0d] is %h, wanted %h",
-                                 i, sector_buf[i], (b * 13 + i + bias) & 8'hff);
+                                 i, sector_buf[i], expected(b, i, bias));
                     wrong = wrong + 1;
                 end
             if (wrong != 0) begin
@@ -226,7 +246,7 @@ module DiskTB;
             $display("ok: block 100 is a miss and is fetched, so the cache is per block");
 
         // ---- write a block: PSRAM changes, the card does not
-        for (i = 0; i < 512; i = i + 1) sector_buf[i] = (5 * 13 + i + 77) & 8'hff;
+        for (i = 0; i < 512; i = i + 1) sector_buf[i] = expected(5, i, 77);
         do_op(1, 5);
         for (i = 0; i < 512; i = i + 1) sector_buf[i] = 8'hee;
         do_op(0, 5);
@@ -259,7 +279,7 @@ module DiskTB;
         @(negedge clock);
         wrong = 0;
         for (i = 0; i < 512; i = i + 1)
-            if (card.mem[block5_lba * 512 + i] !== ((5 * 13 + i + 77) & 8'hff)) wrong = wrong + 1;
+            if (card.mem[block5_lba * 512 + i] !== expected(5, i, 77)) wrong = wrong + 1;
         if (wrong == 0)
             $display("ok: the card holds the new block 5 at LBA %0d", block5_lba);
         else begin

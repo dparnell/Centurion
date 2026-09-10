@@ -34,7 +34,12 @@
 module DiskImage #(
     // Above the 256K the CPU can address, and sized for a Hawk platter.
     parameter [22:0] IMAGE_BASE = 23'h040000,
-    parameter integer MAX_BLOCKS = 12800,
+    // Blocks in the largest image this will serve. A nominal Hawk platter is
+    // 12800 sectors - 400 cylinders, two heads, sixteen sectors - but the real
+    // images in the Nakazoto archive are 406 cylinders and so 12992, which 12800
+    // silently truncates. The ceiling is what the part holds above the CPU's
+    // 256K: (8MB - 256K) / 512 is 15872.
+    parameter integer MAX_BLOCKS = 13312,
     parameter integer META_BITS = 14        // $clog2(MAX_BLOCKS) rounded up
 ) (
     input wire clock,
@@ -370,7 +375,12 @@ module DiskImage #(
 
         // ---------------------------------------------------------- flushing
         S_SCAN:
-            if (scan >= file_blocks[META_BITS-1:0] || scan >= MAX_BLOCKS - 1) begin
+            // Compare the block count at its own width. Truncating it to the
+            // scan counter's width makes a count that is exactly a power of two
+            // read as zero, so the flush ends before it starts and every dirty
+            // block is silently lost.
+            if ({ {(16-META_BITS){1'b0} }, scan } >= file_blocks
+                || scan >= MAX_BLOCKS - 1) begin
                 flushing <= 0;
                 busy <= 0;
                 state <= S_IDLE;

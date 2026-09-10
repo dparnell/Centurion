@@ -23,3 +23,7 @@ sd_fat32.hex
 Fat32TB
 sd_fat32frag.hex
 DiskTB
+sd_real.hex
+real_raw.hex
+sd_centos.hex
+centos_raw.hex

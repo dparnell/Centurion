@@ -146,6 +146,23 @@ disktest: DiskTB sd_fat32.hex sd_fat32frag.hex
 	vvp DiskTB
 	vvp DiskTB +image=sd_fat32frag.hex
 
+# The same, against a real Centurion disk image rather than a synthetic one -
+# which is what says the controller reads real sectors from real offsets and not
+# merely something self consistent. The images are in the Nakazoto archive under
+# Software/Data Packs and are far too big to vendor, so point IMG at one:
+#
+#   make centostest IMG=~/Downloads/CENTOS_11.IMG
+#
+# Only the first SECTORS of it are used; a whole 6.6MB image is a fine thing to
+# put on a card and a poor thing to ask iverilog to load.
+IMG ?=
+SECTORS ?= 256
+centostest: DiskTB
+	@test -n "$(IMG)" || (echo "set IMG to a Centurion disk image" && false)
+	python3 ../tools/MakeSdImage.py hawk $(IMG) sd_real.hex $(SECTORS)
+	python3 -c "import sys; d=open('$(IMG)','rb').read()[:$(SECTORS)*512]; 	    open('real_raw.hex','w').write(chr(10).join('%02x'%b for b in d))"
+	vvp DiskTB +image=sd_real.hex +raw=real_raw.hex
+
 DiskTB: *.v
 	iverilog -o DiskTB DiskTB.v
 
