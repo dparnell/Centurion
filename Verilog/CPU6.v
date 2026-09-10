@@ -26,6 +26,13 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // critical path of the whole design and must not gain a mux.
     input wire ptinit_write, input wire [7:0] ptinit_addr, input wire [7:0] ptinit_data,
     input wire [3:0] sense_switches,
+    // A DMA device. It does not drive the bus: it borrows these address
+    // registers, which is what DMA means on this machine. req says it has work,
+    // write says which way the byte goes, and step tells it one moved - on a
+    // write we took wdata, on a read rdata is what came back. end is this
+    // machine's own end condition, the work address register wrapping.
+    input wire dma_req, input wire dma_device_write, input wire [7:0] dma_wdata,
+    output wire dma_step, output wire [7:0] dma_rdata, output wire dma_end,
     // Page table initialiser. Only the write path is muxed: the read path is the
     // critical path of the whole design and must not gain a mux.
     // For the board level status dump: where the machine is, at both levels.
@@ -78,6 +85,9 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     reg [2:0] page_table_base;
     // write delay
     reg writEnDelayed;
+
+    // Where we are in a DMA byte transfer; see dma_step below.
+    reg [1:0] dma_phase;
 
     // Page table B9/B10 93L422 - 2 x 256 x 4bit RAM
     // These map to LUTRAM, but only because they are written from their own always
@@ -211,6 +221,41 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     reg [7:0] f11;
     // Up/down direction for the MAR and work AR, the two 74LS669 counter pairs.
     wire count_up = f11[3];
+
+    // Transfers happen when F11 bit 4 is set and bit 2 clear, which is what
+    // Meisaka's emulator tests as (busctl & 20) == 16 before stepping a
+    // registered DMA device. One byte per enabled cycle for as long as the
+    // device is asking.
+    // A transfer runs while the DMA control bit is set, the DMA address increment
+    // is not inhibited, and a device is actually asking - the same
+    // (busctl & 0x14) == 0x10 condition Meisaka's emulator uses.
+    wire dma_on = f11[4] & ~f11[2] & dma_req;
+
+    // A byte moves every three enabled cycles, because that is how long one of
+    // this machine's bus cycles takes to resolve:
+    //
+    //   0  the address is already on the bus; set up the write data
+    //   1  writeEnBus is still the previous cycle's writEnDelayed
+    //   2  writeEnBus is asserted and the memory has answered, so this is where
+    //      the byte lands or is taken, and where the counters may step
+    //
+    // Two phases is not enough and the failure is quiet: writeEnBus is a
+    // registered output, so it goes high one cycle after writEnDelayed is set,
+    // by which time a two phase engine has already stepped the address and every
+    // byte is written one place too far along. The microcode never notices this
+    // because it holds the MAR still across its own bus cycles.
+    // Nothing moves once the work address has reached its end value: the
+    // device sees dma_end and drops its request instead. This matches the
+    // emulator, which passes atend to the device and lets it call end() rather
+    // than transferring a byte it was never asked for.
+    assign dma_step = dma_on & enable & (dma_phase == 2) & ~dma_end;
+
+    // The byte under the address the MMU has already translated, and the end of
+    // the transfer: the work address counting up through 0xffff is what stops it,
+    // so software sets it to the negated length. The device sees this before the
+    // step that would take it past the end.
+    assign dma_rdata = dataInCPU;
+    assign dma_end = (work_address == 16'hffff);
     // Set by reset and cleared the first time the status source at d2d3 == 11 is read,
     // which is how the microcode learns it has just come out of reset.
     reg resetting;
@@ -565,6 +610,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             flags_register <= 0;
             writeEnBus <= 0;
             writEnDelayed <= 0;
+            dma_phase <= 0;
             pipeline <= 56'h42abc618b781c0; // First microcode word. Synth prefers it this way.
             uc_rom_address_pipe <= 0;
             interrupt_level <= 0;
@@ -686,6 +732,27 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                     end
                 7: begin bus_write <= FBus; writEnDelayed <= 1; end
             endcase
+
+            // The DMA transfer, which happens alongside whatever the microcode is
+            // doing - and while a device is asking, the microcode is sitting in a
+            // wait loop testing for exactly that. This has to come after the k11
+            // case, because anything that sets writEnDelayed must be assigned
+            // later than the clear above it.
+            dma_phase <= 0;
+            if (dma_on && !dma_end) begin
+                dma_phase <= (dma_phase == 2) ? 2'd0 : dma_phase + 1;
+                if (dma_phase == 0 && dma_device_write) begin
+                    bus_write <= dma_wdata;
+                    writEnDelayed <= 1;
+                end
+                if (dma_phase == 2) begin
+                    // The byte has landed, or is on dataInCPU to be taken. Step
+                    // both counters, in the direction F11 bit 3 gives everything
+                    // else.
+                    work_address <= count_up ? work_address + 1 : work_address - 1;
+                    memory_address <= count_up ? memory_address + 1 : memory_address - 1;
+                end
+            end
         end
     end
 
