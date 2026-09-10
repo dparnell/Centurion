@@ -439,15 +439,27 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
         jsr_ = 1; // Inverted output
         if (k9_enable == 0) begin
             case (k9)
-                0: ; // Bus busy
+                // Bus busy. Nothing on this board ever holds the bus, so the
+                // answer is always "not busy" - which is jsr_ low, because jsr_
+                // is the inverted output and the emulator's k9_com for this
+                // select is a hardwired one. Leaving it high stalls the DMA wait
+                // loop for ever: that loop is two words long and this is the
+                // only condition in it.
+                0: jsr_ = 0;
                 1: jsr_ = register_index[0] | register_index[4];
                 2: jsr_ = ~register_index[0];
                 3: jsr_ = ~not_mem; // NOT.MEM
                 4: jsr_ = reg_n & ~virtual_address[18];
-                5: ; // DMA interrupt active
+                // A device is asking for a DMA transfer. This is Meisaka's
+                // emulator's dma_13, raised by the device and dropped when the
+                // transfer reaches its end; its k9_com is inverted on the way
+                // out, which is what jsr_ already is.
+                5: jsr_ = ~dma_req;
                 6: ; // Parity error
                 7: begin
-                    jsr_ = ~(int_enabled & ~int_reqn) ; // Interrupt
+                    // Anything at all wanting attention: a DMA request as well
+                    // as an interrupt.
+                    jsr_ = ~(dma_req | (int_enabled & ~int_reqn)); // Interrupt
                    end
             endcase
         end
@@ -530,7 +542,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             case (k13)
                 0: seq0_orin[3] = condition_codes[3]; // OR2 = INT.EN;
                 1: ; // OR2 = LVL15.Q; OR3 = INTR.Q;
-                2: ; // OR2 = E10.6.Q; OR3 = DMA13.Q;
+                // OR2 = E10.6.Q; OR3 = DMA13.Q. Note bit 3 really is OR3: case 0
+                // above puts the link/carry there, which is where the emulator
+                // puts it too, whatever that line's comment says.
+                2: seq0_orin[3] = ~dma_req;
                 3: ; // Not used
             endcase
         end
