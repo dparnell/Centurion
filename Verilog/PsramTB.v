@@ -44,7 +44,7 @@ module PsramTB;
     // The power up wait is 300us on the board; shorten it so the test does not
     // spend its whole run waiting for a part that is modelled as always ready.
     PsramSdr #(.RESET_CLOCKS(16)) dut(
-        .clk(clk), .resetn(resetn),
+        .clk(clk), .sample_clk(clk), .resetn(resetn),
         .read(read), .write(write), .addr(addr), .din(din),
         .byte_write(byte_write), .dout(dout), .busy(busy),
         .O_psram_ck(ck), .O_psram_ck_n(ck_n), .O_psram_cs_n(cs_n),

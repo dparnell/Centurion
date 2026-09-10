@@ -123,7 +123,29 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // at 2 and 9.3 at 4. Simulation cannot answer where that
                     // stops working, because the behavioural die has no timing
                     // - only the board can, which is what maptest.s is for.
-                    parameter PSRAM_MULT = 2)
+                    parameter PSRAM_MULT = 2,
+                    // Where in the cycle the memory's incoming bytes are
+                    // captured, in sixteenths of the PSRAM clock period - so
+                    // 0.58ns a step at 108MHz. "0000" samples where it always
+                    // has; larger values move the capture later, to wherever the
+                    // data has actually arrived by. This is the knob 4x needs,
+                    // and the only way to find its value is to sweep it on the
+                    // board and watch maptest.
+                    //
+                    // It has to be a string, and a real one. apycula reads this
+                    // with int(parm, 2), so it wants the four characters "1100"
+                    // and not a value that happens to spell them: build it with
+                    // arithmetic and yosys forgets it was ever a string, writes
+                    // the ASCII bits into the netlist, and apycula parses those
+                    // thirty two bits as the number instead. Every phase then
+                    // programs the same garbage, which looks exactly like the
+                    // knob having no effect - a whole sweep of it here before I
+                    // looked at what actually reached the netlist.
+                    parameter PSRAM_PHASE = "0000",
+                    // Whole phases, on top of PSRAM_PHASE's sixteenths. The two
+                    // together are a coarse and a fine control over one thing:
+                    // where in the cycle the pins are looked at.
+                    parameter integer PSRAM_LATE = 0)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -220,16 +242,19 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // which has to land between 400MHz and 1200MHz: 27 * 2 * 16 is 864, and
     // 27 * 4 * 8 is the same.
     wire psram_clk;
+    wire psram_sample_clk;
     wire psram_lock;
     generate
     if (PSRAM_MULT == 1) begin: no_pll
         assign psram_clk = clock;
+        assign psram_sample_clk = clock;
         assign psram_lock = 1'b1;
     end else begin: pll
         rPLL #(.FCLKIN("27"), .IDIV_SEL(0), .FBDIV_SEL(PSRAM_MULT-1),
-               .ODIV_SEL(PSRAM_MULT == 2 ? 16 : 8), .DEVICE("GW1NR-9C"))
+               .ODIV_SEL(PSRAM_MULT == 2 ? 16 : 8), .DEVICE("GW1NR-9C"),
+               .PSDA_SEL(PSRAM_PHASE), .DYN_DA_EN("false"))
             psram_pll(.CLKOUT(psram_clk), .LOCK(psram_lock),
-                      .CLKOUTP(), .CLKOUTD(), .CLKOUTD3(),
+                      .CLKOUTP(psram_sample_clk), .CLKOUTD(), .CLKOUTD3(),
                       .RESET(1'b0), .RESET_P(1'b0), .CLKIN(clock), .CLKFB(1'b0),
                       .FBDSEL(6'b0), .IDSEL(6'b0), .ODSEL(6'b0),
                       .PSDA(4'b0), .DUTYDA(4'b0), .FDLY(4'b0));
@@ -267,9 +292,10 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // At 27MHz CK one phase is 9.3ns, which is not enough for the round trip out
     // to the die and back: the memory then reads correctly most of the time and
     // wrong occasionally, which maptest catches in seconds.
-    PsramSdr #(.SAMPLE_LATE(0), .RESET_CLOCKS(8100 * PSRAM_MULT),
+    PsramSdr #(.SAMPLE_LATE(PSRAM_LATE), .RESET_CLOCKS(8100 * PSRAM_MULT),
                    .DEBUG_SCAN(PSRAM_MULT >= 4 ? 0 : 1)) psram(
-        .clk(psram_clk), .resetn(reset_btn & psram_lock),
+        .clk(psram_clk), .sample_clk(psram_sample_clk),
+        .resetn(reset_btn & psram_lock),
         .read(read), .write(write), .addr(address), .din(din),
         .byte_write(byte_write), .dout(dout), .busy(busy_raw),
         .O_psram_ck(O_psram_ck), .O_psram_ck_n(O_psram_ck_n),

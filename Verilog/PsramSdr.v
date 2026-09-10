@@ -80,7 +80,15 @@ module PsramSdr #(
     parameter integer DEBUG_SCAN = 1,
     parameter [4:0] SCAN_CK = 2*LATENCY + BURST
 ) (
-    input wire clk,                      // 27MHz, the board clock
+    input wire clk,                      // the PHY's clock; see PSRAM_MULT
+    // The clock the incoming bytes are captured on. Same rate as clk and from
+    // the same PLL, so the two have a fixed relationship, but shifted in phase
+    // so that the capture point can be put where the data actually is. With
+    // four phases per CK the choice is otherwise one of two coarse positions,
+    // and at 27MHz CK neither of them works: one phase after the edge is 9.3ns,
+    // too early for the round trip out to the die and back, and two phases is
+    // 18.5ns, which is the boundary between the two bytes of the word.
+    input wire sample_clk,
     input wire resetn,
     input wire read,                     // hold until busy rises
     input wire write,
@@ -210,7 +218,10 @@ module PsramSdr #(
     // together, one cycle after that word went past.
     localparam [1:0] PH_A = SAMPLE_LATE ? 2'd3 : 2'd2;
     localparam [1:0] PH_B = SAMPLE_LATE ? 2'd1 : 2'd0;
-    always @(posedge clk) begin
+    // On sample_clk rather than clk: same rate, shifted phase. ph is stable well
+    // before either edge of it, so using it to choose the cycle is safe, and the
+    // shift only moves *when in the cycle* the pins are looked at.
+    always @(posedge sample_clk) begin
         if (ph == PH_A) rx_a <= dq_in;
         if (ph == PH_B) begin rx_b <= dq_in; rx_a_held <= rx_a; end
     end
