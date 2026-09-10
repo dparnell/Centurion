@@ -197,6 +197,33 @@ module ProgramTB;
             $display("\nrx read at pc=%h mar=%h ready=%b", dut.pc_live0,
                      dut.addressBus, dut.mux0.byteReady);
 
+    // +dmatrace: the DMA path, which is otherwise entirely invisible - the CPU
+    // executes the same wait loop whether a byte moved or not. This prints the
+    // latch bits the transfer is gated on when they change, then a line per byte.
+    reg [7:0] last_f11 = 8'hxx;
+    always @(posedge in_clk) if ($test$plusargs("dmatrace")) begin
+        if (dut.cpu.f11 !== last_f11) begin
+            $display("f11 %b -> %b (dma_on needs bit4 set, bit2 clear) req=%b",
+                     last_f11, dut.cpu.f11, dut.cpu.dma_req);
+            last_f11 = dut.cpu.f11;
+        end
+        if (dut.cpu.dma_step)
+            $display("dma %s mar=%h war=%h data=%h",
+                     dut.cpu.dma_device_write ? "wr" : "rd",
+                     dut.cpu.memory_address, dut.cpu.work_address,
+                     dut.cpu.dma_device_write ? dut.cpu.dma_wdata : dut.cpu.dma_rdata);
+    end
+
+    // +uctrace: the microsequencer itself, one line per enabled cycle, with the
+    // condition inputs the DMA wait loop turns on. A machine stuck inside one
+    // instruction shows nothing at all through +pctrace.
+    always @(posedge in_clk) if ($test$plusargs("uctrace"))
+        if (dut.cpu_en)
+            $display("uc %h k9en=%b k9=%d k13=%d jsr_=%b or=%b f11=%b req=%b",
+                     dut.dbg_uc_address, dut.cpu.k9_enable, dut.cpu.k9,
+                     dut.cpu.k13, dut.cpu.jsr_, dut.cpu.seq0_orin,
+                     dut.cpu.f11, dut.cpu.dma_req);
+
     // +pctrace: one line per instruction fetch, so a machine that stops can be
     // told from a machine that is stuck in a loop, and the address named.
     always @(posedge in_clk) if ($test$plusargs("pctrace"))
