@@ -191,6 +191,20 @@ module PsramSdr #(
     end
     wire [15:0] rx_word = { rx_a_held, rx_b };   // the previous CK cycle's word
 
+    // Crossing into this domain. The clock here is the board clock multiplied,
+    // so read and write arrive from a slower domain of their own; two flip flops
+    // settle them. Nothing else needs crossing, because the protocol already
+    // holds everything steady: addr, din and byte_write do not move until busy
+    // has risen, by which time the request has been seen here.
+    reg [1:0] read_sync, write_sync;
+    initial begin read_sync = 0; write_sync = 0; end
+    always @(posedge clk) begin
+        read_sync <= { read_sync[0], read };
+        write_sync <= { write_sync[0], write };
+    end
+    wire read_s = read_sync[1];
+    wire write_s = write_sync[1];
+
     always @(posedge clk) begin
         if (!resetn) begin
             state <= S_RESET; delay <= 0; count <= 0;
@@ -215,20 +229,20 @@ module PsramSdr #(
                     if (delay == RESET_CLOCKS[13:0]) state <= S_IDLE;
                 end
 
-                S_IDLE: if (step && (read || write)) begin
-                    is_read <= read;
+                S_IDLE: if (step && (read_s || write_s)) begin
+                    is_read <= read_s;
                     wdata <= din;
                     wbyte <= byte_write;
                     wodd <= addr[0];
                     // CA: read/write, memory space, linear burst, then the
                     // halfword address split the way the bus wants it.
-                    ca <= { read, 2'b01, 11'b0, addr[21:4], 13'b0, addr[3:1] };
+                    ca <= { read_s, 2'b01, 11'b0, addr[21:4], 13'b0, addr[3:1] };
                     cs_n <= 0;
                     ck_en <= 1;
                     dq_oe <= 1;
                     count <= 3;                  // three CK of command
                     scan_idx <= 0;
-                    if (read) begin
+                    if (read_s) begin
                         dbg_match <= 5'h1f;
                         dbg_nonff <= 0;
                     end
