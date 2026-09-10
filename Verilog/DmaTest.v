@@ -40,7 +40,13 @@ module DmaTest(
     output wire [7:0] dma_wdata,
     input wire dma_step,
     input wire [7:0] dma_rdata,
-    input wire dma_end
+    input wire dma_end,
+
+    // Raised when a transfer finishes, so a driver can be interrupt driven
+    // rather than polling. Controlled the way the emulator's disk controller
+    // does it: register 14 arms it, 12 forces it, 13 disarms and clears, 15
+    // clears. This is the core's dma_int, not its dma_req.
+    output wire dma_int
 );
     // What the byte at offset N should be. Any function of N would do; this one
     // is cheap and makes a wrong offset obvious by eye in a trace.
@@ -56,14 +62,17 @@ module DmaTest(
     reg [15:0] bad_count;
     reg [15:0] bad_offset;
     reg [7:0] bad_want, bad_got;
+    reg int_enabled, int_pending;
 
     initial begin
         cmd = CMD_IDLE; busy = 0; done = 0;
         offset = 0; bad_count = 0; bad_offset = 0; bad_want = 0; bad_got = 0;
+        int_enabled = 0; int_pending = 0;
         data_out = 0;
     end
 
     assign dma_req = busy;
+    assign dma_int = int_pending;
     assign dma_write = (cmd == CMD_TO_MEMORY);
     assign dma_wdata = pattern(offset);
 
@@ -72,6 +81,7 @@ module DmaTest(
             cmd <= CMD_IDLE; busy <= 0; done <= 0;
             offset <= 0; bad_count <= 0; bad_offset <= 0;
             bad_want <= 0; bad_got <= 0;
+            int_enabled <= 0; int_pending <= 0;
         end else begin
             // The transfer side, which runs whether or not the CPU is enabled:
             // the core steps us when it moves a byte.
@@ -89,6 +99,7 @@ module DmaTest(
             if (busy && dma_end) begin
                 busy <= 0;
                 done <= 1;
+                if (int_enabled) int_pending <= 1;
             end
 
             // The register side, gated so one bus write is one write.
@@ -108,6 +119,10 @@ module DmaTest(
                             bad_got <= 0;
                         end
                     end
+                    4'hc: if (int_enabled) int_pending <= 1;  // force
+                    4'hd: begin int_enabled <= 0; int_pending <= 0; end
+                    4'he: int_enabled <= 1;
+                    4'hf: int_pending <= 0;
                     default: ;
                 endcase
             end
@@ -116,7 +131,7 @@ module DmaTest(
 
     always @(*) begin
         case (address)
-            4'h0: data_out = { 5'b0, bad_count != 0, done, busy };
+            4'h0: data_out = { 3'b0, int_pending, int_enabled, bad_count != 0, done, busy };
             4'h1: data_out = bad_count[7:0];
             4'h2: data_out = bad_count[15:8];
             4'h3: data_out = bad_offset[7:0];

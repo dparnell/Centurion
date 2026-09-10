@@ -383,7 +383,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // The DMA device and the core's side of it. The device stores nothing: it
     // generates or checks a pattern, which is enough to test the path and keeps
     // the block RAM free for the disk controllers' sector buffers.
-    wire dma_req, dma_device_write, dma_step, dma_end;
+    wire dma_req, dma_device_write, dma_step, dma_end, dma_int;
     wire [7:0] dma_wdata, dma_rdata, dma_data;
 
     AddressDecode decode(addressBus, mux_select, diag_select, ram_select,
@@ -452,11 +452,12 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     DmaTest dmatest(clock, cpu_en, reset, dma_select, addressBus[3:0], writeEnBus,
                     data_c2r, dma_data,
                     dma_req, dma_device_write, dma_wdata,
-                    dma_step, dma_rdata, dma_end);
+                    dma_step, dma_rdata, dma_end, dma_int);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr, SENSE_SWITCHES,
               dma_req, dma_device_write, dma_wdata, dma_step, dma_rdata, dma_end,
+              dma_int,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
               dbg_d2d3, dbg_f11,
               dbg_e7, dbg_data_in, dbg_entry0,
