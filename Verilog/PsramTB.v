@@ -1,9 +1,5 @@
 `timescale 1 ns/10 ps
-// The Gowin IOBUF, for simulation. OEN is active low.
-module IOBUF(output O, inout IO, input I, input OEN);
-    assign IO = OEN ? 1'bz : I;
-    assign O  = IO;
-endmodule
+`include "SimPrimitives.v"
 
 `include "PsramSdr.v"
 `include "PsramTest.v"
