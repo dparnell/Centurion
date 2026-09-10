@@ -1,0 +1,576 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4           ; 19200 7N1, the settings diag leaves behind
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$bfe0
+bf
+e0
+5f  // 8009  XAS
+90  // 800a  LDA #banner
+81
+d7
+79  // 800d  JSR puts
+81
+65
+80  // 8010  LDAB #$ff           ; a fill nothing would produce, so a byte that never
+ff
+79  // 8012  JSR fill            ; arrived reads as ff rather than as a plausible value
+80
+bf
+79  // 8015  JSR setup
+80
+51
+80  // 8018  LDAB #2             ; the device generates
+02
+a1  // 801a  STAB DMACMD
+f3
+00
+2f  // 801d  DMA $06             ; enable
+06
+79  // 801f  JSR waitdone
+80
+5e
+2f  // 8022  DMA $07             ; disable
+07
+90  // 8024  LDA #m1
+82
+09
+79  // 8027  JSR puts
+81
+65
+79  // 802a  JSR report
+80
+7a
+79  // 802d  JSR verify          ; check the buffer ourselves
+80
+f0
+79  // 8030  JSR setup
+80
+51
+80  // 8033  LDAB #1             ; the device checks
+01
+a1  // 8035  STAB DMACMD
+f3
+00
+2f  // 8038  DMA $06
+06
+79  // 803a  JSR waitdone
+80
+5e
+2f  // 803d  DMA $07
+07
+90  // 803f  LDA #m2
+82
+15
+79  // 8042  JSR puts
+81
+65
+79  // 8045  JSR report
+80
+7a
+90  // 8048  LDA #mdone
+82
+36
+79  // 804b  JSR puts
+81
+65
+71  // 804e  halt:   JMP halt
+80
+4e
+2f  // 8051  setup:  DMA $04             ; map 0
+04
+90  // 8053  LDA #BUF
+10
+00
+2f  // 8056  DMA $00             ; address <- A
+00
+90  // 8058  LDA #$ffff-LEN
+ff
+bf
+2f  // 805b  DMA $02             ; count <- A
+02
+09  // 805d  RSR
+90  // 805e  LDA #$4000
+40
+00
+b1  // 8061  STA tmp
+b0
+12
+81  // 8064  wd1:    LDAB DMACMD
+f3
+00
+d0  // 8067  LDB #$0001
+00
+01
+5a  // 806a  NAB
+14  // 806b  BZ wd2              ; busy clear: finished
+0c
+91  // 806d  LDA tmp
+b0
+12
+39  // 8070  DCA
+b1  // 8071  STA tmp
+b0
+12
+14  // 8074  BZ wd2              ; ran out of patience
+03
+71  // 8076  JMP wd1
+80
+64
+09  // 8079  wd2:    RSR
+81  // 807a  report: LDAB DMACMD
+f3
+00
+79  // 807d  JSR puthex
+81
+91
+79  // 8080  JSR space
+81
+7f
+81  // 8083  LDAB DMAPOSH
+f3
+08
+79  // 8086  JSR puthex
+81
+91
+81  // 8089  LDAB DMAPOSL
+f3
+07
+79  // 808c  JSR puthex
+81
+91
+79  // 808f  JSR space
+81
+7f
+81  // 8092  LDAB DMABADH
+f3
+02
+79  // 8095  JSR puthex
+81
+91
+81  // 8098  LDAB DMABADL
+f3
+01
+79  // 809b  JSR puthex
+81
+91
+79  // 809e  JSR space
+81
+7f
+81  // 80a1  LDAB DMAOFFH
+f3
+04
+79  // 80a4  JSR puthex
+81
+91
+81  // 80a7  LDAB DMAOFFL
+f3
+03
+79  // 80aa  JSR puthex
+81
+91
+79  // 80ad  JSR space
+81
+7f
+81  // 80b0  LDAB DMAWANT
+f3
+05
+79  // 80b3  JSR puthex
+81
+91
+81  // 80b6  LDAB DMAGOT
+f3
+06
+79  // 80b9  JSR puthex
+81
+91
+71  // 80bc  JMP crlf
+81
+85
+a1  // 80bf  fill:   STAB scr+2
+b0
+08
+90  // 80c2  LDA #0
+00
+00
+b1  // 80c5  STA i
+b0
+10
+91  // 80c8  fl1:    LDA i
+b0
+10
+d0  // 80cb  LDB #LEN
+00
+40
+51  // 80ce  SUB B,A
+20
+14  // 80d0  BZ fl2
+1d
+90  // 80d2  LDA #BUF
+10
+00
+d1  // 80d5  LDB i
+b0
+10
+58  // 80d8  AAB
+f1  // 80d9  STB tmp
+b0
+12
+91  // 80dc  LDA tmp
+b0
+12
+5c  // 80df  XAY
+81  // 80e0  LDAB scr+2
+b0
+08
+a5  // 80e3  STAB [Y]
+60
+91  // 80e5  LDA i
+b0
+10
+38  // 80e8  INA
+b1  // 80e9  STA i
+b0
+10
+71  // 80ec  JMP fl1
+80
+c8
+09  // 80ef  fl2:    RSR
+90  // 80f0  verify: LDA #0
+00
+00
+b1  // 80f3  STA i
+b0
+10
+b1  // 80f6  STA bad
+b0
+14
+91  // 80f9  vf1:    LDA i
+b0
+10
+d0  // 80fc  LDB #LEN
+00
+40
+51  // 80ff  SUB B,A
+20
+14  // 8101  BZ vf3
+55
+90  // 8103  LDA #BUF
+10
+00
+d1  // 8106  LDB i
+b0
+10
+58  // 8109  AAB
+f1  // 810a  STB tmp
+b0
+12
+91  // 810d  LDA tmp
+b0
+12
+5c  // 8110  XAY
+3a  // 8111  CLA
+85  // 8112  LDAB [Y]
+60
+b1  // 8114  STA got             ; what we read
+b0
+18
+91  // 8117  LDA i
+b0
+10
+d0  // 811a  LDB #$005a
+00
+5a
+54  // 811d  ORE B,A             ; exclusive or, and the answer lands in A
+20
+b1  // 811f  STA exp             ; what the byte should be
+b0
+16
+d1  // 8122  LDB got
+b0
+18
+51  // 8125  SUB B,A
+20
+14  // 8127  BZ vf2
+25
+91  // 8129  LDA bad
+b0
+14
+38  // 812c  INA
+b1  // 812d  STA bad
+b0
+14
+90  // 8130  LDA #mbad
+82
+21
+79  // 8133  JSR puts
+81
+65
+81  // 8136  LDAB i+1
+b0
+11
+79  // 8139  JSR puthex
+81
+91
+79  // 813c  JSR space
+81
+7f
+81  // 813f  LDAB exp+1
+b0
+17
+79  // 8142  JSR puthex
+81
+91
+81  // 8145  LDAB got+1
+b0
+19
+79  // 8148  JSR puthex
+81
+91
+79  // 814b  JSR crlf
+81
+85
+91  // 814e  vf2:    LDA i
+b0
+10
+38  // 8151  INA
+b1  // 8152  STA i
+b0
+10
+71  // 8155  JMP vf1
+80
+f9
+91  // 8158  vf3:    LDA bad
+b0
+14
+14  // 815b  BZ vf4
+01
+09  // 815d  RSR
+90  // 815e  vf4:    LDA #mok
+82
+28
+79  // 8161  JSR puts
+81
+65
+09  // 8164  RSR
+b1  // 8165  puts:   STA scr2+2
+b0
+0a
+91  // 8168  ps1:    LDA scr2+2
+b0
+0a
+5c  // 816b  XAY
+3a  // 816c  CLA
+85  // 816d  LDAB [Y]
+60
+14  // 816f  BZ ps2
+0d
+79  // 8171  JSR putc
+81
+b2
+91  // 8174  LDA scr2+2
+b0
+0a
+38  // 8177  INA
+b1  // 8178  STA scr2+2
+b0
+0a
+71  // 817b  JMP ps1
+81
+68
+09  // 817e  ps2:    RSR
+90  // 817f  space:  LDA #' '
+00
+20
+71  // 8182  JMP putc
+81
+b2
+90  // 8185  crlf:   LDA #$0d
+00
+0d
+79  // 8188  JSR putc
+81
+b2
+90  // 818b  LDA #$0a
+00
+0a
+71  // 818e  JMP putc
+81
+b2
+a1  // 8191  puthex: STAB scr+2
+b0
+08
+2c  // 8194  SRAB
+2c  // 8195  SRAB
+2c  // 8196  SRAB
+2c  // 8197  SRAB
+d0  // 8198  LDB #$000f
+00
+0f
+5a  // 819b  NAB
+79  // 819c  JSR putnib
+81
+a9
+81  // 819f  LDAB scr+2
+b0
+08
+d0  // 81a2  LDB #$000f
+00
+0f
+5a  // 81a5  NAB
+71  // 81a6  JMP putnib
+81
+a9
+90  // 81a9  putnib: LDA #digits
+81
+c7
+58  // 81ac  AAB
+85  // 81ad  LDAB [B]
+20
+71  // 81af  JMP putc
+81
+b2
+a1  // 81b2  putc:   STAB pcsave
+b0
+04
+81  // 81b5  pc1:    LDAB CTRL
+f2
+00
+2d  // 81b8  SLAB
+2d  // 81b9  SLAB
+2d  // 81ba  SLAB
+2d  // 81bb  SLAB
+2d  // 81bc  SLAB
+2d  // 81bd  SLAB
+17  // 81be  BP pc1
+f5
+81  // 81c0  LDAB pcsave
+b0
+04
+a1  // 81c3  STAB TXDATA
+f2
+01
+09  // 81c6  RSR
+30  // 81c7  digits: .ascii "0123456789abcdef"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+61
+62
+63
+64
+65
+66
+0d  // 81d7  banner: .asciiz "\r\nDMA test: status pos badcount badoff want got\r\n"
+0a
+44
+4d
+41
+20
+74
+65
+73
+74
+3a
+20
+73
+74
+61
+74
+75
+73
+20
+70
+6f
+73
+20
+62
+61
+64
+63
+6f
+75
+6e
+74
+20
+62
+61
+64
+6f
+66
+66
+20
+77
+61
+6e
+74
+20
+67
+6f
+74
+0d
+0a
+00
+74  // 8209  m1:     .asciiz "to memory: "
+6f
+20
+6d
+65
+6d
+6f
+72
+79
+3a
+20
+00
+74  // 8215  m2:     .asciiz "to device: "
+6f
+20
+64
+65
+76
+69
+63
+65
+3a
+20
+00
+20  // 8221  mbad:   .asciiz "  bad "
+20
+62
+61
+64
+20
+00
+20  // 8228  mok:    .asciiz "  buffer ok\r\n"
+20
+62
+75
+66
+66
+65
+72
+20
+6f
+6b
+0d
+0a
+00
+0d  // 8236  mdone:  .asciiz "\r\ndone\r\n"
+0a
+64
+6f
+6e
+65
+0d
+0a
+00
