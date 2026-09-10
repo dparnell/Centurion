@@ -33,6 +33,12 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // machine's own end condition, the work address register wrapping.
     input wire dma_req, input wire dma_device_write, input wire [7:0] dma_wdata,
     output wire dma_step, output wire [7:0] dma_rdata, output wire dma_end,
+
+    // Separate from the request above: this is the device saying a transfer it
+    // was asked for has finished, so that a driver need not poll. Meisaka's
+    // emulator calls it dma_12, after the controller register that raises it.
+    // Several devices would simply be OR-ed onto it.
+    input wire dma_int,
     // Page table initialiser. Only the write path is muxed: the read path is the
     // critical path of the whole design and must not gain a mux.
     // For the board level status dump: where the machine is, at both levels.
@@ -272,6 +278,11 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // It used to be an unassigned register, so interrupts could never fire at all.
     wire int_enabled = f11[0];
 
+    // A DMA interrupt only reaches the microcode while interrupts are enabled and
+    // the machine is running at a level below 2 - a level 0 or 1 routine is not
+    // interruptible by a disk finishing. This is the emulator's dmaint exactly.
+    wire dmaint = int_enabled & (interrupt_level < 2) & dma_int;
+
     /*
      * Am2909/2911 Microsequencers
      */
@@ -457,9 +468,9 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                 5: jsr_ = ~dma_req;
                 6: ; // Parity error
                 7: begin
-                    // Anything at all wanting attention: a DMA request as well
-                    // as an interrupt.
-                    jsr_ = ~(dma_req | (int_enabled & ~int_reqn)); // Interrupt
+                    // Anything at all wanting attention: a DMA request or a DMA
+                    // interrupt as well as an ordinary one.
+                    jsr_ = ~(dma_req | dmaint | (int_enabled & ~int_reqn)); // Interrupt
                    end
             endcase
         end
@@ -541,7 +552,13 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             endcase
             case (k13)
                 0: seq0_orin[3] = condition_codes[3]; // OR2 = INT.EN;
-                1: ; // OR2 = LVL15.Q; OR3 = INTR.Q;
+                // OR2 = LVL15.Q; OR3 = INTR.Q. Both are the *absence* of the
+                // thing, which is how the interrupt entry microcode tells a DMA
+                // interrupt from an ordinary one.
+                1: begin
+                    seq0_orin[2] = ~dmaint;
+                    seq0_orin[3] = ~(int_enabled & ~int_reqn);
+                   end
                 // OR2 = E10.6.Q; OR3 = DMA13.Q. Note bit 3 really is OR3: case 0
                 // above puts the link/carry there, which is where the emulator
                 // puts it too, whatever that line's comment says.
@@ -592,7 +609,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             // page's write-tracked flag inverted in bit 0. This used to be a constant
             // 0x0e with only bit 0 real, which left the DMA and reset bits stuck high.
             // The PAGE store shifts bit 0 into the top of each byte it writes.
-            11: DPBus = { interrupt_level, 1'b0 /* no DMA yet */, 1'b1,
+            11: DPBus = { interrupt_level, dmaint, 1'b1,
                           resetting, ~page_table_out[7] };
             12: ; // read switch 2 other half of dip switches and condition codes?
             13: DPBus = constant;
