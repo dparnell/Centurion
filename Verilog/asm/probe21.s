@@ -56,8 +56,9 @@ cp2:    LDA #2000           ; how many times round the loop
         STA cnt
         JMP BODY            ; and run it from PSRAM
 
-done:   LDA #'d'
-        STAB pcsave
+done:   LDA #'.'                ; a dot per run of the loop: here the memory is
+        STAB pcsave             ; the bottleneck, because every instruction
+                                ; fetched comes out of it
 pc1:    LDAB CTRL
         SLAB
         SLAB
@@ -68,9 +69,7 @@ pc1:    LDAB CTRL
         BP pc1
         LDAB pcsave
         STAB TXDATA
-        LDA #$0001
-        STA $f900
-halt:   JMP halt
+        JMP cp2                 ; round again for ever
 
 scr     .equ $b00c
 byt     .equ $b00e

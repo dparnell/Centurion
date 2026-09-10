@@ -123,7 +123,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // at 2 and 9.3 at 4. Simulation cannot answer where that
                     // stops working, because the behavioural die has no timing
                     // - only the board can, which is what maptest.s is for.
-                    parameter PSRAM_MULT = 2)
+                    parameter PSRAM_MULT = 1)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -1160,13 +1160,34 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         { sdr_state, psram_stage, psram_done, psram_pass, sdr_match, 2'b0,
           sdr_nonff, sdr_echo, psram_read0, psram_read1 };
 
+    // Thousands of clocks the core has spent held still by the memory. Sixteen
+    // bits of whole clocks wraps in 2.4ms and is useless; this wraps in 2.4s.
+    reg [15:0] stall_kclocks;
+    reg [9:0] stall_frac;
+    initial begin stall_kclocks = 0; stall_frac = 0; end
+    always @(posedge clock) begin
+        if (reset) begin
+            stall_kclocks <= 0; stall_frac <= 0;
+        end else if (dbg_bus_need) begin
+            if (stall_frac == 10'd999) begin
+                stall_frac <= 0;
+                stall_kclocks <= stall_kclocks + 1;
+            end else stall_frac <= stall_frac + 1;
+        end
+    end
+
+    // On this branch words 1 and 2 carry the memory's own counters instead of
+    // diag's, because the question here is how much traffic there is and how
+    // fast it goes - and dots per second on a serial line has turned out to
+    // measure the program's instruction count far more than the memory's speed.
     wire [79:0] dump_payload =
         { sdr_state, 4'b0, psram_select, busy, read, write,
             dbg_bus_state, dbg_bus_need, 1'b0,
-          pass_count,
-          z0_count,
+          dbg_psram_accesses,
+          stall_kclocks,
           dbg_psram_addr[15:0],
           compare_failed, timeouts_shown, dbg_psram_addr[18:16], dbg_psram_data };
+
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.

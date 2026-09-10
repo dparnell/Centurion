@@ -11,10 +11,10 @@ e0
 5f  // 8009  XAS
 90  // 800a  LDA #banner
 81
-c1
+d7
 79  // 800d  JSR puts
 81
-55
+6b
 2e  // 8010  PAGE $1c,$f8,MAPIMG ; the running map, which we edit one entry of
 1c
 f8
@@ -34,13 +34,13 @@ b0
 10
 79  // 8021  p1:     JSR setpage
 80
-82
+98
 79  // 8024  JSR wr16
 80
-91
+a7
 79  // 8027  JSR rd16
 80
-c9
+df
 91  // 802a  LDA pg
 b0
 10
@@ -63,10 +63,10 @@ b0
 10
 79  // 803e  p2a:    JSR setpage
 80
-82
+98
 79  // 8041  JSR wr16
 80
-91
+a7
 91  // 8044  LDA pg
 b0
 10
@@ -89,10 +89,10 @@ b0
 10
 79  // 8058  p2b:    JSR setpage
 80
-82
+98
 79  // 805b  JSR rd16
 80
-c9
+df
 91  // 805e  LDA pg
 b0
 10
@@ -125,314 +125,336 @@ a1  // 8076  STAB LEDS
 2e
 79  // 807c  JSR putc
 81
-9c
-71  // 807f  JMP main
+b2
+79  // 807f  JSR drain           ; and empty the receiver, so a status dump can be
+80
+85
+71  // 8082  JMP main            ; asked for while this is running
 80
 1b
-90  // 8082  setpage: LDA #MAPIMG+14
+81  // 8085  drain:  LDAB CTRL
+f2
+00
+d0  // 8088  LDB #$0001
+00
+01
+5a  // 808b  NAB
+f1  // 808c  STB scr2+2
+b0
+0a
+91  // 808f  LDA scr2+2
+b0
+0a
+14  // 8092  BZ dr1
+03
+81  // 8094  LDAB TXDATA
+f2
+01
+09  // 8097  dr1:    RSR
+90  // 8098  setpage: LDA #MAPIMG+14
 b1
 0e
-5c  // 8085  XAY
-81  // 8086  LDAB pg+1
+5c  // 809b  XAY
+81  // 809c  LDAB pg+1
 b0
 11
-a5  // 8089  STAB [Y]
+a5  // 809f  STAB [Y]
 60
-2e  // 808b  PAGE $0c,$f8,MAPIMG
+2e  // 80a1  PAGE $0c,$f8,MAPIMG
 0c
 f8
 b1
 00
-09  // 8090  RSR
-90  // 8091  wr16:   LDA #0
+09  // 80a6  RSR
+90  // 80a7  wr16:   LDA #0
 00
 00
-b1  // 8094  STA i
+b1  // 80aa  STA i
 b0
 12
-91  // 8097  w1:     LDA i
+91  // 80ad  w1:     LDA i
 b0
 12
-d0  // 809a  LDB #16
+d0  // 80b0  LDB #16
 00
 10
-51  // 809d  SUB B,A
+51  // 80b3  SUB B,A
 20
-14  // 809f  BZ w2
+14  // 80b5  BZ w2
 27
-90  // 80a1  LDA #WIN
+90  // 80b7  LDA #WIN
 71
 00
-d1  // 80a4  LDB i
+d1  // 80ba  LDB i
 b0
 12
-58  // 80a7  AAB
-f1  // 80a8  STB scr
+58  // 80bd  AAB
+f1  // 80be  STB scr
 b0
 06
-91  // 80ab  LDA scr
+91  // 80c1  LDA scr
 b0
 06
-5c  // 80ae  XAY
-91  // 80af  LDA pg
+5c  // 80c4  XAY
+91  // 80c5  LDA pg
 b0
 10
-d1  // 80b2  LDB i
+d1  // 80c8  LDB i
 b0
 12
-58  // 80b5  AAB
-f1  // 80b6  STB scr2
+58  // 80cb  AAB
+f1  // 80cc  STB scr2
 b0
 08
-81  // 80b9  LDAB scr2+1
+81  // 80cf  LDAB scr2+1
 b0
 09
-a5  // 80bc  STAB [Y]
+a5  // 80d2  STAB [Y]
 60
-91  // 80be  LDA i
+91  // 80d4  LDA i
 b0
 12
-38  // 80c1  INA
-b1  // 80c2  STA i
+38  // 80d7  INA
+b1  // 80d8  STA i
 b0
 12
-71  // 80c5  JMP w1
+71  // 80db  JMP w1
 80
-97
-09  // 80c8  w2:     RSR
-90  // 80c9  rd16:   LDA #0
+ad
+09  // 80de  w2:     RSR
+90  // 80df  rd16:   LDA #0
 00
 00
-b1  // 80cc  STA i
+b1  // 80e2  STA i
 b0
 12
-91  // 80cf  r1:     LDA i
+91  // 80e5  r1:     LDA i
 b0
 12
-d0  // 80d2  LDB #16
+d0  // 80e8  LDB #16
 00
 10
-51  // 80d5  SUB B,A
+51  // 80eb  SUB B,A
 20
-14  // 80d7  BZ r2
+14  // 80ed  BZ r2
 3c
-90  // 80d9  LDA #WIN
+90  // 80ef  LDA #WIN
 71
 00
-d1  // 80dc  LDB i
+d1  // 80f2  LDB i
 b0
 12
-58  // 80df  AAB
-f1  // 80e0  STB scr
+58  // 80f5  AAB
+f1  // 80f6  STB scr
 b0
 06
-91  // 80e3  LDA scr
+91  // 80f9  LDA scr
 b0
 06
-5c  // 80e6  XAY
-3a  // 80e7  CLA
-85  // 80e8  LDAB [Y]
+5c  // 80fc  XAY
+3a  // 80fd  CLA
+85  // 80fe  LDAB [Y]
 60
-b1  // 80ea  STA got
+b1  // 8100  STA got
 b0
 14
-91  // 80ed  LDA pg
+91  // 8103  LDA pg
 b0
 10
-d1  // 80f0  LDB i
+d1  // 8106  LDB i
 b0
 12
-58  // 80f3  AAB
-f1  // 80f4  STB scr2
+58  // 8109  AAB
+f1  // 810a  STB scr2
 b0
 08
-91  // 80f7  LDA scr2
+91  // 810d  LDA scr2
 b0
 08
-d0  // 80fa  LDB #$00ff
+d0  // 8110  LDB #$00ff
 00
 ff
-5a  // 80fd  NAB
-f1  // 80fe  STB exp
+5a  // 8113  NAB
+f1  // 8114  STB exp
 b0
 16
-91  // 8101  LDA got
+91  // 8117  LDA got
 b0
 14
-d1  // 8104  LDB exp
+d1  // 811a  LDB exp
 b0
 16
-51  // 8107  SUB B,A
+51  // 811d  SUB B,A
 20
-15  // 8109  BNZ fail
+15  // 811f  BNZ fail
 0b
-91  // 810b  LDA i
+91  // 8121  LDA i
 b0
 12
-38  // 810e  INA
-b1  // 810f  STA i
+38  // 8124  INA
+b1  // 8125  STA i
 b0
 12
-71  // 8112  JMP r1
+71  // 8128  JMP r1
 80
-cf
-09  // 8115  r2:     RSR
-90  // 8116  fail:   LDA #s_err
-81
-cb
-79  // 8119  JSR puts
-81
-55
-3a  // 811c  CLA
-81  // 811d  LDAB pg+1
-b0
-11
-79  // 8120  JSR puthex
-81
-7b
-90  // 8123  LDA #s_at
-81
-d8
-79  // 8126  JSR puts
-81
-55
-3a  // 8129  CLA
-81  // 812a  LDAB i+1
-b0
-13
-79  // 812d  JSR puthex
-81
-7b
-90  // 8130  LDA #s_want
+e5
+09  // 812b  r2:     RSR
+90  // 812c  fail:   LDA #s_err
 81
 e1
-79  // 8133  JSR puts
+79  // 812f  JSR puts
 81
-55
-3a  // 8136  CLA
-81  // 8137  LDAB exp+1
+6b
+3a  // 8132  CLA
+81  // 8133  LDAB pg+1
+b0
+11
+79  // 8136  JSR puthex
+81
+91
+90  // 8139  LDA #s_at
+81
+ee
+79  // 813c  JSR puts
+81
+6b
+3a  // 813f  CLA
+81  // 8140  LDAB i+1
+b0
+13
+79  // 8143  JSR puthex
+81
+91
+90  // 8146  LDA #s_want
+81
+f7
+79  // 8149  JSR puts
+81
+6b
+3a  // 814c  CLA
+81  // 814d  LDAB exp+1
 b0
 17
-79  // 813a  JSR puthex
+79  // 8150  JSR puthex
 81
-7b
-90  // 813d  LDA #s_got
+91
+90  // 8153  LDA #s_got
+82
+00
+79  // 8156  JSR puts
 81
-ea
-79  // 8140  JSR puts
-81
-55
-3a  // 8143  CLA
-81  // 8144  LDAB got+1
+6b
+3a  // 8159  CLA
+81  // 815a  LDAB got+1
 b0
 15
-79  // 8147  JSR puthex
+79  // 815d  JSR puthex
 81
-7b
-79  // 814a  JSR crlf
+91
+79  // 8160  JSR crlf
 81
-6f
-80  // 814d  fhalt:  LDAB #$ff           ; every LED on, and stay here
+85
+80  // 8163  fhalt:  LDAB #$ff           ; every LED on, and stay here
 ff
-a1  // 814f  STAB LEDS
+a1  // 8165  STAB LEDS
 5c
 00
-71  // 8152  JMP fhalt
+71  // 8168  JMP fhalt
 81
-4d
-b1  // 8155  puts:   STA scr2+2
+63
+b1  // 816b  puts:   STA scr2+2
 b0
 0a
-91  // 8158  ps1:    LDA scr2+2
+91  // 816e  ps1:    LDA scr2+2
 b0
 0a
-5c  // 815b  XAY
-3a  // 815c  CLA
-85  // 815d  LDAB [Y]
+5c  // 8171  XAY
+3a  // 8172  CLA
+85  // 8173  LDAB [Y]
 60
-14  // 815f  BZ ps2
+14  // 8175  BZ ps2
 0d
-79  // 8161  JSR putc
+79  // 8177  JSR putc
 81
-9c
-91  // 8164  LDA scr2+2
+b2
+91  // 817a  LDA scr2+2
 b0
 0a
-38  // 8167  INA
-b1  // 8168  STA scr2+2
+38  // 817d  INA
+b1  // 817e  STA scr2+2
 b0
 0a
-71  // 816b  JMP ps1
+71  // 8181  JMP ps1
 81
-58
-09  // 816e  ps2:    RSR
-90  // 816f  crlf:   LDA #$0d
+6e
+09  // 8184  ps2:    RSR
+90  // 8185  crlf:   LDA #$0d
 00
 0d
-79  // 8172  JSR putc
+79  // 8188  JSR putc
 81
-9c
-90  // 8175  LDA #$0a
+b2
+90  // 818b  LDA #$0a
 00
 0a
-71  // 8178  JMP putc
+71  // 818e  JMP putc
 81
-9c
-a1  // 817b  puthex: STAB scr+2
+b2
+a1  // 8191  puthex: STAB scr+2
 b0
 08
-2c  // 817e  SRAB
-2c  // 817f  SRAB
-2c  // 8180  SRAB
-2c  // 8181  SRAB
-d0  // 8182  LDB #$000f
+2c  // 8194  SRAB
+2c  // 8195  SRAB
+2c  // 8196  SRAB
+2c  // 8197  SRAB
+d0  // 8198  LDB #$000f
 00
 0f
-5a  // 8185  NAB
-79  // 8186  JSR putnib
+5a  // 819b  NAB
+79  // 819c  JSR putnib
 81
-93
-81  // 8189  LDAB scr+2
+a9
+81  // 819f  LDAB scr+2
 b0
 08
-d0  // 818c  LDB #$000f
+d0  // 81a2  LDB #$000f
 00
 0f
-5a  // 818f  NAB
-71  // 8190  JMP putnib
+5a  // 81a5  NAB
+71  // 81a6  JMP putnib
 81
-93
-90  // 8193  putnib: LDA #digits
+a9
+90  // 81a9  putnib: LDA #digits
 81
-b1
-58  // 8196  AAB
-85  // 8197  LDAB [B]
+c7
+58  // 81ac  AAB
+85  // 81ad  LDAB [B]
 20
-71  // 8199  JMP putc
+71  // 81af  JMP putc
 81
-9c
-a1  // 819c  putc:   STAB pcsave
+b2
+a1  // 81b2  putc:   STAB pcsave
 b0
 04
-81  // 819f  pc1:    LDAB CTRL
+81  // 81b5  pc1:    LDAB CTRL
 f2
 00
-2d  // 81a2  SLAB
-2d  // 81a3  SLAB
-2d  // 81a4  SLAB
-2d  // 81a5  SLAB
-2d  // 81a6  SLAB
-2d  // 81a7  SLAB
-17  // 81a8  BP pc1
+2d  // 81b8  SLAB
+2d  // 81b9  SLAB
+2d  // 81ba  SLAB
+2d  // 81bb  SLAB
+2d  // 81bc  SLAB
+2d  // 81bd  SLAB
+17  // 81be  BP pc1
 f5
-81  // 81aa  LDAB pcsave
+81  // 81c0  LDAB pcsave
 b0
 04
-a1  // 81ad  STAB TXDATA
+a1  // 81c3  STAB TXDATA
 f2
 01
-09  // 81b0  RSR
-30  // 81b1  digits:   .ascii "0123456789ABCDEF"
+09  // 81c6  RSR
+30  // 81c7  digits:   .ascii "0123456789ABCDEF"
 31
 32
 33
@@ -448,7 +470,7 @@ f2
 44
 45
 46
-4d  // 81c1  banner:   .asciiz "MAPTEST\r\n"
+4d  // 81d7  banner:   .asciiz "MAPTEST\r\n"
 41
 50
 54
@@ -458,7 +480,7 @@ f2
 0d
 0a
 00
-0d  // 81cb  s_err:    .asciiz "\r\nFAIL page "
+0d  // 81e1  s_err:    .asciiz "\r\nFAIL page "
 0a
 46
 41
@@ -471,7 +493,7 @@ f2
 65
 20
 00
-20  // 81d8  s_at:     .asciiz " offset "
+20  // 81ee  s_at:     .asciiz " offset "
 6f
 66
 66
@@ -480,7 +502,7 @@ f2
 74
 20
 00
-20  // 81e1  s_want:   .asciiz " wanted "
+20  // 81f7  s_want:   .asciiz " wanted "
 77
 61
 6e
@@ -489,7 +511,7 @@ f2
 64
 20
 00
-20  // 81ea  s_got:    .asciiz " got "
+20  // 8200  s_got:    .asciiz " got "
 67
 6f
 74

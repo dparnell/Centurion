@@ -83,7 +83,21 @@ p2b:    JSR setpage
         STAB LEDS
         LDA #'.'
         JSR putc
-        JMP main
+        JSR drain           ; and empty the receiver, so a status dump can be
+        JMP main            ; asked for while this is running
+
+; The dump request is edge triggered on a byte arriving, so a program that never
+; reads the data register can never be asked for one - which is the failing that
+; makes diag's own test so hard to work with. Take whatever is waiting and throw
+; it away.
+drain:  LDAB CTRL
+        LDB #$0001
+        NAB
+        STB scr2+2
+        LDA scr2+2
+        BZ dr1
+        LDAB TXDATA
+dr1:    RSR
 
 ; Point the window at physical page pg.
 setpage: LDA #MAPIMG+14
