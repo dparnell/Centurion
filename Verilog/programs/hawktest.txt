@@ -106,13 +106,13 @@ f3
 79  // 8068  JSR puts
 81
 be
-80  // 806b  LDAB #SECTORH    ; the transfer steps the address, so set it each time
-0e
+80  // 806b  LDAB #XFERH    ; the transfer steps the address, so set it each time
+00
 a1  // 806d  STAB HKADRH
 f1
 41
-80  // 8070  LDAB #SECTORL
-45
+80  // 8070  LDAB #XFERL
+05
 a1  // 8072  STAB HKADRL
 f1
 42
@@ -149,13 +149,13 @@ de
 79  // 8093  JSR puts
 81
 be
-80  // 8096  LDAB #SECTORH
-0e
+80  // 8096  LDAB #XFERH
+00
 a1  // 8098  STAB HKADRH
 f1
 41
-80  // 809b  LDAB #SECTORL
-45
+80  // 809b  LDAB #XFERL
+05
 a1  // 809d  STAB HKADRL
 f1
 42

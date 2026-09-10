@@ -3,6 +3,7 @@
 
 `include "tangnano9k.v"
 `include "HyperRamModel.v"
+`include "SdCardModel.v"
 
 /**
  * The Hawk disk controller, end to end and self checking.
@@ -30,18 +31,32 @@ module HawkTB;
     wire [1:0] psram_ck, psram_ck_n, psram_cs_n, psram_reset_n;
     wire [1:0] psram_rwds;
     wire [15:0] psram_dq;
-    HyperRamModel #(.ADDR_BITS(18)) die(
+
+    // The microSD slot, with a card in it. A design that mounts an image at
+    // power up has to have something to mount, and a floating MISO makes the
+    // mounter's state machine wander rather than simply failing.
+    wire sd_clk, sd_mosi, sd_cs_n;
+    wire sd_miso;
+    pullup(sd_miso);
+    SdCardModel #(.BLOCKS(133120), .FILL(8'h00)) sdcard(sd_clk, sd_cs_n, sd_mosi, sd_miso);
+    reg [8*64:1] sd_image;
+    initial begin
+        if (!$value$plusargs("sd=%s", sd_image)) sd_image = "sd_fat32.hex";
+        #1 $readmemh(sd_image, sdcard.mem);
+    end
+    HyperRamModel #(.ADDR_BITS(23)) die(
         .ck(psram_ck[0]), .cs_n(psram_cs_n[0]), .resetn(psram_reset_n[0]),
         .rwds(psram_rwds[0]), .dq(psram_dq[7:0]));
 
     tangnano9k #(.PROGRAM("programs/hawktest.txt")) dut(
                    in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx,
-                   psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq);
+                   psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq,
+                   sd_clk, sd_mosi, sd_miso, sd_cs_n);
 
     defparam dut.cpu_clock_enable.TICKS = 13;
 
     localparam LEN = 400;
-    localparam SECTOR = 16'h0e45;   // cylinder 0x72, head 0, sector 5
+    localparam SECTOR = 16'h0005;   // the sector the transfers use
     localparam OUTBUF = 19'h01000;
     localparam INBUF  = 19'h01400;
 
@@ -126,6 +141,7 @@ module HawkTB;
                 end
                 3: begin
                     check_memory;
+                    check_image;
                     if (failures == 0)
                         $display("ok: the Hawk controller works over DMA in both directions");
                     $finish;
@@ -134,6 +150,31 @@ module HawkTB;
         end
         last_busy <= dut.hawk.busy;
     end
+
+    // Where the image lives in the part: DiskImage's own base, plus the sector.
+    localparam IMAGE_BASE = 23'h040000;
+    task check_image;
+        begin
+            while (dut.image.busy) @(posedge in_clk);
+            wrong = 0;
+            for (i = 0; i < 400; i = i + 1) begin
+                got = die.mem[IMAGE_BASE + SECTOR * 512 + i];
+                want = (i & 8'hff) ^ 8'h5a;
+                if (got !== want) begin
+                    if (wrong < 3)
+                        $display("FAIL: the cached image holds %h at sector byte %0d, not %h",
+                                 got, i, want);
+                    wrong = wrong + 1;
+                end
+            end
+            if (wrong == 0)
+                $display("ok: the written sector really reached the image in PSRAM");
+            else begin
+                $display("FAIL: %0d of 400 bytes of the cached sector are wrong", wrong);
+                failures = failures + 1;
+            end
+        end
+    endtask
 
     initial begin
         #250_000_000;

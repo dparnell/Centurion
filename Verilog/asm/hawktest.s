@@ -36,6 +36,11 @@ LEN     .equ 400
 ; HawkMMIO.txt gives it - which is also 0x0e45 taken as a flat sector number.
 SECTORH .equ $0e
 SECTORL .equ $45
+; The sector the transfers use. The address above is the archive's own worked
+; example and is what the register readback checks, but it is sector 3653 and a
+; test image is much smaller than that, so the data goes somewhere that exists.
+XFERH   .equ $00
+XFERL   .equ $05
 
 pcsave  .equ $b004
 scr     .equ $b006
@@ -94,9 +99,9 @@ start:  LDAB #$c4           ; 19200 7N1
         JSR fill
         LDA #m_out
         JSR puts
-        LDAB #SECTORH    ; the transfer steps the address, so set it each time
+        LDAB #XFERH    ; the transfer steps the address, so set it each time
         STAB HKADRH
-        LDAB #SECTORL
+        LDAB #XFERL
         STAB HKADRL
         LDA #OUTBUF
         JSR setup
@@ -112,9 +117,9 @@ start:  LDAB #$c4           ; 19200 7N1
 ; ------------------------------------------------------- 4: read it back and check
         LDA #m_in
         JSR puts
-        LDAB #SECTORH
+        LDAB #XFERH
         STAB HKADRH
-        LDAB #SECTORL
+        LDAB #XFERL
         STAB HKADRL
         LDA #INBUF
         JSR setup
