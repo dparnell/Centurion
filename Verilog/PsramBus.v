@@ -84,8 +84,12 @@ module PsramBus #(
     // - a Hawk sector is about 400 bytes - and only eight of the device's
     // twenty six BSRAM blocks are still free. Growing this is a one line change
     // if a workload ever justifies it, but those blocks are spoken for.
-    localparam integer LINES = 32;
-    localparam integer IDXBITS = 5;      // must be $clog2(LINES)
+    // Sixteen, not the thirty two this was grown to. That was sized for a 256
+    // byte loop running out of PSRAM and bought about one percent of stall time
+    // over sixteen; the storage stack needs the room more than the benchmark
+    // does, and the machine's own working set is in block RAM either way.
+    localparam integer LINES = 16;
+    localparam integer IDXBITS = 4;      // must be $clog2(LINES)
     reg [15-IDXBITS:0] cache_tag [0:LINES-1];
     reg [63:0] cache_data [0:LINES-1];
     reg [LINES-1:0] cache_valid;

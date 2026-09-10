@@ -19,6 +19,7 @@ PSRAM_SELFTEST ?= 0
 # Which program the ROM holds. The default is the real diag ROM, which is what
 # the machine boots from; the load-* targets below wrap up the usual choices.
 PROGRAM ?= programs/diag.txt
+DMA_TEST ?= 0
 
 # Assembling. "make programs/forth.txt" is enough, and both the synthesis and
 # the simulation paths go through this rule, so a stale image can never be built
@@ -39,7 +40,7 @@ programs: $(IMAGES)
 # the board with diag again - the wrong build, silently, which is the sort of
 # thing that costs an afternoon of debugging a machine that is not the one you
 # think you are looking at.
-CONFIG := PROGRAM=$(PROGRAM) DIP=$(DIP) PSRAM_SELFTEST=$(PSRAM_SELFTEST)
+CONFIG := PROGRAM=$(PROGRAM) DIP=$(DIP) PSRAM_SELFTEST=$(PSRAM_SELFTEST) DMA_TEST=$(DMA_TEST)
 build.stamp: FORCE
 	@echo '$(CONFIG)' | cmp -s - $@ || { echo '$(CONFIG)' > $@; echo "build config: $(CONFIG)"; }
 FORCE:
@@ -48,7 +49,7 @@ FORCE:
 # resolve $value$plusargs while re-elaborating that module, which is exactly what
 # setting PROGRAM here makes it do.
 $(PROJ).json: $(PROJ).v roms/CodeROM.txt Makefile *.v $(PROGRAM) build.stamp
-	yosys -p 'read_verilog -DSYNTHESIS $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) -set PROGRAM "$(PROGRAM)" -set PSRAM_SELFTEST $(PSRAM_SELFTEST) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
+	yosys -p 'read_verilog -DSYNTHESIS $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) -set PROGRAM "$(PROGRAM)" -set PSRAM_SELFTEST $(PSRAM_SELFTEST) -set DMA_TEST $(DMA_TEST) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
 
 $(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
 	nextpnr-himbaechel --json $(PROJ).json --write $(PROJ)_pnr.json --freq 27 --device ${DEVICE} --vopt family=${FAMILY} --vopt cst=$(BOARD).cst

@@ -38,3 +38,18 @@ IO_LOC  "uart_tx" 17;
 
 IO_LOC  "uart_rx" 18;
 IO_PORT "uart_rx" PULL_MODE=UP;
+
+// The microSD slot. Only four of the card's pins are brought out on this board,
+// so dat1 and dat2 are not available and four bit SD mode is not an option: this
+// is SPI. That is no loss - SPI at 13.5MHz is about 1.7MB/s, far more than a
+// 5MHz CPU driving a 1970s disk controller can consume.
+//
+// Pin directions are from the FPGA's point of view. MISO needs the pull up: the
+// card releases the line whenever CS is high, and a floating input makes the
+// initialisation state machine wander rather than simply fail, which is much
+// harder to recognise.
+IO_LOC  "sd_clk" 36;
+IO_LOC  "sd_mosi" 37;
+IO_LOC  "sd_miso" 39;
+IO_PORT "sd_miso" PULL_MODE=UP;
+IO_LOC  "sd_cs_n" 38;

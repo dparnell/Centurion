@@ -6,6 +6,9 @@
 `include "PsramBus.v"
 `include "DmaTest.v"
 `include "HawkDisk.v"
+`include "SdSpi.v"
+`include "Fat32.v"
+`include "DiskImage.v"
 // psram_controller.v is no longer built: it drives the bus through apicula's
 // ODDR/IDDR, which is exactly what does not work here. Kept in the tree for
 // reference, and because its four implicit declaration warnings are noise.
@@ -161,13 +164,24 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // capture a whole phase at a time, which is what a byte
                     // landing the far side of a cycle boundary needs and no
                     // amount of phase shifting can give.
-                    parameter integer PSRAM_TAP = 2)
+                    parameter integer PSRAM_TAP = 2,
+                    // The 8.3 name of the image file on the card, as it is
+                    // stored in the directory: eight characters then three.
+                    parameter [87:0] DISK_IMAGE = "HAWK0   IMG",
+                    // The DMA pattern device at 0x3f300. It is a test device and
+                    // costs real logic, so a normal build leaves it out; DmaTB
+                    // turns it on. Like PSRAM_SELFTEST, this is a build time
+                    // choice that no file records, so build.stamp tracks it.
+                    parameter DMA_TEST = 0)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
                   output [1:0] O_psram_ck, output [1:0] O_psram_ck_n,
                   output [1:0] O_psram_cs_n, output [1:0] O_psram_reset_n,
-                  inout [1:0] IO_psram_rwds, inout [15:0] IO_psram_dq);
+                  inout [1:0] IO_psram_rwds, inout [15:0] IO_psram_dq,
+                  // The microSD slot. Only four of the card's pins are brought
+                  // out on this board, so this is SPI and not four bit SD mode.
+                  output sd_clk, output sd_mosi, input sd_miso, output sd_cs_n);
 
     // PsramSdr drives all of these itself, including RESET#, which it pulses low at
     // start up the way the part wants rather than simply tying it high.
@@ -327,6 +341,10 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // instead of the bus counters.
     wire tst_read, tst_write, tst_byte_write;
     wire [22:0] tst_addr;
+    // The disk image's side of the PSRAM, arbitrated with the CPU's below.
+    wire disk_read, disk_write, disk_byte_write;
+    wire [22:0] disk_addr;
+    wire [15:0] disk_din;
     wire [15:0] tst_din;
     // The part needs 600us to come out of its own reset, and the core's power on
     // reset is only 1024 clocks, so without this the CPU reaches the memory before
@@ -350,12 +368,25 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [2:0] psram_stage, psram_index;
     wire psram_saw_idle;
     wire [15:0] psram_cycles, psram_read0, psram_read1;
+    // Held in reset when PSRAM_SELFTEST is clear, but that is not the same as
+    // not being there: it was still synthesised and still took logic. With the
+    // storage stack on the device there is no room for hardware that is switched
+    // off, so leave it out of the netlist entirely.
+    generate if (PSRAM_SELFTEST) begin : psram_self_test
     PsramTest psram_test(clock, reset_btn & (PSRAM_SELFTEST != 0),
                          tst_read, tst_write, tst_byte_write, tst_addr, tst_din,
                          dout[15:0], busy, psram_done, psram_pass,
                          psram_got, psram_want, psram_failed_at,
                          psram_stage, psram_index, psram_saw_idle, psram_cycles,
                          psram_read0, psram_read1);
+    end else begin : no_psram_self_test
+        assign tst_read = 0; assign tst_write = 0; assign tst_byte_write = 0;
+        assign tst_addr = 0; assign tst_din = 0;
+        assign psram_done = 0; assign psram_pass = 0;
+        assign psram_got = 0; assign psram_want = 0; assign psram_failed_at = 0;
+        assign psram_stage = 0; assign psram_index = 0; assign psram_saw_idle = 0;
+        assign psram_cycles = 0; assign psram_read0 = 0; assign psram_read1 = 0;
+    end endgenerate
 
     // The bus side. PsramBus owns the core's clock enable, because stalling the
     // core is how a 2.8us memory access is made to fit in a bus cycle.
@@ -371,11 +402,56 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [7:0] dbg_psram_data;
     wire cpu_en_free, cpu_en;
 
-    assign read       = PSRAM_SELFTEST ? tst_read       : bus_read;
-    assign write      = PSRAM_SELFTEST ? tst_write      : bus_write;
-    assign byte_write = PSRAM_SELFTEST ? tst_byte_write : bus_byte_write;
-    assign address    = PSRAM_SELFTEST ? tst_addr       : bus_addr;
-    assign din        = PSRAM_SELFTEST ? tst_din        : bus_din;
+    // Three things want the one PHY: the self test, the CPU's bridge, and the
+    // disk image's cache. All three speak the same protocol - hold read or write
+    // until busy rises, then wait for it to fall - so the arbitration is a grant
+    // that lasts a whole access and a per client *view* of busy.
+    //
+    // The view is the part that matters and the part that is easy to get wrong.
+    // A loser that saw the real busy would watch the winner's access rise and
+    // fall and conclude that its own request had been served, and take the
+    // winner's data. So a client that does not hold the grant sees busy low,
+    // which leaves it holding its request exactly where it was - which is also
+    // how the arbiter knows it still wants one. Getting this wrong lost four
+    // bytes of a sector, at the two places where the CPU and the disk happened
+    // to collide, and looked like a memory fault rather than an arbiter fault.
+    localparam OWNER_CPU = 1'b0, OWNER_DISK = 1'b1;
+    reg grant_held, grant_owner, grant_seen, last_owner;
+    wire cpu_wants  = bus_read | bus_write;
+    wire disk_wants = disk_read | disk_write;
+    initial begin grant_held = 0; grant_owner = 0; grant_seen = 0; last_owner = 1; end
+    always @(posedge clock) begin
+        if (reset) begin
+            grant_held <= 0; grant_seen <= 0; last_owner <= OWNER_DISK;
+        end else if (!grant_held) begin
+            if (!busy && (cpu_wants || disk_wants)) begin
+                // The CPU first, because stalling it costs a bus cycle and the
+                // disk is standing in for a drive that takes a millisecond a
+                // sector - but alternate when both want it, so neither starves.
+                grant_owner <= (cpu_wants && disk_wants) ? ~last_owner :
+                               cpu_wants ? OWNER_CPU : OWNER_DISK;
+                last_owner  <= (cpu_wants && disk_wants) ? ~last_owner :
+                               cpu_wants ? OWNER_CPU : OWNER_DISK;
+                grant_held <= 1;
+                grant_seen <= 0;
+            end
+        end else if (busy) grant_seen <= 1;
+        else if (grant_seen) begin
+            grant_held <= 0;
+            grant_seen <= 0;
+        end
+    end
+
+    wire disk_owns = grant_held && grant_owner == OWNER_DISK;
+    wire cpu_owns  = grant_held && grant_owner == OWNER_CPU;
+    wire bus_busy_view  = cpu_owns  ? busy : 1'b0;
+    wire disk_busy_view = disk_owns ? busy : 1'b0;
+
+    assign read       = PSRAM_SELFTEST ? tst_read       : disk_owns ? disk_read       : cpu_owns ? bus_read       : 1'b0;
+    assign write      = PSRAM_SELFTEST ? tst_write      : disk_owns ? disk_write      : cpu_owns ? bus_write      : 1'b0;
+    assign byte_write = PSRAM_SELFTEST ? tst_byte_write : disk_owns ? disk_byte_write : bus_byte_write;
+    assign address    = PSRAM_SELFTEST ? tst_addr       : disk_owns ? disk_addr       : bus_addr;
+    assign din        = PSRAM_SELFTEST ? tst_din        : disk_owns ? disk_din        : bus_din;
 
     // Peripheral read bus ---------------------------
     // Every readable peripheral drives its own data_out, and this module picks one.
@@ -389,8 +465,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // The DMA device and the core's side of it. The device stores nothing: it
     // generates or checks a pattern, which is enough to test the path and keeps
     // the block RAM free for the disk controllers' sector buffers.
-    wire test_req, test_write, test_int;
-    wire hawk_req, hawk_write, hawk_int;
+    wire test_req, test_write, test_int, test_hold;
+    wire hawk_req, hawk_write, hawk_int, hawk_hold;
     wire [7:0] test_wdata, dma_rdata, dma_data, hawk_wdata, hawk_data;
     wire dma_step, dma_end;
 
@@ -403,6 +479,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire dma_device_write = hawk_req ? hawk_write : test_write;
     wire [7:0] dma_wdata = hawk_req ? hawk_wdata : test_wdata;
     wire dma_int = hawk_int | test_int;
+    // Only a device that is actually transferring may hold the core still.
+    wire dma_hold = hawk_req & hawk_hold;
     wire hawk_step = dma_step & hawk_req;
     wire test_step = dma_step & test_req & ~hawk_req;
 
@@ -442,7 +520,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .address(addressBus), .write_en(writeEnBus), .data_in(data_c2r),
         .data_out(psram_data), .cpu_en_out(cpu_en),
         .read(bus_read), .write(bus_write), .byte_write(bus_byte_write),
-        .addr(bus_addr), .din(bus_din), .dout(dout), .busy(busy),
+        .addr(bus_addr), .din(bus_din), .dout(dout), .busy(bus_busy_view),
         .dbg_accesses(dbg_psram_accesses), .dbg_last_addr(dbg_psram_addr),
         .dbg_last_data(dbg_psram_data), .dbg_timeouts(dbg_psram_timeouts),
         .dbg_timeout_where(dbg_psram_where), .dbg_state(dbg_bus_state),
@@ -470,21 +548,100 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
              dbg_byte_ready, dbg_rx_byte);
 
     // The DMA test device: a pattern generator and checker with no storage.
+    generate if (DMA_TEST) begin : dma_test_device
     DmaTest dmatest(clock, cpu_en, reset, dma_select, addressBus[3:0], writeEnBus,
                     data_c2r, dma_data,
                     test_req, test_write, test_wdata,
-                    test_step, dma_rdata, dma_end, test_int);
+                    test_step, dma_rdata, dma_end, test_int, test_hold);
+    end else begin : no_dma_test_device
+        assign test_req = 0;
+        assign test_write = 0;
+        assign test_wdata = 0;
+        assign test_int = 0;
+        assign test_hold = 0;
+        assign dma_data = 0;
+    end endgenerate
+
+    // ----------------------------------------------------------- the storage
+    // The card, the filesystem and the PSRAM cache, in that order. Fat32 finds
+    // the image once at power up; DiskImage then deals only in block numbers.
+    wire sd_ready, sd_error, sd_busy;
+    wire fat_read, img_sd_read, img_sd_write;
+    wire [31:0] fat_lba, img_lba;
+    wire sd_rx_strobe, sd_tx_request;
+    wire [8:0] sd_rx_index, sd_tx_index;
+    wire [7:0] sd_rx_byte, sd_tx_byte;
+    wire [7:0] sd_dbg_state, sd_dbg_r1;
+    wire sd_block_addressing;
+
+    // Only the mounter reads the card before mounting and only the image layer
+    // afterwards, so an or is the whole arbitration.
+    wire card_read = fat_read | img_sd_read;
+    wire [31:0] card_lba = fat_read ? fat_lba : img_lba;
+
+    SdSpi sd(clock, reset, sd_clk, sd_mosi, sd_miso, sd_cs_n,
+             card_read, img_sd_write, card_lba, sd_busy, sd_ready, sd_error,
+             sd_rx_strobe, sd_rx_index, sd_rx_byte,
+             sd_tx_request, sd_tx_index, sd_tx_byte,
+             sd_dbg_state, sd_dbg_r1, sd_block_addressing);
+
+    // Mount once, as soon as the card is ready.
+    reg mount_pulse = 0, mount_done = 0;
+    wire img_mounted, mount_failed;
+    wire [3:0] mount_reason;
+    wire [15:0] file_blocks;
+    wire map_req, map_valid;
+    wire [15:0] map_block;
+    wire [31:0] map_lba;
+    wire [7:0] fat_dbg_state, fat_extents;
+    always @(posedge clock) begin
+        mount_pulse <= 0;
+        if (reset) mount_done <= 0;
+        else if (sd_ready && !mount_done) begin
+            mount_pulse <= 1;
+            mount_done <= 1;
+        end
+    end
+
+    Fat32 #(.FILENAME(DISK_IMAGE)) fat(
+        clock, reset, mount_pulse, img_mounted, mount_failed, mount_reason,
+        fat_read, fat_lba, sd_busy, sd_ready, sd_error,
+        sd_rx_strobe, sd_rx_index, sd_rx_byte,
+        file_blocks, map_req, map_block, map_valid, map_lba,
+        fat_dbg_state, fat_extents);
+
+    wire img_req, img_store, img_busy, img_failed, img_flushing;
+    wire [15:0] img_block;
+    wire hawk_ext_wr;
+    wire [8:0] hawk_ext_addr;
+    wire [7:0] hawk_ext_wdata, hawk_ext_rdata;
+    wire [7:0] img_dbg_state;
+    wire [15:0] img_fetches, img_hits, img_writebacks;
+
+    DiskImage image(
+        clock, reset, img_mounted, file_blocks,
+        map_req, map_block, map_valid, map_lba,
+        img_sd_read, img_sd_write, img_lba, sd_busy, sd_error,
+        sd_rx_strobe, sd_rx_index, sd_rx_byte,
+        sd_tx_request, sd_tx_index, sd_tx_byte,
+        disk_read, disk_write, disk_byte_write, disk_addr, disk_din, dout, disk_busy_view,
+        img_req, img_store, img_block, img_busy, img_failed,
+        hawk_ext_wr, hawk_ext_addr, hawk_ext_wdata, hawk_ext_rdata,
+        1'b0, img_flushing,
+        img_dbg_state, img_fetches, img_hits, img_writebacks);
 
     // The Hawk disk controller.
     HawkDisk hawk(clock, cpu_en, reset, hawk_select, addressBus[3:0], writeEnBus,
                   data_c2r, hawk_data,
                   hawk_req, hawk_write, hawk_wdata,
-                  hawk_step, dma_rdata, dma_end, hawk_int);
+                  hawk_step, dma_rdata, dma_end, hawk_int, hawk_hold,
+                  img_mounted, img_req, img_store, img_block, img_busy, img_failed,
+                  hawk_ext_wr, hawk_ext_addr, hawk_ext_wdata, hawk_ext_rdata);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr, SENSE_SWITCHES,
               dma_req, dma_device_write, dma_wdata, dma_step, dma_rdata, dma_end,
-              dma_int,
+              dma_int, dma_hold,
               dbg_memory_address, dbg_uc_address, dbg_page_table_base, dbg_page_table_out,
               dbg_d2d3, dbg_f11,
               dbg_e7, dbg_data_in, dbg_entry0,

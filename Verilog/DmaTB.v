@@ -3,6 +3,7 @@
 
 `include "tangnano9k.v"
 `include "HyperRamModel.v"
+`include "SdCardModel.v"
 
 /**
  * The DMA path, end to end and self checking.
@@ -33,13 +34,27 @@ module DmaTB;
     wire [1:0] psram_ck, psram_ck_n, psram_cs_n, psram_reset_n;
     wire [1:0] psram_rwds;
     wire [15:0] psram_dq;
+
+    // The microSD slot, with a card in it. A design that mounts an image at
+    // power up has to have something to mount, and a floating MISO makes the
+    // mounter's state machine wander rather than simply failing.
+    wire sd_clk, sd_mosi, sd_cs_n;
+    wire sd_miso;
+    pullup(sd_miso);
+    SdCardModel #(.BLOCKS(133120), .FILL(8'h00)) sdcard(sd_clk, sd_cs_n, sd_mosi, sd_miso);
+    reg [8*64:1] sd_image;
+    initial begin
+        if (!$value$plusargs("sd=%s", sd_image)) sd_image = "sd_fat32.hex";
+        #1 $readmemh(sd_image, sdcard.mem);
+    end
     HyperRamModel #(.ADDR_BITS(18)) die(
         .ck(psram_ck[0]), .cs_n(psram_cs_n[0]), .resetn(psram_reset_n[0]),
         .rwds(psram_rwds[0]), .dq(psram_dq[7:0]));
 
-    tangnano9k #(.PROGRAM("programs/dmatest.txt")) dut(
+    tangnano9k #(.PROGRAM("programs/dmatest.txt"), .DMA_TEST(1)) dut(
                    in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx,
-                   psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq);
+                   psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq,
+                   sd_clk, sd_mosi, sd_miso, sd_cs_n);
 
     // The same 13 tick core the other long testbenches use: still the documented
     // minimum of two board clocks between enabled cycles, so nothing about the
@@ -87,11 +102,11 @@ module DmaTB;
     endtask
 
     always @(posedge in_clk) begin
-        if (dut.dmatest.done && !last_done) begin
+        if (dut.dma_test_device.dmatest.done && !last_done) begin
             transfers = transfers + 1;
-            if (dut.dmatest.offset !== LEN) begin
+            if (dut.dma_test_device.dmatest.offset !== LEN) begin
                 $display("FAIL: transfer %0d moved %0d bytes, not %0d",
-                         transfers, dut.dmatest.offset, LEN);
+                         transfers, dut.dma_test_device.dmatest.offset, LEN);
                 failures = failures + 1;
             end
             if (transfers == 1) begin
@@ -99,10 +114,10 @@ module DmaTB;
                 check_buffer;
             end else begin
                 // Memory to device: the device checked every byte as it arrived.
-                if (dut.dmatest.bad_count !== 0) begin
+                if (dut.dma_test_device.dmatest.bad_count !== 0) begin
                     $display("FAIL: the device saw %0d wrong bytes, first at %0d: wanted %h got %h",
-                             dut.dmatest.bad_count, dut.dmatest.bad_offset,
-                             dut.dmatest.bad_want, dut.dmatest.bad_got);
+                             dut.dma_test_device.dmatest.bad_count, dut.dma_test_device.dmatest.bad_offset,
+                             dut.dma_test_device.dmatest.bad_want, dut.dma_test_device.dmatest.bad_got);
                     failures = failures + 1;
                 end else
                     $display("ok: the device read back all %0d bytes it wrote", LEN);
@@ -110,7 +125,7 @@ module DmaTB;
                 $finish;
             end
         end
-        last_done <= dut.dmatest.done;
+        last_done <= dut.dma_test_device.dmatest.done;
     end
 
     initial begin

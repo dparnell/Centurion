@@ -3,6 +3,7 @@
 
 `include "tangnano9k.v"
 `include "HyperRamModel.v"
+`include "SdCardModel.v"
 
 /**
  * Runs a program on the whole simulated board and talks to it over the serial
@@ -31,12 +32,26 @@ module ProgramTB;
     wire [1:0] psram_ck, psram_ck_n, psram_cs_n, psram_reset_n;
     wire [1:0] psram_rwds;
     wire [15:0] psram_dq;
+
+    // The microSD slot, with a card in it. A design that mounts an image at
+    // power up has to have something to mount, and a floating MISO makes the
+    // mounter's state machine wander rather than simply failing.
+    wire sd_clk, sd_mosi, sd_cs_n;
+    wire sd_miso;
+    pullup(sd_miso);
+    SdCardModel #(.BLOCKS(133120), .FILL(8'h00)) sdcard(sd_clk, sd_cs_n, sd_mosi, sd_miso);
+    reg [8*64:1] sd_image;
+    initial begin
+        if (!$value$plusargs("sd=%s", sd_image)) sd_image = "sd_fat32.hex";
+        #1 $readmemh(sd_image, sdcard.mem);
+    end
     HyperRamModel #(.ADDR_BITS(18)) die(
         .ck(psram_ck[0]), .cs_n(psram_cs_n[0]), .resetn(psram_reset_n[0]),
         .rwds(psram_rwds[0]), .dq(psram_dq[7:0]));
 
     tangnano9k dut(in_clk, reset_btn, btn2, L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx,
-                   psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq);
+                   psram_ck, psram_ck_n, psram_cs_n, psram_reset_n, psram_rwds, psram_dq,
+                   sd_clk, sd_mosi, sd_miso, sd_cs_n);
 
     // Still at least two board clocks between enabled cycles, so cycle level
     // behaviour is unchanged; it just gets there sooner.
