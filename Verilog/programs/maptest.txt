@@ -1,0 +1,497 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4           ; 19200 7N1
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$bfe0
+bf
+e0
+5f  // 8009  XAS
+90  // 800a  LDA #banner
+81
+c1
+79  // 800d  JSR puts
+81
+55
+2e  // 8010  PAGE $1c,$f8,MAPIMG ; the running map, which we edit one entry of
+1c
+f8
+b1
+00
+90  // 8015  LDA #0
+00
+00
+b1  // 8018  STA pass
+b0
+18
+90  // 801b  main:   LDA #LOPAGE         ; phase 1: write a page and read it straight back
+00
+20
+b1  // 801e  STA pg
+b0
+10
+79  // 8021  p1:     JSR setpage
+80
+82
+79  // 8024  JSR wr16
+80
+91
+79  // 8027  JSR rd16
+80
+c9
+91  // 802a  LDA pg
+b0
+10
+38  // 802d  INA
+b1  // 802e  STA pg
+b0
+10
+d0  // 8031  LDB #HIPAGE
+00
+78
+51  // 8034  SUB B,A
+20
+15  // 8036  BNZ p1
+e9
+90  // 8038  LDA #LOPAGE         ; phase 2: every page written, then every page read
+00
+20
+b1  // 803b  STA pg
+b0
+10
+79  // 803e  p2a:    JSR setpage
+80
+82
+79  // 8041  JSR wr16
+80
+91
+91  // 8044  LDA pg
+b0
+10
+38  // 8047  INA
+b1  // 8048  STA pg
+b0
+10
+d0  // 804b  LDB #HIPAGE
+00
+78
+51  // 804e  SUB B,A
+20
+15  // 8050  BNZ p2a
+ec
+90  // 8052  LDA #LOPAGE
+00
+20
+b1  // 8055  STA pg
+b0
+10
+79  // 8058  p2b:    JSR setpage
+80
+82
+79  // 805b  JSR rd16
+80
+c9
+91  // 805e  LDA pg
+b0
+10
+38  // 8061  INA
+b1  // 8062  STA pg
+b0
+10
+d0  // 8065  LDB #HIPAGE
+00
+78
+51  // 8068  SUB B,A
+20
+15  // 806a  BNZ p2b
+ec
+91  // 806c  LDA pass            ; a dot per pass, and the LEDs count them
+b0
+18
+38  // 806f  INA
+b1  // 8070  STA pass
+b0
+18
+81  // 8073  LDAB pass+1
+b0
+19
+a1  // 8076  STAB LEDS
+5c
+00
+90  // 8079  LDA #'.'
+00
+2e
+79  // 807c  JSR putc
+81
+9c
+71  // 807f  JMP main
+80
+1b
+90  // 8082  setpage: LDA #MAPIMG+14
+b1
+0e
+5c  // 8085  XAY
+81  // 8086  LDAB pg+1
+b0
+11
+a5  // 8089  STAB [Y]
+60
+2e  // 808b  PAGE $0c,$f8,MAPIMG
+0c
+f8
+b1
+00
+09  // 8090  RSR
+90  // 8091  wr16:   LDA #0
+00
+00
+b1  // 8094  STA i
+b0
+12
+91  // 8097  w1:     LDA i
+b0
+12
+d0  // 809a  LDB #16
+00
+10
+51  // 809d  SUB B,A
+20
+14  // 809f  BZ w2
+27
+90  // 80a1  LDA #WIN
+71
+00
+d1  // 80a4  LDB i
+b0
+12
+58  // 80a7  AAB
+f1  // 80a8  STB scr
+b0
+06
+91  // 80ab  LDA scr
+b0
+06
+5c  // 80ae  XAY
+91  // 80af  LDA pg
+b0
+10
+d1  // 80b2  LDB i
+b0
+12
+58  // 80b5  AAB
+f1  // 80b6  STB scr2
+b0
+08
+81  // 80b9  LDAB scr2+1
+b0
+09
+a5  // 80bc  STAB [Y]
+60
+91  // 80be  LDA i
+b0
+12
+38  // 80c1  INA
+b1  // 80c2  STA i
+b0
+12
+71  // 80c5  JMP w1
+80
+97
+09  // 80c8  w2:     RSR
+90  // 80c9  rd16:   LDA #0
+00
+00
+b1  // 80cc  STA i
+b0
+12
+91  // 80cf  r1:     LDA i
+b0
+12
+d0  // 80d2  LDB #16
+00
+10
+51  // 80d5  SUB B,A
+20
+14  // 80d7  BZ r2
+3c
+90  // 80d9  LDA #WIN
+71
+00
+d1  // 80dc  LDB i
+b0
+12
+58  // 80df  AAB
+f1  // 80e0  STB scr
+b0
+06
+91  // 80e3  LDA scr
+b0
+06
+5c  // 80e6  XAY
+3a  // 80e7  CLA
+85  // 80e8  LDAB [Y]
+60
+b1  // 80ea  STA got
+b0
+14
+91  // 80ed  LDA pg
+b0
+10
+d1  // 80f0  LDB i
+b0
+12
+58  // 80f3  AAB
+f1  // 80f4  STB scr2
+b0
+08
+91  // 80f7  LDA scr2
+b0
+08
+d0  // 80fa  LDB #$00ff
+00
+ff
+5a  // 80fd  NAB
+f1  // 80fe  STB exp
+b0
+16
+91  // 8101  LDA got
+b0
+14
+d1  // 8104  LDB exp
+b0
+16
+51  // 8107  SUB B,A
+20
+15  // 8109  BNZ fail
+0b
+91  // 810b  LDA i
+b0
+12
+38  // 810e  INA
+b1  // 810f  STA i
+b0
+12
+71  // 8112  JMP r1
+80
+cf
+09  // 8115  r2:     RSR
+90  // 8116  fail:   LDA #s_err
+81
+cb
+79  // 8119  JSR puts
+81
+55
+3a  // 811c  CLA
+81  // 811d  LDAB pg+1
+b0
+11
+79  // 8120  JSR puthex
+81
+7b
+90  // 8123  LDA #s_at
+81
+d8
+79  // 8126  JSR puts
+81
+55
+3a  // 8129  CLA
+81  // 812a  LDAB i+1
+b0
+13
+79  // 812d  JSR puthex
+81
+7b
+90  // 8130  LDA #s_want
+81
+e1
+79  // 8133  JSR puts
+81
+55
+3a  // 8136  CLA
+81  // 8137  LDAB exp+1
+b0
+17
+79  // 813a  JSR puthex
+81
+7b
+90  // 813d  LDA #s_got
+81
+ea
+79  // 8140  JSR puts
+81
+55
+3a  // 8143  CLA
+81  // 8144  LDAB got+1
+b0
+15
+79  // 8147  JSR puthex
+81
+7b
+79  // 814a  JSR crlf
+81
+6f
+80  // 814d  fhalt:  LDAB #$ff           ; every LED on, and stay here
+ff
+a1  // 814f  STAB LEDS
+5c
+00
+71  // 8152  JMP fhalt
+81
+4d
+b1  // 8155  puts:   STA scr2+2
+b0
+0a
+91  // 8158  ps1:    LDA scr2+2
+b0
+0a
+5c  // 815b  XAY
+3a  // 815c  CLA
+85  // 815d  LDAB [Y]
+60
+14  // 815f  BZ ps2
+0d
+79  // 8161  JSR putc
+81
+9c
+91  // 8164  LDA scr2+2
+b0
+0a
+38  // 8167  INA
+b1  // 8168  STA scr2+2
+b0
+0a
+71  // 816b  JMP ps1
+81
+58
+09  // 816e  ps2:    RSR
+90  // 816f  crlf:   LDA #$0d
+00
+0d
+79  // 8172  JSR putc
+81
+9c
+90  // 8175  LDA #$0a
+00
+0a
+71  // 8178  JMP putc
+81
+9c
+a1  // 817b  puthex: STAB scr+2
+b0
+08
+2c  // 817e  SRAB
+2c  // 817f  SRAB
+2c  // 8180  SRAB
+2c  // 8181  SRAB
+d0  // 8182  LDB #$000f
+00
+0f
+5a  // 8185  NAB
+79  // 8186  JSR putnib
+81
+93
+81  // 8189  LDAB scr+2
+b0
+08
+d0  // 818c  LDB #$000f
+00
+0f
+5a  // 818f  NAB
+71  // 8190  JMP putnib
+81
+93
+90  // 8193  putnib: LDA #digits
+81
+b1
+58  // 8196  AAB
+85  // 8197  LDAB [B]
+20
+71  // 8199  JMP putc
+81
+9c
+a1  // 819c  putc:   STAB pcsave
+b0
+04
+81  // 819f  pc1:    LDAB CTRL
+f2
+00
+2d  // 81a2  SLAB
+2d  // 81a3  SLAB
+2d  // 81a4  SLAB
+2d  // 81a5  SLAB
+2d  // 81a6  SLAB
+2d  // 81a7  SLAB
+17  // 81a8  BP pc1
+f5
+81  // 81aa  LDAB pcsave
+b0
+04
+a1  // 81ad  STAB TXDATA
+f2
+01
+09  // 81b0  RSR
+30  // 81b1  digits:   .ascii "0123456789ABCDEF"
+31
+32
+33
+34
+35
+36
+37
+38
+39
+41
+42
+43
+44
+45
+46
+4d  // 81c1  banner:   .asciiz "MAPTEST\r\n"
+41
+50
+54
+45
+53
+54
+0d
+0a
+00
+0d  // 81cb  s_err:    .asciiz "\r\nFAIL page "
+0a
+46
+41
+49
+4c
+20
+70
+61
+67
+65
+20
+00
+20  // 81d8  s_at:     .asciiz " offset "
+6f
+66
+66
+73
+65
+74
+20
+00
+20  // 81e1  s_want:   .asciiz " wanted "
+77
+61
+6e
+74
+65
+64
+20
+00
+20  // 81ea  s_got:    .asciiz " got "
+67
+6f
+74
+20
+00

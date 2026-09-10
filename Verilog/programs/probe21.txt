@@ -1,0 +1,141 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+80  // 8001  start:  LDAB #$c4
+c4
+a1  // 8003  STAB CTRL
+f2
+00
+90  // 8006  LDA #$bfe0
+bf
+e0
+5f  // 8009  XAS
+90  // 800a  LDA #bodysrc        ; copy the loop into PSRAM
+80
+80
+b1  // 800d  STA src
+b0
+06
+90  // 8010  LDA #BODY
+20
+00
+b1  // 8013  STA dst
+b0
+08
+90  // 8016  LDA #0
+00
+00
+b1  // 8019  STA i
+b0
+0a
+91  // 801c  cp1:    LDA i
+b0
+0a
+d0  // 801f  LDB #12
+00
+0c
+51  // 8022  SUB B,A
+20
+14  // 8024  BZ cp2
+31
+91  // 8026  LDA src             ; one byte at a time
+b0
+06
+d1  // 8029  LDB i
+b0
+0a
+58  // 802c  AAB
+f1  // 802d  STB scr
+b0
+0c
+91  // 8030  LDA scr
+b0
+0c
+5c  // 8033  XAY
+3a  // 8034  CLA
+85  // 8035  LDAB [Y]
+60
+b1  // 8037  STA byt
+b0
+0e
+91  // 803a  LDA dst
+b0
+08
+d1  // 803d  LDB i
+b0
+0a
+58  // 8040  AAB
+f1  // 8041  STB scr
+b0
+0c
+91  // 8044  LDA scr
+b0
+0c
+5c  // 8047  XAY
+81  // 8048  LDAB byt+1
+b0
+0f
+a5  // 804b  STAB [Y]
+60
+91  // 804d  LDA i
+b0
+0a
+38  // 8050  INA
+b1  // 8051  STA i
+b0
+0a
+71  // 8054  JMP cp1
+80
+1c
+90  // 8057  cp2:    LDA #2000           ; how many times round the loop
+07
+d0
+b1  // 805a  STA cnt
+b0
+10
+71  // 805d  JMP BODY            ; and run it from PSRAM
+20
+00
+90  // 8060  done:   LDA #'d'
+00
+64
+a1  // 8063  STAB pcsave
+b0
+04
+81  // 8066  pc1:    LDAB CTRL
+f2
+00
+2d  // 8069  SLAB
+2d  // 806a  SLAB
+2d  // 806b  SLAB
+2d  // 806c  SLAB
+2d  // 806d  SLAB
+2d  // 806e  SLAB
+17  // 806f  BP pc1
+f5
+81  // 8071  LDAB pcsave
+b0
+04
+a1  // 8074  STAB TXDATA
+f2
+01
+90  // 8077  LDA #$0001
+00
+01
+b1  // 807a  STA $f900
+f9
+00
+71  // 807d  halt:   JMP halt
+80
+7d
+91  // 8080  bodysrc: .byte $91, $b0, $10
+b0
+10
+39  // 8083  .byte $39
+b1  // 8084  .byte $b1, $b0, $10
+b0
+10
+15  // 8087  .byte $15, $f7
+f7
+71  // 8089  .byte $71
+80  // 808a  .word done
+60

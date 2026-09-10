@@ -27,7 +27,8 @@ module PsramTB;
 
     wire read, write, byte_write;
     wire [21:0] addr;
-    wire [15:0] din, dout;
+    wire [15:0] din;
+    wire [63:0] dout;
     wire busy;
     wire done, pass;
     wire [15:0] got, want;
@@ -55,17 +56,36 @@ module PsramTB;
         .dbg_state(dbg_state), .dbg_match(dbg_match), .dbg_first(dbg_first),
         .dbg_nonff(dbg_nonff), .dbg_ca_echo(dbg_ca_echo));
 
-    PsramTest tester(clk, resetn, read, write, byte_write, addr, din, dout, busy,
+    PsramTest tester(clk, resetn, read, write, byte_write, addr, din, dout[15:0], busy,
                      done, pass, got, want, failed_at,
                      stage, index, saw_idle, stage_cycles, read0, read1);
 
     HyperRamModel die(.ck(ck[0]), .cs_n(cs_n[0]), .resetn(rst_n[0]),
                       .rwds(rwds[0]), .dq(dq[7:0]));
 
+    // How long an access actually takes, which is the whole point of making it
+    // faster. Timed from busy rising to busy falling, in board clocks.
+    integer clocks = 0, t0 = 0;
+    integer nread = 0, nwrite = 0, tread = 0, twrite = 0;
+    reg busy_d = 0, was_read = 0;
+    always @(posedge clk) begin
+        clocks = clocks + 1;
+        busy_d <= busy;
+        if (busy && !busy_d) begin t0 = clocks; was_read = dut.is_read; end
+        if (!busy && busy_d) begin
+            if (was_read) begin nread = nread + 1; tread = tread + clocks - t0; end
+            else begin nwrite = nwrite + 1; twrite = twrite + clocks - t0; end
+        end
+    end
+
     initial begin
         #500 resetn = 1;
         wait (done);
         #1000;
+        if (nread) $display("read:  %0d accesses, %0d clocks each, %0d ns",
+                            nread, tread/nread, (tread/nread) * 1000 / 27);
+        if (nwrite) $display("write: %0d accesses, %0d clocks each, %0d ns",
+                             nwrite, twrite/nwrite, (twrite/nwrite) * 1000 / 27);
         $display("bursts=%0d bytes written=%0d bytes read=%0d",
                  die.bursts, die.bytes_written, die.bytes_read);
         $display("read0=%04x read1=%04x  scan first=%04x match=%0d nonff=%016b echo=%04x",

@@ -203,7 +203,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire read, write, byte_write;
     wire [21:0] address;
     wire [15:0] din;
-    wire [15:0] dout;
+    wire [63:0] dout;          // four words: see PsramSdr's BURST
     wire busy;
     // ClockEnable's output before the PSRAM has had a chance to hold it back.
     wire [3:0] sdr_state;
@@ -252,7 +252,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [15:0] psram_cycles, psram_read0, psram_read1;
     PsramTest psram_test(clock, reset_btn & (PSRAM_SELFTEST != 0),
                          tst_read, tst_write, tst_byte_write, tst_addr, tst_din,
-                         dout, busy, psram_done, psram_pass,
+                         dout[15:0], busy, psram_done, psram_pass,
                          psram_got, psram_want, psram_failed_at,
                          psram_stage, psram_index, psram_saw_idle, psram_cycles,
                          psram_read0, psram_read1);

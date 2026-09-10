@@ -192,6 +192,27 @@ module ProgramTB;
         end
     end
 
+    // +addrtrace=FILE: every address the PSRAM bridge is asked for, one per
+    // line, whether it hits or misses. Modelling cache geometries against a real
+    // address stream is far cheaper than building each one and measuring it.
+    integer atf = 0;
+    reg [18:0] last_addr = 0;
+    reg last_valid = 0;
+    reg [8*64:1] atname;
+    initial if ($value$plusargs("addrtrace=%s", atname)) atf = $fopen(atname, "w");
+    always @(posedge in_clk) if (atf) begin
+        if (dut.cpu_en && dut.psram_select) begin
+            // One line per bus cycle the core spends pointing at the PSRAM, but
+            // only when the address moves: the address register simply stays
+            // where it was, so the same cycle repeats and would swamp the trace.
+            if (!last_valid || dut.addressBus !== last_addr) begin
+                $fwrite(atf, "%0d %h\n", dut.writeEnBus, dut.addressBus);
+                last_addr <= dut.addressBus;
+                last_valid <= 1;
+            end
+        end
+    end
+
     // +rxtrace: every read of the MUX data register, with the program counter
     // that caused it and whether a byte was waiting. A read consumes whatever
     // the receiver is holding, so a read the program did not ask for loses a
@@ -211,7 +232,12 @@ module ProgramTB;
     // from outside - the machine simply stops - so there is nothing to see
     // without this.
     integer stuck = 0;
+    integer stalled = 0, ran = 0;
     reg [31:0] last_timeouts = 0;
+    always @(posedge in_clk) begin
+        ran = ran + 1;
+        if (dut.psram_bus.dbg_need) stalled = stalled + 1;
+    end
     always @(posedge in_clk) if ($test$plusargs("psramtrace")) begin
         // Count clocks since the last instruction fetch, not since the bridge
         // last wanted something: a core that has stopped fetching is the
@@ -236,10 +262,15 @@ module ProgramTB;
     initial begin
         #(ms * 1000000);
         $display("\n--- %0d characters printed in %0dms ---", nprinted, ms);
-        if ($test$plusargs("psramtrace"))
+        if ($test$plusargs("psramtrace")) begin
             $display("die: %0d bursts, %0d bytes read, %0d written; bridge: %0d accesses, %0d timeouts",
                      die.bursts, die.bytes_read, die.bytes_written,
                      dut.dbg_psram_accesses, dut.dbg_psram_timeouts);
+            // What the memory actually costs the machine: the core is held
+            // still for every one of these clocks.
+            $display("psram: core stalled %0d of %0d clocks, %0d%%",
+                     stalled, ran, (stalled * 100) / (ran ? ran : 1));
+        end
         $finish;
     end
 endmodule
