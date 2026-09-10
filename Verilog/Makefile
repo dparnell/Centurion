@@ -73,11 +73,12 @@ load-tos:
 load-forth:
 	$(MAKE) PROGRAM=programs/forth.txt load
 
-test: CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB DmaTB
+test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp PsramTB
 	vvp DmaTB
+	vvp HawkTB
 
 # Simulates the real top level, including the LEDs and the UART pin, with stubs for
 # the Gowin hard blocks. The other testbenches build their own replica of the board.
@@ -86,7 +87,13 @@ TopTestBench: *.v
 
 # Runs one of diag's menu entries over the simulated serial link. Not part of "make
 # test": it simulates hundreds of milliseconds of a 27MHz board and takes minutes.
-diagtest: DiagTestBench
+# One of diag's own menu entries, which are the acceptance tests this project is
+# aimed at. "make diagtest" runs the CPU test; "make diagtest TEST=05" runs the
+# CMD seek test, and so on. Not part of "make test": it simulates a second of a
+# 27MHz board and takes a quarter of an hour.
+TEST ?= 1
+diagtest: *.v
+	iverilog -o DiagTestBench -PDiagTestTB.TEST=\"$(TEST)\" DiagTestBench.v
 	vvp DiagTestBench
 
 # The DMA path, both directions, against the pattern device in DmaTest.v.
@@ -95,6 +102,13 @@ dmatest: DmaTB
 
 DmaTB: *.v programs/dmatest.txt
 	iverilog -o DmaTB DmaTB.v
+
+# The Hawk disk controller: registers, seek, and a sector out and back over DMA.
+hawktest: HawkTB
+	vvp HawkTB
+
+HawkTB: *.v programs/hawktest.txt
+	iverilog -o HawkTB HawkTB.v
 
 DiagTestBench: *.v
 	iverilog -o DiagTestBench DiagTestBench.v

@@ -17,7 +17,11 @@
  * different entry from the menu.
  */
 module DiagTestTB;
-    parameter [7:0] TEST = "1";
+    // Two characters, because diag's menu numbers are two digits and it starts
+    // the test on the character *after* the number - so "05" then CR selects the
+    // CMD seek test. A single digit is sent as "\0" plus the digit and the NUL is
+    // skipped, which is how the CPU tests 1 and 2 are still selected.
+    parameter [15:0] TEST = "1";
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
@@ -104,7 +108,8 @@ module DiagTestTB;
         #2000000;
         $display("");
         $display("--- typing '%s' to select a test ---", TEST);
-        send(TEST);
+        if (TEST[15:8] != 0) send(TEST[15:8]);
+        send(TEST[7:0]);
         send(8'h0d);
         // The mapping RAM test runs until it is interrupted, so let it grind for a
         // while and then ask it to stop the way its own banner says to.
