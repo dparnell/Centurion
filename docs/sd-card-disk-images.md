@@ -1,8 +1,8 @@
 # Storing disk images on the SD card
 
-A design note, not an implementation. Nothing here has been built yet, and the
-resource figures for anything that does not exist are estimates and marked as
-such.
+A design note. The parts of it that have since been built are marked **done**
+below; the resource figures for anything that still does not exist are estimates
+and marked as such.
 
 The goal is to give the emulated Centurion its disk drives back, backed by
 images on the microSD card in the Tang Nano 9K's slot.
@@ -32,18 +32,28 @@ The original vendor wrote our test suite. This is the same leverage tests 01 and
 not our own opinion. Aim each stage of the work at making one more of these
 pass, and run them under `make diagtest` before going near the hardware.
 
-## Prerequisite: DMA
+## Prerequisite: DMA — **done**
 
-The disk controllers are DMA devices, and DMA is the least finished part of this
-design. The F11 and M13 addressable latches capture the DMA control bits but
-nothing reads them, the DP bus sources at `d2d3` 11 and 12 are stubs, and the
-`DMA` instruction (opcode 0x2F) has never been looked at.
+The disk controllers are DMA devices, and DMA was the least finished part of
+this design. It now works in both directions, on hardware as well as in
+simulation, and `make dmatest` is its regression.
 
-**Scope DMA before writing any SD code.** A disk controller with nowhere to put
-its data is not useful. 0x2F is an extended instruction family exactly like
-`PAGE` (0x2E), and the same microcode tracing recipe applies: log
-`dbg_uc_address` with `k11`, `e6`, `h11` and `d2d3` from the fetch of the
-instruction, and read the loop against the field decoders in `CPU6.v`.
+The shape of it matters for everything below. **A device on this machine does
+not master the bus**: it borrows the CPU's own address registers and its write
+strobe, so the transfer engine lives in `CPU6.v` and a controller only supplies
+a request, a direction and a byte. The port is `dma_req`, `dma_device_write`,
+`dma_wdata`, `dma_step`, `dma_rdata`, `dma_end`, plus `dma_int` for saying a
+command has finished. Software drives it with the `0x2f` instruction family:
+sub-op 4 sets the map, 0 the address, 2 the count, 6 enables, 7 disables. The
+count steps up and stops at `0xffff` without moving that byte.
+
+One consequence worth carrying forward: a byte takes three enabled cycles,
+because `writeEnBus` is registered and a two phase engine steps the address
+before the strobe reaches the bus. At 5MHz that is about 560KB/s, comfortably
+more than any of these drives produced.
+
+The Hawk controller in `HawkDisk.v` is the first consumer, and is the template
+for the other two.
 
 ## Pins and the physical layer
 
@@ -178,43 +188,59 @@ a card can stall for 100 ms or more doing internal housekeeping, at a moment of
 its choosing. A faithful controller model with realistic timeouts will not
 tolerate that in the middle of a transfer.
 
-`PsramController` is already instantiated in `tangnano9k.v` and nothing drives
-it. That is 8 MB of external memory sitting idle, and it is the answer:
+The PSRAM is no longer idle — it is the CPU's main memory now, behind
+`PsramBus.v`. But the die is 8 MB and **the CPU can only address 256 KB of it**,
+because the MMU's physical address is eighteen bits. Everything from `0x40000`
+up is unreachable by any program and free for exactly this:
 
-- **A floppy image fits entirely in PSRAM.** Load it from SD at boot, serve
-  every access from PSRAM, write back when dirty. SD latency leaves the CPU's
-  path completely.
-- **For CMD and Finch images, PSRAM becomes a track cache.** Read a whole track
-  on a seek, serve sectors from it, write back on eviction.
+- **A whole Hawk platter fits.** 400 cylinders × 2 heads × 16 sectors at a 512
+  byte stride is 6.55 MB, which sits above the CPU's 256 KB with room to spare.
+  A floppy image is far smaller again.
+- So an image can be **served entirely from PSRAM**, loaded from SD at mount
+  time and written back when dirty, and SD latency leaves the CPU's path
+  completely. No track cache logic is needed for any of the three drives.
 
-This also means the **floppy is the right first target**, not the hard disk. It
-is the smallest image, it needs no cache logic, and it gives the idle PSRAM
-controller its first real use.
+That also revises the note's original advice that the **floppy** should be the
+first target. That reasoning was about image size and cache logic, and neither
+applies once the whole image lives in PSRAM. The Hawk went first instead, for a
+different and better reason: its register map is documented in the archive and
+modelled in the emulator, and the floppy's is neither, yet.
 
-## Sector size mismatch
+## Sector size mismatch — designed out
 
-SD blocks are fixed at 512 bytes. The Centurion formats are very unlikely to
-match, so `DiskImage` has to map an image sector onto a block plus an offset,
-and a sector that straddles a block boundary needs two block reads. If a track
-lives in PSRAM this disappears for the floppy, but it still applies to whatever
-fills the cache.
+SD blocks are fixed at 512 bytes and a Hawk sector is 400, so the obvious layout
+makes a sector straddle a block boundary and need two block reads.
 
-The actual geometries and sector sizes need to come from the Nakazoto wiki
-rather than from guesswork.
+`HawkDisk.v` avoids the whole problem by **storing each sector at a stride of
+512 rather than 400**. That wastes 112 bytes a sector — 1.4 MB across a platter,
+against 8 MB of PSRAM and a whole SD card — and buys two things worth much more:
+the byte address of a sector becomes a shift rather than a multiply by 400, and
+one image sector is exactly one SD block. Do the same for the floppy and the
+Finch whatever their sector sizes turn out to be.
+
+The geometries themselves still need to come from the archive rather than from
+guesswork; the Hawk's is in `HawkMMIO.txt` and is 400 cylinders, 2 heads, 16
+sectors of 400 bytes.
 
 ## Bring-up order
 
 Each step verifiable on its own, which is what this project rewards:
 
-1. **SD init and a block read with no CPU involvement.** Dump the result over
-   the existing `StatusDump` path or the LED panel. This takes the entire SD
-   layer off the table as a suspect before it is ever wired to the bus.
-2. **A memory-mapped SD debug register**, exercised by a small hand-written
-   CPU6 program in `programs/`. Proves the bus integration separately from the
-   controller model.
-3. **The controller model**, judged by diag's disk tests.
-4. **PSRAM backing**, then **FAT mounting**, each as its own step with the disk
-   tests still passing either side of it.
+Written before any of it existed, and it turned out to be worth doing in almost
+the opposite order, because the controller model needs no card at all:
+
+1. ~~SD init and a block read with no CPU involvement.~~
+2. ~~A memory-mapped SD debug register.~~
+3. **The controller model** — **done for the Hawk**, and it did not need the SD
+   layer at all. `HawkDisk.v` has one sector buffer and no medium, which is
+   enough to exercise the registers, the command handshake, the busy bit, the
+   interrupt and the DMA in both directions. `make hawktest` is its regression.
+4. **A medium in PSRAM**, above the CPU's 256 KB. Still no SD card: fill it in
+   simulation with `$readmemh` and on hardware with whatever is there. This is
+   what makes diag's read test meaningful.
+5. **SD init and a block read with no CPU involvement**, then loading the image
+   into PSRAM at boot, then **FAT mounting** — each as its own step with the
+   disk tests still passing either side of it.
 
 ## Simulation
 
@@ -227,12 +253,17 @@ The card model should be able to inject a long busy period on demand, because
 that is the failure mode real cards have and the one a controller model is most
 likely to get wrong.
 
-## What to look up before starting
+## Register maps: where they actually are
 
-- Controller register maps and disk geometries, from the Nakazoto wiki.
-- Whether the CPU6 reference manual documents the `DMA` instruction and the DMA
-  bus protocol.
+Not the wiki. The archive's own files are better, and are plain text:
 
-Both of these are questions about the original hardware rather than about this
-Verilog, and the references answer them faster and more reliably than inference
-from the microcode does.
+- `Drives/Hawk Drive/HawkMMIO.txt` in `Nakazoto/CenturionComputer` is a dump of
+  the Hawk controller's registers, commands, status bits and the packed sector
+  address. It is what `HawkDisk.v` is built from, and it settled two things the
+  emulator leaves vague - that the unit select register reads back with `f` in
+  the high nibble, and the exact `00CC CCCC CCCH SSSS` address format.
+- The `DSK2` class in Meisaka's `cen.js` is a working behavioural model of the
+  same board, and is the cross check.
+
+The equivalents for the floppy and the Finch have not been located yet, and that
+is the first thing to do before either of those is started.
