@@ -17,6 +17,7 @@
 
 CTRL    .equ $f200
 TXDATA  .equ $f201
+LEDS    .equ $5c00          ; write only, one byte, physical 0x5c00
 DMACMD  .equ $f300          ; command on write, status on read
 DMABADL .equ $f301
 DMABADH .equ $f302
@@ -43,6 +44,7 @@ tmp     .equ $b012
 bad     .equ $b014
 exp     .equ $b016
 got     .equ $b018
+round   .equ $b01a
 
         .org $8000
         .byte $01
@@ -52,6 +54,18 @@ start:  LDAB #$c4           ; 19200 7N1, the settings diag leaves behind
         XAS
         LDA #banner
         JSR puts
+        LDA #0
+        STA round
+
+; The whole thing runs in a loop rather than once, so that the board is doing
+; something watchable and a fault that only shows up occasionally has a chance
+; to. The round number goes to the LED panel, which is the only sign of life
+; while the serial line is busy.
+again:  LDA round
+        INA
+        STA round
+        LDAB round+1
+        STAB LEDS
 
 ; ------------------------------------------------- pass 1: device to memory
         LDAB #$ff           ; a fill nothing would produce, so a byte that never
@@ -78,9 +92,7 @@ start:  LDAB #$c4           ; 19200 7N1, the settings diag leaves behind
         JSR puts
         JSR report
 
-        LDA #mdone
-        JSR puts
-halt:   JMP halt
+        JMP again
 
 ; ------------------------------------------------------------- subroutines
 ; Called with JSR, so none of these may touch X: JSR puts the return address
@@ -263,4 +275,3 @@ m1:     .asciiz "to memory: "
 m2:     .asciiz "to device: "
 mbad:   .asciiz "  bad "
 mok:    .asciiz "  buffer ok\r\n"
-mdone:  .asciiz "\r\ndone\r\n"
