@@ -17,9 +17,11 @@
  * microcode wanted the data or not. There is no read strobe on this bus to tell
  * the difference.
  *
- * The cache is only correct because the CPU is the sole writer. A write to the
- * cached word patches it in place; a write anywhere else leaves it alone. If DMA
- * ever writes memory, this needs invalidating from that side too.
+ * The cache is only correct because everything that writes memory does so
+ * through this port. That includes DMA: on this machine a device does not master
+ * the bus, it borrows the core's address registers and its write strobe, so a
+ * DMA write arrives here as an ordinary write and drops the line like any other.
+ * A device that drove the memory itself would have to invalidate separately.
  */
 module PsramBus #(
     // Only ever cleared by a testbench, to show what the spacing guard below is
