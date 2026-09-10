@@ -5,6 +5,7 @@
 `include "PsramSdr.v"
 `include "PsramBus.v"
 `include "DmaTest.v"
+`include "HawkDisk.v"
 // psram_controller.v is no longer built: it drives the bus through apicula's
 // ODDR/IDDR, which is exactly what does not work here. Kept in the tree for
 // reference, and because its four implicit declaration warnings are noise.
@@ -75,7 +76,7 @@ endmodule
  */
 module AddressDecode(input wire [18:0] address,
     output wire mux_select, output wire diag_select, output wire ram_select,
-    output wire dma_select, output wire psram_select);
+    output wire dma_select, output wire hawk_select, output wire psram_select);
 
     // MUX serial board, 16 registers. This matches the Diag MUX addresses used by
     // CPU6TestBench.v (status 0x3f200, data 0x3f201) and by programs/hellorld.txt.
@@ -87,6 +88,11 @@ module AddressDecode(input wire [18:0] address,
     // The DMA test device, sixteen registers at 0x3f300.
     assign dma_select = (address & 19'h7fff0) == 19'h3f300;
 
+    // The Hawk disk controller, sixteen registers at 0x3f140. That is inside the
+    // Diag board's page but clear of its window at 0x3f100, which is where the
+    // real machine puts it too.
+    assign hawk_select = (address & 19'h7fff0) == 19'h3f140;
+
     // The block RAM regions, which must go on answering rather than being folded
     // into the PSRAM: they are about fourteen times faster, and everything the
     // machine runs today lives in them. These have to match BoardMemory.v.
@@ -95,7 +101,7 @@ module AddressDecode(input wire [18:0] address,
                          || address[18:12] == 7'h0c;               // 0x0b000
     wire low_ram_region  = address[18:12] == 7'h00;                // 0x00000
     wire boot_region     = address[18:9]  == 10'h1fe;              // 0x3fc00
-    assign ram_select = ~(mux_select | diag_select | dma_select);
+    assign ram_select = ~(mux_select | diag_select | dma_select | hawk_select);
 
     // The PSRAM fills the rest of the machine's 256K of physical memory. The top
     // 4K page is left alone entirely: that is the I/O page, and the boot PROM,
@@ -377,17 +383,31 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // Simulation resolved the undriven outputs as z and let the RAM value through, but
     // yosys reported a driver-driver conflict, resolved it to a constant and dropped
     // ram_cells entirely, so on hardware the CPU only ever read 'x' (decoded as HLT).
-    wire mux_select, diag_select, ram_select, dma_select, psram_select_raw;
+    wire mux_select, diag_select, ram_select, dma_select, hawk_select, psram_select_raw;
     wire [7:0] ram_data, mux_data, diag_data;
 
     // The DMA device and the core's side of it. The device stores nothing: it
     // generates or checks a pattern, which is enough to test the path and keeps
     // the block RAM free for the disk controllers' sector buffers.
-    wire dma_req, dma_device_write, dma_step, dma_end, dma_int;
-    wire [7:0] dma_wdata, dma_rdata, dma_data;
+    wire test_req, test_write, test_int;
+    wire hawk_req, hawk_write, hawk_int;
+    wire [7:0] test_wdata, dma_rdata, dma_data, hawk_wdata, hawk_data;
+    wire dma_step, dma_end;
+
+    // Two devices on one DMA port. The core has a single request, direction and
+    // data path, so whichever device is asking drives them - the Hawk first, on
+    // the principle that a real transfer outranks a test one. A step only counts
+    // for the device that asked for it. More devices would want a proper rotating
+    // arbiter; two want this.
+    wire dma_req = hawk_req | test_req;
+    wire dma_device_write = hawk_req ? hawk_write : test_write;
+    wire [7:0] dma_wdata = hawk_req ? hawk_wdata : test_wdata;
+    wire dma_int = hawk_int | test_int;
+    wire hawk_step = dma_step & hawk_req;
+    wire test_step = dma_step & test_req & ~hawk_req;
 
     AddressDecode decode(addressBus, mux_select, diag_select, ram_select,
-                         dma_select, psram_select_raw);
+                         dma_select, hawk_select, psram_select_raw);
 
     // With the self test running the CPU must not touch the memory at all, or the
     // two would fight over the controller and the core would stall for ever.
@@ -396,6 +416,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     assign data_r2c = mux_select   ? mux_data :
                       diag_select  ? diag_data :
                       dma_select   ? dma_data :
+                      hawk_select  ? hawk_data :
                       psram_select ? psram_data : ram_data;
 
     // M13 bit 7, from the core back to the serial board so it can drop its request.
@@ -451,8 +472,14 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // The DMA test device: a pattern generator and checker with no storage.
     DmaTest dmatest(clock, cpu_en, reset, dma_select, addressBus[3:0], writeEnBus,
                     data_c2r, dma_data,
-                    dma_req, dma_device_write, dma_wdata,
-                    dma_step, dma_rdata, dma_end, dma_int);
+                    test_req, test_write, test_wdata,
+                    test_step, dma_rdata, dma_end, test_int);
+
+    // The Hawk disk controller.
+    HawkDisk hawk(clock, cpu_en, reset, hawk_select, addressBus[3:0], writeEnBus,
+                  data_c2r, hawk_data,
+                  hawk_req, hawk_write, hawk_wdata,
+                  hawk_step, dma_rdata, dma_end, hawk_int);
 
     CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr, SENSE_SWITCHES,
