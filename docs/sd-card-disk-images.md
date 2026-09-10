@@ -253,14 +253,37 @@ The card model should be able to inject a long busy period on demand, because
 that is the failure mode real cards have and the one a controller model is most
 likely to get wrong.
 
-## Disk images: where to get them
+## Disk images: where to get them, and what format they are in
 
-- **Finch images**: `billsargent/centurion` has a set under
-  `server/disks`. Worth taking as the first real images to run once the Finch
-  controller exists, and worth looking at before that for what a real image's
-  geometry and layout actually are.
-- The Hawk's own geometry is in `HawkMMIO.txt` below: 400 cylinders, two heads,
-  sixteen 400 byte sectors, 5MB a platter.
+`Nakazoto/CenturionComputer` has `Software/Data Packs`, which is the main
+source:
+
+| File | Size | What it is |
+| ---- | ---- | ---------- |
+| `CENTOS_11/12/13.IMG` | 6651904 | the operating system, 12992 sectors, 406 cylinders |
+| `HAWK_DAVE.IMG` | 5324800 | a Hawk platter in the `HawkDump` container, 12800 sectors |
+| `MINOS.IMG`, `HWKFIX.IMG`, `HWKRPL2/3.IMG`, `CPU5FIX/PLT.IMG` | 6651904 | more Hawk packs |
+| `FINCH2.BIN` | 30469061 | Finch, not looked at |
+| `TORI.FFI`, `32MB_TORI.BIN` | 32MB-ish | not looked at |
+
+`billsargent/centurion` also has Finch images under `server/disks`.
+
+**The `.IMG` files need no conversion.** They are flat files of **512 byte
+records with 400 bytes of sector data used**, ordered by flat index - cylinder *
+32 + head * 16 + sector - which is exactly the stride `HawkDisk.v` uses. That was
+chosen for SD block alignment before any real image had been looked at, and it
+turns out to be the community's format as well; Meisaka's emulator addresses its
+images the same way.
+
+`HAWK_DAVE.IMG` is the exception, and its structure is worth recording: 416 byte
+records of `HawkDump\r\n`, a two byte big endian sector number, 400 bytes of
+sector data, a two byte checksum and a CRLF. Its payloads match `CENTOS_11.IMG`
+at N*512 byte for byte, which is how the format above was established.
+`MakeSdImage.py`'s `unhawkdump` flattens one.
+
+**406 cylinders, not 400.** The real packs are 12992 sectors where a nominal
+Hawk platter is 12800, so anything sized for the nominal geometry truncates a
+real image. `DiskImage.v`'s `MAX_BLOCKS` is 13312 for that reason.
 
 Whatever the image, it goes on the card as an ordinary file - `HAWK0.IMG` by
 default, and `DISK_IMAGE` in `tangnano9k.v` sets the 8.3 name. Format the card
