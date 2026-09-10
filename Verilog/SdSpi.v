@@ -76,6 +76,15 @@ module SdSpi #(
     // One byte in and one byte out per transaction, SPI mode 0: the card samples
     // MOSI on the rising edge and we sample MISO on the same edge, so MOSI is set
     // up on the falling edge before it.
+    // Kicked by the command engine below. Its start logic has to live in the
+    // same always block as the engine itself: driving shift_out, bit_count,
+    // byte_active, divider and sd_mosi from two blocks is two drivers on one
+    // register, which simulation resolves happily and yosys reports as a
+    // driver-driver conflict and then ties to a constant. That is the same trap
+    // that once silently deleted this design's program RAM.
+    reg start_byte;
+    reg [7:0] start_data;
+
     reg [15:0] divider;
     reg [15:0] div_limit;
     reg [3:0] bit_count;
@@ -116,21 +125,15 @@ module SdSpi #(
                     end
                 end
             end
-        end
-    end
-
-    // Kicked by the command engine below.
-    reg start_byte;
-    reg [7:0] start_data;
-    always @(posedge clock)
-        if (reset) begin end
-        else if (start_byte && !byte_active) begin
+        end else if (start_byte) begin
             shift_out <= start_data;
             sd_mosi <= start_data[7];
             bit_count <= 8;
             divider <= div_limit;
             byte_active <= 1;
         end
+    end
+
 
     // ------------------------------------------------------------ command engine
     localparam [7:0]
