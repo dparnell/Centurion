@@ -253,6 +253,21 @@ The card model should be able to inject a long busy period on demand, because
 that is the failure mode real cards have and the one a controller model is most
 likely to get wrong.
 
+## Disk images: where to get them
+
+- **Finch images**: `billsargent/centurion` has a set under
+  `server/disks`. Worth taking as the first real images to run once the Finch
+  controller exists, and worth looking at before that for what a real image's
+  geometry and layout actually are.
+- The Hawk's own geometry is in `HawkMMIO.txt` below: 400 cylinders, two heads,
+  sixteen 400 byte sectors, 5MB a platter.
+
+Whatever the image, it goes on the card as an ordinary file - `HAWK0.IMG` by
+default, and `DISK_IMAGE` in `tangnano9k.v` sets the 8.3 name. Format the card
+FAT32 and copy the file on in one go so it lands contiguously; `Fat32.v` accepts
+up to four extents and refuses anything more fragmented rather than carrying a
+large table for a case that should not arise.
+
 ## Register maps: where they actually are
 
 Not the wiki. The archive's own files are better, and are plain text:
