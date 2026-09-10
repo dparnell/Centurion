@@ -22,7 +22,7 @@ start:  LDAB #$c4
         STAB [Y]
         PAGE $0c,$f8,MAPIMG
 
-        LDA #$7000
+again:  LDA #$7000
         STA ptr
         LDA #2048
         STA cnt
@@ -37,8 +37,8 @@ loop:   LDA ptr                 ; read every byte of it in order
         STA cnt
         BNZ loop
 
-        LDA #'d'                ; done
-        STAB pcsave
+        LDA #'.'                ; a dot per 2K walked: with nothing in this
+        STAB pcsave             ; loop but memory, dots per second measures it
 pc1:    LDAB CTRL
         SLAB
         SLAB
@@ -49,6 +49,4 @@ pc1:    LDAB CTRL
         BP pc1
         LDAB pcsave
         STAB TXDATA
-        LDA #$0001
-        STA $f900
-halt:   JMP halt
+        JMP again

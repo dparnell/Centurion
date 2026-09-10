@@ -109,7 +109,49 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // Testbench use only; see PsramBus.v.
                     parameter SPACING = 1,
                     // Which program the ROM holds; see BoardMemory.v.
-                    parameter PROGRAM = "programs/diag.txt")
+                    parameter PROGRAM = "programs/diag.txt",
+                    // How much faster than the board clock the PSRAM runs. The
+                    // PHY builds CK from four phases of its clock, so 1 gives
+                    // the 6.75MHz it has always run at, 2 gives 13.5MHz and 4
+                    // gives 27MHz - and a read is 22 CK whatever the rate.
+                    //
+                    // What limits this is not the protocol but the margin the
+                    // PHY samples with. It captures a byte one phase after the
+                    // CK edge, and that phase has to cover the round trip: the
+                    // FPGA driving CK, the die responding, and the data getting
+                    // back to a fabric flip flop. One phase is 37ns at 1, 18.5
+                    // at 2 and 9.3 at 4. Simulation cannot answer where that
+                    // stops working, because the behavioural die has no timing
+                    // - only the board can, which is what maptest.s is for.
+                    parameter PSRAM_MULT = 2,
+                    // Where in the cycle the memory's incoming bytes are
+                    // captured, in sixteenths of the PSRAM clock period - so
+                    // 0.58ns a step at 108MHz. "0000" samples where it always
+                    // has; larger values move the capture later, to wherever the
+                    // data has actually arrived by. This is the knob 4x needs,
+                    // and the only way to find its value is to sweep it on the
+                    // board and watch maptest.
+                    //
+                    // It has to be a string, and a real one. apycula reads this
+                    // with int(parm, 2), so it wants the four characters "1100"
+                    // and not a value that happens to spell them: build it with
+                    // arithmetic and yosys forgets it was ever a string, writes
+                    // the ASCII bits into the netlist, and apycula parses those
+                    // thirty two bits as the number instead. Every phase then
+                    // programs the same garbage, which looks exactly like the
+                    // knob having no effect - a whole sweep of it here before I
+                    // looked at what actually reached the netlist.
+                    parameter PSRAM_PHASE = "0000",
+                    // Whole phases, on top of PSRAM_PHASE's sixteenths. The two
+                    // together are a coarse and a fine control over one thing:
+                    // where in the cycle the pins are looked at.
+                    parameter integer PSRAM_LATE = 0,
+                    // Which pair of captured phases makes up a word. 2 is what
+                    // the PHY has always effectively used; moving it shifts the
+                    // capture a whole phase at a time, which is what a byte
+                    // landing the far side of a cycle boundary needs and no
+                    // amount of phase shifting can give.
+                    parameter integer PSRAM_TAP = 2)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -196,6 +238,35 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // "Identifier is implicitly declared" warning.
     wire clock = in_clk;
 
+    // The PSRAM's clock, and the only thing in this design that is not the pin.
+    // Everything else stays on `clock': the core cannot go faster - nextpnr puts
+    // this design at about 50MHz and the page table lookup is the critical path
+    // - so the memory is given its own domain and crossed into with a handshake
+    // rather than dragging the whole machine up with it.
+    //
+    // FCLKOUT = FCLKIN * (FBDIV_SEL+1) / (IDIV_SEL+1), and ODIV_SEL sets the VCO,
+    // which has to land between 400MHz and 1200MHz: 27 * 2 * 16 is 864, and
+    // 27 * 4 * 8 is the same.
+    wire psram_clk;
+    wire psram_sample_clk;
+    wire psram_lock;
+    generate
+    if (PSRAM_MULT == 1) begin: no_pll
+        assign psram_clk = clock;
+        assign psram_sample_clk = clock;
+        assign psram_lock = 1'b1;
+    end else begin: pll
+        rPLL #(.FCLKIN("27"), .IDIV_SEL(0), .FBDIV_SEL(PSRAM_MULT-1),
+               .ODIV_SEL(PSRAM_MULT == 2 ? 16 : 8), .DEVICE("GW1NR-9C"),
+               .PSDA_SEL(PSRAM_PHASE), .DYN_DA_EN("false"))
+            psram_pll(.CLKOUT(psram_clk), .LOCK(psram_lock),
+                      .CLKOUTP(psram_sample_clk), .CLKOUTD(), .CLKOUTD3(),
+                      .RESET(1'b0), .RESET_P(1'b0), .CLKIN(clock), .CLKFB(1'b0),
+                      .FBDSEL(6'b0), .IDSEL(6'b0), .ODSEL(6'b0),
+                      .PSDA(4'b0), .DUTYDA(4'b0), .FDLY(4'b0));
+    end
+    endgenerate
+
     // The PSRAM runs from the board clock with no PLL at all: PsramSdr builds its
     // 6.75MHz bus clock from four phases of the 27MHz clock in fabric, because
     // apicula's ODDR/IDDR cannot be used here. That keeps the whole design in one
@@ -204,16 +275,35 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [21:0] address;
     wire [15:0] din;
     wire [63:0] dout;          // four words: see PsramSdr's BURST
-    wire busy;
     // ClockEnable's output before the PSRAM has had a chance to hold it back.
     wire [3:0] sdr_state;
     wire [4:0] sdr_match;
     wire [15:0] sdr_first, sdr_echo, sdr_nonff;
 
-    PsramSdr psram(
-        .clk(clock), .resetn(reset_btn),
+    // Crossing back out of the PSRAM's domain. busy is a level that changes
+    // slowly compared with either clock and dout is stable by the time it falls,
+    // so two flip flops on busy is the whole of it: everything else in the
+    // protocol is already held steady across the handshake.
+    wire busy_raw;
+    reg [1:0] busy_sync;
+    // Busy until proven otherwise. Starting these at zero says the memory is
+    // ready before anything has asked it, and psram_ready is set from exactly
+    // this signal - so the core left reset while the part was still in its
+    // 300us wake up, and its first access sat there until the bridge gave up.
+    // Three timeouts in eleven thousand accesses, all of them at boot.
+    initial busy_sync = 2'b11;
+    always @(posedge clock) busy_sync <= { busy_sync[0], busy_raw };
+    wire busy = busy_sync[1];
+
+    // At 27MHz CK one phase is 9.3ns, which is not enough for the round trip out
+    // to the die and back: the memory then reads correctly most of the time and
+    // wrong occasionally, which maptest catches in seconds.
+    PsramSdr #(.RX_TAP(PSRAM_TAP), .RESET_CLOCKS(8100 * PSRAM_MULT),
+                   .DEBUG_SCAN(PSRAM_MULT >= 4 ? 0 : 1)) psram(
+        .clk(psram_clk), .sample_clk(psram_sample_clk),
+        .resetn(reset_btn & psram_lock),
         .read(read), .write(write), .addr(address), .din(din),
-        .byte_write(byte_write), .dout(dout), .busy(busy),
+        .byte_write(byte_write), .dout(dout), .busy(busy_raw),
         .O_psram_ck(O_psram_ck), .O_psram_ck_n(O_psram_ck_n),
         .O_psram_cs_n(O_psram_cs_n), .O_psram_reset_n(O_psram_reset_n),
         .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
@@ -1106,13 +1196,34 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         { sdr_state, psram_stage, psram_done, psram_pass, sdr_match, 2'b0,
           sdr_nonff, sdr_echo, psram_read0, psram_read1 };
 
+    // Thousands of clocks the core has spent held still by the memory. Sixteen
+    // bits of whole clocks wraps in 2.4ms and is useless; this wraps in 2.4s.
+    reg [15:0] stall_kclocks;
+    reg [9:0] stall_frac;
+    initial begin stall_kclocks = 0; stall_frac = 0; end
+    always @(posedge clock) begin
+        if (reset) begin
+            stall_kclocks <= 0; stall_frac <= 0;
+        end else if (dbg_bus_need) begin
+            if (stall_frac == 10'd999) begin
+                stall_frac <= 0;
+                stall_kclocks <= stall_kclocks + 1;
+            end else stall_frac <= stall_frac + 1;
+        end
+    end
+
+    // On this branch words 1 and 2 carry the memory's own counters instead of
+    // diag's, because the question here is how much traffic there is and how
+    // fast it goes - and dots per second on a serial line has turned out to
+    // measure the program's instruction count far more than the memory's speed.
     wire [79:0] dump_payload =
         { sdr_state, 4'b0, psram_select, busy, read, write,
             dbg_bus_state, dbg_bus_need, 1'b0,
-          pass_count,
-          z0_count,
+          dbg_psram_accesses,
+          stall_kclocks,
           dbg_psram_addr[15:0],
           compare_failed, timeouts_shown, dbg_psram_addr[18:16], dbg_psram_data };
+
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.

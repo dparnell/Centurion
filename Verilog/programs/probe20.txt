@@ -27,7 +27,7 @@ a5  // 8015  STAB [Y]
 f8
 b1
 00
-90  // 801c  LDA #$7000
+90  // 801c  again:  LDA #$7000
 70
 00
 b1  // 801f  STA ptr
@@ -61,10 +61,10 @@ b0
 12
 15  // 803c  BNZ loop
 ea
-90  // 803e  LDA #'d'                ; done
+90  // 803e  LDA #'.'                ; a dot per 2K walked: with nothing in this
 00
-64
-a1  // 8041  STAB pcsave
+2e
+a1  // 8041  STAB pcsave             ; loop but memory, dots per second measures it
 b0
 04
 81  // 8044  pc1:    LDAB CTRL
@@ -84,12 +84,6 @@ b0
 a1  // 8052  STAB TXDATA
 f2
 01
-90  // 8055  LDA #$0001
-00
-01
-b1  // 8058  STA $f900
-f9
-00
-71  // 805b  halt:   JMP halt
+71  // 8055  JMP again
 80
-5b
+1c
