@@ -1486,15 +1486,23 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // Reporting the low water mark instead was a mistake: it is always the first
     // word of the instruction, so it says nothing.
     reg [10:0] uc_max;
-    initial uc_max = 0;
+    // The opcode of the instruction being executed. "Some instruction never
+    // finishes" is not a diagnosis; "instruction 0xNN never finishes" names the
+    // microcode to go and read. The byte arrives with the fetch, so it is
+    // latched one clock after instruction_fetch.
+    reg [7:0] last_opcode;
+    reg fetch_d;
+    initial begin uc_max = 0; last_opcode = 0; fetch_d = 0; end
     always @(posedge clock) begin
+        fetch_d <= instruction_fetch;
+        if (fetch_d) last_opcode <= dbg_data_in;
         if (reset || instruction_start) uc_max <= dbg_uc_address;
         else if (cpu_en && dbg_uc_address > uc_max) uc_max <= dbg_uc_address;
     end
 
     wire [79:0] cpu_payload =
         { pc_live0, 5'b0, dbg_uc_address, 5'b0, uc_max, dbg_memory_address,
-          dbg_f11, 4'b0, dbg_d2d3 };
+          dbg_f11, last_opcode };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
