@@ -122,6 +122,10 @@ module HawkDisk #(
     // nobody wants and then never finishes.
     reg [15:0] cur_sector;
     reg boundary;
+    // The address steps within its low byte and does not carry into the
+    // cylinder, which is what the emulator does: a transfer runs on through the
+    // sectors of one track rather than walking off the end of it.
+    wire [15:0] next_sector = { sector_addr[15:8], sector_addr[7:0] + 8'd1 };
     // A drive that is busy with nothing outstanding never becomes ready again,
     // and the operating system's wait loop spins on exactly that bit. Every
     // command arms busy_time except a read, which relies on a DMA transfer
@@ -224,11 +228,16 @@ module HawkDisk #(
                 if (command == CMD_VERIFY && dma_rdata != buf_q) verify_fail <= 1;
                 if (bytes_left == 1) begin
                     // Off the end of this sector. The drive steps its own
-                    // address; the CPU's DMA counters decide when the whole
-                    // transfer stops, and that is only known next cycle.
+                    // address, but only when a byte for the *next* sector is
+                    // actually asked for - so the step happens in the boundary
+                    // handling below, which knows whether the transfer ended
+                    // here. Stepping it now instead leaves the address one
+                    // sector past the last one really transferred, and the
+                    // driver reads that register back: after the boot PROM
+                    // loads the fourteen sectors of WIPL the reference reports
+                    // 000d and this used to report 000e.
                     bytes_left <= SECTOR;
                     buf_index <= 0;
-                    sector_addr <= sector_addr + 1;
                     boundary <= 1;
                 end else begin
                     bytes_left <= bytes_left - 1;
@@ -247,15 +256,20 @@ module HawkDisk #(
                         waiting <= 1; saw_busy <= 0; wait_kind <= W_FINAL;
                     end else busy_time <= T_TRANSFER;
                 end else if (img_mounted) begin
-                    // More to come: put this sector away, or bring the next one
-                    // in. Hold the DMA rather than dropping the request, which
-                    // the microcode's wait loop reads as "finished".
-                    img_block <= store_to_medium ? cur_sector : sector_addr;
+                    // More to come, so the drive steps now. Put this sector
+                    // away, or bring the next one in. Hold the DMA rather than
+                    // dropping the request, which the microcode's wait loop
+                    // reads as "finished".
+                    sector_addr <= next_sector;
+                    img_block <= store_to_medium ? cur_sector : next_sector;
                     img_store <= store_to_medium;
                     img_req <= 1;
-                    cur_sector <= sector_addr;
+                    cur_sector <= next_sector;
                     waiting <= 1; saw_busy <= 0; wait_kind <= W_MID;
-                end else cur_sector <= sector_addr;
+                end else begin
+                    sector_addr <= next_sector;
+                    cur_sector <= next_sector;
+                end
             end
 
             // A transfer that ends without crossing a boundary - which needs a

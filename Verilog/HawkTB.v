@@ -129,15 +129,19 @@ module HawkTB;
                 end
                 2: begin
                     check_sector_buffer;
-                    // A transfer of exactly one sector leaves the address on the
-                    // next one, which is what lets a longer DMA stream through
-                    // consecutive sectors.
-                    if (dut.hawk.sector_addr !== SECTOR + 1) begin
+                    // A transfer of exactly one sector leaves the address ON
+                    // that sector, not past it: the drive steps only when a byte
+                    // for the next one is actually asked for. This assertion
+                    // used to require SECTOR + 1 and was enshrining the bug -
+                    // the driver reads this register back, and after the boot
+                    // PROM loads fourteen sectors the reference reports the
+                    // fourteenth rather than the fifteenth.
+                    if (dut.hawk.sector_addr !== SECTOR) begin
                         $display("FAIL: after writing one sector the address is %h, not %h",
-                                 dut.hawk.sector_addr, SECTOR + 1);
+                                 dut.hawk.sector_addr, SECTOR);
                         failures = failures + 1;
                     end else
-                        $display("ok: the sector address stepped on by exactly one");
+                        $display("ok: one sector transferred leaves the address on it");
                 end
                 3: begin
                     check_memory;
