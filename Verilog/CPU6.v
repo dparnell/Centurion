@@ -487,8 +487,20 @@ module CPU6 #(
     wire [7:0] constant = ~pipeline[16+7:16];
 
     wire bad_page_n = ~(virtual_address[18:13] == 6'h3f && virtual_address[11] == 1);
+    // The bottom of physical memory is the CPU's own register file, and this
+    // says whether an access lands there: physical page zero, offset below
+    // 0x100. Zero means all SEVEN bits of the page entry, and virtual_address[17]
+    // - the entry's bit 6 - used to be missing from the product, so any page
+    // whose number was exactly 0x40 looked like page zero and every access to it
+    // was answered out of the register file instead of memory.
+    //
+    // That is not a corner case. The operating system sizes memory by mapping
+    // each physical page in turn into virtual page 31 and probing it, walking
+    // the page number up from 0x1e; 0x40 is the first value with bit 6 set, and
+    // the boot died there every time while the reference walked on to 0x7d.
     wire reg_n = ~(~virtual_address[12] & ~(memory_address[9] | memory_address[10]) &
         ~(virtual_address[15] | virtual_address[16]) & ~memory_address[8] &
+        ~virtual_address[17] &
         ~(virtual_address[13] | virtual_address[14]) & ~(virtual_address[11] | virtual_address[12]));
     wire not_mem = ~(bad_page_n & reg_n);
 
