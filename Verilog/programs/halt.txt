@@ -1,0 +1,6 @@
+// Assembled by Assemble.py; do not edit by hand.
+01  // 8000  .byte $01
+01  // 8001  start:  NOP
+01  // 8002  NOP
+00  // 8003  .byte $00
+01  // 8004  NOP

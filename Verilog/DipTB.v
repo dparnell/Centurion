@@ -139,6 +139,20 @@ module DipTB;
         end
     end
 
+    // The last 64 instruction fetches. "Where did it stop" is only half an
+    // answer when the machine has run off into memory that holds nothing: the
+    // other half is the last address it was executing something real at, and
+    // the jump that took it away from there. A single latched PC cannot show
+    // that, and +pctrace over a whole boot is tens of thousands of lines.
+    reg [15:0] pc_ring [0:63];
+    reg [5:0] pc_head = 0;
+    integer pk;
+    initial for (pk = 0; pk < 64; pk = pk + 1) pc_ring[pk] = 16'hffff;
+    always @(posedge in_clk) if (dut.instruction_fetch) begin
+        pc_ring[pc_head] <= dut.pc_live0;
+        pc_head <= pc_head + 1;
+    end
+
     // Stop the moment the core stops fetching, rather than at a fixed time. A
     // hang can be a long way in, and running to a wall clock limit either stops
     // short of it or wastes hours past it. This ends the run exactly when the
@@ -162,6 +176,12 @@ module DipTB;
                      dut.image.fail_why, dut.img_fetches);
             $display("  bridge: need=%b state=%0d   instructions so far %0d",
                      dut.psram_bus.dbg_need, dut.psram_bus.dbg_state, at_101);
+            $write("  the last 64 instruction fetches, oldest first:");
+            for (pk = 0; pk < 64; pk = pk + 1) begin
+                if (pk % 8 == 0) $write("\n   ");
+                $write(" %04h", pc_ring[(pc_head + pk) % 64]);
+            end
+            $write("\n");
             $finish;
         end
     end
