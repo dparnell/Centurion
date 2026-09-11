@@ -34,6 +34,7 @@ module DipTB;
     // The diag board's ROMs shadow 8K the operating system loads code into, so
     // booting it needs them out. See BoardMemory.v.
     parameter DIAG_ROM = 1;
+    parameter integer TICKS = 13;
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
@@ -69,7 +70,12 @@ module DipTB;
                                               psram_ck, psram_ck_n, psram_cs_n,
                                               psram_reset_n, psram_rwds, psram_dq,
                                               sd_clk, sd_mosi, sd_miso, sd_cs_n);
-    defparam dut.cpu_clock_enable.TICKS = 13;
+    // The core's speed. 13 runs it at about 13MHz instead of the real 5, which
+    // is a 2.6x different ratio between the CPU and everything it waits for -
+    // the disk, the memory, the serial line. That is fine for reproducing
+    // something quickly and wrong for reproducing a race, so TICKS=5 when the
+    // question is why the hardware behaves differently from the simulation.
+    defparam dut.cpu_clock_enable.TICKS = TICKS;
 
     // +bustrace: every bus address the machine touches while the PC is in the
     // disk wait routine. "It is polling a status register" is only half an
@@ -116,6 +122,48 @@ module DipTB;
                      dut.image.fail_why == 2 ? "lookup never answered" :
                      dut.image.fail_why == 3 ? "card read error" :
                      dut.image.fail_why == 4 ? "card write error" : "?");
+    end
+
+    // Does the microcode ever rejoin the fetch sequence at 0x102 without going
+    // through 0x101? instruction_start is `== 11'h101' exactly, so if it does,
+    // that signal misses real instructions - and the watchdog and every
+    // instruction counter would read "stopped" on a machine that is running.
+    integer at_101 = 0, at_102 = 0, skipped_101 = 0;
+    reg [10:0] uc_prev = 0;
+    always @(posedge in_clk) if (dut.cpu_en) begin
+        uc_prev <= dut.dbg_uc_address;
+        if (dut.dbg_uc_address == 11'h101) at_101 = at_101 + 1;
+        if (dut.dbg_uc_address == 11'h102) begin
+            at_102 = at_102 + 1;
+            if (uc_prev != 11'h101) skipped_101 = skipped_101 + 1;
+        end
+    end
+
+    // Stop the moment the core stops fetching, rather than at a fixed time. A
+    // hang can be a long way in, and running to a wall clock limit either stops
+    // short of it or wastes hours past it. This ends the run exactly when the
+    // thing being looked for happens, and says where.
+    reg mounted_seen = 0;
+    integer idle_clocks = 0;
+    always @(posedge in_clk) if (dut.img_mounted) mounted_seen <= 1;
+    always @(posedge in_clk) begin
+        if (dut.instruction_fetch) idle_clocks <= 0;
+        else if (mounted_seen) idle_clocks <= idle_clocks + 1;
+        if (idle_clocks == 20_000_000) begin       // three quarters of a second
+            $display("\n*** THE CORE STOPPED FETCHING ***");
+            $display("  last instruction %04h, opcode %02h, microcode %03h, MAR %04h",
+                     dut.pc_live0, dut.last_opcode, dut.dbg_uc_address,
+                     dut.cpu.dbg_memory_address);
+            $display("  f11=%02h dma_on=%b hawk: req=%b hold=%b busy=%b cmd=%0d sector=%04h",
+                     dut.cpu.f11, dut.cpu.dma_on, dut.hawk_req, dut.hawk_hold,
+                     dut.hawk.busy, dut.hawk.command, dut.hawk.sector_addr);
+            $display("  image: state=%0d busy=%b failed=%b why=%0d fetches=%0d",
+                     dut.image.dbg_state, dut.image.busy, dut.image.failed,
+                     dut.image.fail_why, dut.img_fetches);
+            $display("  bridge: need=%b state=%0d   instructions so far %0d",
+                     dut.psram_bus.dbg_need, dut.psram_bus.dbg_state, at_101);
+            $finish;
+        end
     end
 
     // +pctrace: every instruction fetch. Booting is a short sequence that either
@@ -180,6 +228,8 @@ module DipTB;
             $write(" %02x", die.mem[19'h0efe0 + i]);
         end
         $display("");
+        $display("microcode: reached 0x101 %0d times, 0x102 %0d times, of which %0d did NOT come from 0x101",
+                 at_101, at_102, skipped_101);
         $display("\n--- %0d characters ---", n);
         $display("--- hawk: sector %04h, status %02h; image: %0d fetches, %0d hits ---",
                  dut.hawk.sector_addr, dut.hawk.data_out,
