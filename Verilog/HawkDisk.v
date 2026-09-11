@@ -124,10 +124,19 @@ module HawkDisk(
     // let a device stall the machine in a way it cannot recover from.
     reg [23:0] stuck;
     localparam integer STUCK_LIMIT = 27_000_000 / 4;   // a quarter of a second
+    reg verify_fail;
     reg [1:0] wait_kind;
     localparam [1:0] W_PREP = 0, W_MID = 1, W_FINAL = 2;
-    // The command moves data out of memory and onto the disk.
-    wire disk_write = (command == CMD_WRITE) || (command == CMD_VERIFY);
+    // Three different questions the one old "disk_write" flag was answering at
+    // once, which is how verify came to write the medium. VERIFY takes its bytes
+    // out of memory exactly as a write does, and that is the only thing the two
+    // have in common: it compares them against what is on the disk and reports a
+    // mismatch. It must never store. Getting this wrong overwrites a sector of
+    // the image with whatever the driver happened to be holding, and the
+    // operating system's boot issues nearly three hundred of them.
+    // Only a write puts anything back. A read and a verify both need the sector
+    // brought in first; a write and a verify both take their bytes from memory.
+    wire store_to_medium = (command == CMD_WRITE);
 
     // One sector buffer. 512 bytes is one block RAM, and this must read every
     // clock with the value held in fabric flops - a block RAM output is not a
@@ -144,7 +153,8 @@ module HawkDisk(
     // on a device with 6480 and 8640, and the only sign of it is the design
     // failing to place.
     wire [8:0] buf_read_addr = waiting ? ext_addr : buf_index;
-    wire       buf_write     = ext_wr || (transferring && dma_step && !dma_write);
+    wire       buf_write     = ext_wr ||
+                               (transferring && dma_step && command == CMD_WRITE);
     wire [8:0] buf_waddr     = ext_wr ? ext_addr  : buf_index;
     wire [7:0] buf_wdata_mux = ext_wr ? ext_wdata : dma_rdata;
     assign ext_rdata = buf_q;
@@ -156,6 +166,7 @@ module HawkDisk(
         bytes_left = 0; buf_index = 0; transferring = 0;
         waiting = 0; saw_busy = 0; media_error = 0;
         cur_sector = 0; boundary = 0; wait_kind = 0; stuck = 0;
+        verify_fail = 0;
         img_req = 0; img_store = 0; img_block = 0;
         buf_q = 0; data_out = 0;
         for (j = 0; j < STRIDE; j = j + 1) sector_buf[j] = 8'h00;
@@ -181,6 +192,7 @@ module HawkDisk(
             int_enabled <= 0; int_pending <= 0;
             bytes_left <= 0; buf_index <= 0; transferring <= 0;
             waiting <= 0; saw_busy <= 0; media_error <= 0;
+            verify_fail <= 0;
             boundary <= 0;
             stuck <= 0;
             img_req <= 0; img_store <= 0;
@@ -189,6 +201,12 @@ module HawkDisk(
             boundary <= 0;
             if (transferring && dma_step) begin
                 // The byte itself goes in through the shared write port above.
+                // On a verify nothing is stored anywhere: the byte out of memory
+                // is compared against the one the medium gave us, and the first
+                // difference is latched. buf_q is the disk byte at buf_index,
+                // one clock behind the address exactly as the read path relies
+                // on, so the two line up without any extra delay.
+                if (command == CMD_VERIFY && dma_rdata != buf_q) verify_fail <= 1;
                 if (bytes_left == 1) begin
                     // Off the end of this sector. The drive steps its own
                     // address; the CPU's DMA counters decide when the whole
@@ -206,7 +224,7 @@ module HawkDisk(
             if (boundary) begin
                 if (dma_end) begin
                     transferring <= 0;
-                    if (img_mounted && disk_write) begin
+                    if (img_mounted && store_to_medium) begin
                         // Hand the last sector back before saying we are done.
                         img_block <= cur_sector;
                         img_store <= 1;
@@ -217,8 +235,8 @@ module HawkDisk(
                     // More to come: put this sector away, or bring the next one
                     // in. Hold the DMA rather than dropping the request, which
                     // the microcode's wait loop reads as "finished".
-                    img_block <= disk_write ? cur_sector : sector_addr;
-                    img_store <= disk_write;
+                    img_block <= store_to_medium ? cur_sector : sector_addr;
+                    img_store <= store_to_medium;
                     img_req <= 1;
                     cur_sector <= sector_addr;
                     waiting <= 1; saw_busy <= 0; wait_kind <= W_MID;
@@ -286,9 +304,12 @@ module HawkDisk(
                         command <= data_in[2:0];
                         seek_done <= 0;
                         busy <= 1;
+                        // Any command clears the error bits, which is what the
+                        // emulator's clear_errors() does on every command write.
+                        media_error <= 0;
+                        verify_fail <= 0;
                         case (data_in[2:0])
                             CMD_READ: begin
-                                media_error <= 0;
                                 cur_sector <= sector_addr;
                                 if (img_mounted) begin
                                     // Bring the sector in before anything moves.
@@ -303,11 +324,10 @@ module HawkDisk(
                                     buf_index <= 0;
                                 end
                             end
-                            CMD_WRITE, CMD_VERIFY: begin
+                            CMD_WRITE: begin
                                 // A write protected unit accepts the command and
                                 // does nothing, which is what the real board does
                                 // and what the emulator models.
-                                media_error <= 0;
                                 cur_sector <= sector_addr;
                                 if (!write_protected) begin
                                     transferring <= 1;
@@ -315,6 +335,24 @@ module HawkDisk(
                                     buf_index <= 0;
                                 end else
                                     busy_time <= T_TRANSFER;
+                            end
+                            CMD_VERIFY: begin
+                                // A verify needs the sector in hand to compare
+                                // against, so it starts the same way a read
+                                // does. It is not gated on write protect,
+                                // because it does not write.
+                                cur_sector <= sector_addr;
+                                if (img_mounted) begin
+                                    img_block <= sector_addr;
+                                    img_store <= 0;
+                                    img_req <= 1;
+                                    waiting <= 1; saw_busy <= 0;
+                                    wait_kind <= W_PREP;
+                                end else begin
+                                    transferring <= 1;
+                                    bytes_left <= SECTOR;
+                                    buf_index <= 0;
+                                end
                             end
                             CMD_SEEK: begin
                                 seeking <= 1;
@@ -353,7 +391,8 @@ module HawkDisk(
             // returns; it costs nothing to supply both readings.
             // Bit 7 is the timeout error, which is the closest the real board's
             // status has to "the medium did not answer".
-            4'h4: data_out = { media_error, 3'b000, 3'b000, busy | seeking };
+            4'h4: data_out = { media_error, verify_fail, 2'b00, 3'b000,
+                               busy | seeking };
             // Drive status: seek complete per drive in the low nibble, then
             // ready, on cylinder, write enable, write protect.
             4'h5: data_out = { write_protected, ~write_protected, ~seeking, 1'b1,

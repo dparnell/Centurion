@@ -11,16 +11,16 @@ e0
 5f  // 8009  XAS
 90  // 800a  LDA #banner
 82
-30
+8e
 79  // 800d  JSR puts
-81
-be
+82
+1c
 90  // 8010  LDA #m_reg
 82
-3e
+9c
 79  // 8013  JSR puts
-81
-be
+82
+1c
 80  // 8016  LDAB #0
 00
 a1  // 8018  STAB HKUNIT
@@ -45,67 +45,67 @@ f1
 f1
 41
 79  // 802d  JSR puthex
-81
-ea
+82
+48
 81  // 8030  LDAB HKADRL
 f1
 42
 79  // 8033  JSR puthex
-81
-ea
+82
+48
 79  // 8036  JSR space
-81
-d8
+82
+36
 81  // 8039  LDAB HKUNIT         ; the archive says this reads back with f on top
 f1
 40
 79  // 803c  JSR puthex
-81
-ea
+82
+48
 79  // 803f  JSR crlf
-81
-de
+82
+3c
 90  // 8042  LDA #m_seek
 82
-4e
+ac
 79  // 8045  JSR puts
-81
-be
+82
+1c
 80  // 8048  LDAB #CMDSEEK
 02
 a1  // 804a  STAB HKCMD
 f1
 48
 79  // 804d  JSR waitbusy
-80
-d7
+81
+35
 81  // 8050  LDAB HKSTAT
 f1
 44
 79  // 8053  JSR puthex
-81
-ea
+82
+48
 79  // 8056  JSR space
-81
-d8
+82
+36
 81  // 8059  LDAB HKDRV          ; expect on cylinder and seek done
 f1
 45
 79  // 805c  JSR puthex
-81
-ea
+82
+48
 79  // 805f  JSR crlf
-81
-de
+82
+3c
 79  // 8062  JSR fill
-80
-f3
+81
+51
 90  // 8065  LDA #m_out
 82
-5e
+bc
 79  // 8068  JSR puts
-81
-be
+82
+1c
 80  // 806b  LDAB #XFERH    ; the transfer steps the address, so set it each time
 00
 a1  // 806d  STAB HKADRH
@@ -120,8 +120,8 @@ f1
 10
 00
 79  // 8078  JSR setup
-80
-c7
+81
+25
 80  // 807b  LDAB #CMDWRIT
 01
 a1  // 807d  STAB HKCMD          ; raises the request
@@ -130,25 +130,25 @@ f1
 2f  // 8080  DMA $06             ; and the microcode's wait loop runs the transfer
 06
 79  // 8082  JSR waitbusy
-80
-d7
+81
+35
 2f  // 8085  DMA $07
 07
 81  // 8087  LDAB HKSTAT
 f1
 44
 79  // 808a  JSR puthex
-81
-ea
+82
+48
 79  // 808d  JSR crlf
-81
-de
+82
+3c
 90  // 8090  LDA #m_in
 82
-6e
+cc
 79  // 8093  JSR puts
-81
-be
+82
+1c
 80  // 8096  LDAB #XFERH
 00
 a1  // 8098  STAB HKADRH
@@ -163,8 +163,8 @@ f1
 14
 00
 79  // 80a3  JSR setup
-80
-c7
+81
+25
 80  // 80a6  LDAB #CMDREAD
 00
 a1  // 80a8  STAB HKCMD
@@ -173,377 +173,471 @@ f1
 2f  // 80ab  DMA $06
 06
 79  // 80ad  JSR waitbusy
-80
-d7
+81
+35
 2f  // 80b0  DMA $07
 07
 81  // 80b2  LDAB HKSTAT
 f1
 44
 79  // 80b5  JSR puthex
-81
-ea
+82
+48
 79  // 80b8  JSR crlf
-81
-de
+82
+3c
 79  // 80bb  JSR compare
 81
-2c
-90  // 80be  LDA #m_done
-82
-a6
-79  // 80c1  JSR puts
-81
-be
-71  // 80c4  halt:   JMP halt
-80
-c4
-b1  // 80c7  setup:  STA tmp
-b0
-12
-2f  // 80ca  DMA $04             ; map 0
+8a
+90  // 80be  LDA #m_ver
+83
 04
-91  // 80cc  LDA tmp
-b0
-12
-2f  // 80cf  DMA $00             ; address
-00
-90  // 80d1  LDA #$ffff-LEN
-fe
-6f
-2f  // 80d4  DMA $02             ; count
-02
-09  // 80d6  RSR
-90  // 80d7  LDA #$4000
-40
-00
-b1  // 80da  STA tmp
-b0
-12
-81  // 80dd  wb1:    LDAB HKSTAT
-f1
-44
-d0  // 80e0  LDB #$0001
-00
-01
-5a  // 80e3  NAB
-14  // 80e4  BZ wb2
-0c
-91  // 80e6  LDA tmp
-b0
-12
-39  // 80e9  DCA
-b1  // 80ea  STA tmp
-b0
-12
-14  // 80ed  BZ wb2
-03
-71  // 80ef  JMP wb1
-80
-dd
-09  // 80f2  wb2:    RSR
-90  // 80f3  fill:   LDA #0
-00
-00
-b1  // 80f6  STA i
-b0
-10
-91  // 80f9  fl1:    LDA i
-b0
-10
-d0  // 80fc  LDB #LEN
-01
-90
-51  // 80ff  SUB B,A
-20
-14  // 8101  BZ fl2
-28
-91  // 8103  LDA i
-b0
-10
-d0  // 8106  LDB #$005a
-00
-5a
-54  // 8109  ORE B,A
-20
-b1  // 810b  STA exp
-b0
-16
-90  // 810e  LDA #OUTBUF
-10
-00
-d1  // 8111  LDB i
-b0
-10
-58  // 8114  AAB
-f1  // 8115  STB tmp
-b0
-12
-91  // 8118  LDA tmp
-b0
-12
-5c  // 811b  XAY
-81  // 811c  LDAB exp+1
-b0
-17
-a5  // 811f  STAB [Y]
-60
-91  // 8121  LDA i
-b0
-10
-38  // 8124  INA
-b1  // 8125  STA i
-b0
-10
-71  // 8128  JMP fl1
-80
-f9
-09  // 812b  fl2:    RSR
-90  // 812c  LDA #0
-00
-00
-b1  // 812f  STA i
-b0
-10
-b1  // 8132  STA bad
-b0
-14
-91  // 8135  cm1:    LDA i
-b0
-10
-d0  // 8138  LDB #LEN
-01
-90
-51  // 813b  SUB B,A
-20
-14  // 813d  BZ cm4
-65
-90  // 813f  LDA #OUTBUF
-10
-00
-d1  // 8142  LDB i
-b0
-10
-58  // 8145  AAB
-f1  // 8146  STB tmp
-b0
-12
-91  // 8149  LDA tmp
-b0
-12
-5c  // 814c  XAY
-3a  // 814d  CLA
-85  // 814e  LDAB [Y]
-60
-b1  // 8150  STA exp
-b0
-16
-90  // 8153  LDA #INBUF
-14
-00
-d1  // 8156  LDB i
-b0
-10
-58  // 8159  AAB
-f1  // 815a  STB tmp
-b0
-12
-91  // 815d  LDA tmp
-b0
-12
-5c  // 8160  XAY
-3a  // 8161  CLA
-85  // 8162  LDAB [Y]
-60
-b1  // 8164  STA got
-b0
-18
-d1  // 8167  LDB exp
-b0
-16
-51  // 816a  SUB B,A
-20
-14  // 816c  BZ cm3
-2c
-91  // 816e  LDA bad
-b0
-14
-38  // 8171  INA
-b1  // 8172  STA bad
-b0
-14
-d0  // 8175  LDB #$0005
-00
-05
-51  // 8178  SUB B,A
-20
-17  // 817a  BP cm3              ; only print the first few
-1e
-90  // 817c  LDA #m_bad
+79  // 80c1  JSR puts
 82
-7e
-79  // 817f  JSR puts
-81
-be
-81  // 8182  LDAB i+1
-b0
-11
-79  // 8185  JSR puthex
-81
-ea
-79  // 8188  JSR space
-81
-d8
-81  // 818b  LDAB exp+1
-b0
-17
-79  // 818e  JSR puthex
-81
-ea
-81  // 8191  LDAB got+1
-b0
-19
-79  // 8194  JSR puthex
-81
-ea
-79  // 8197  JSR crlf
-81
-de
-91  // 819a  cm3:    LDA i
-b0
+1c
+80  // 80c4  LDAB #XFERH
+00
+a1  // 80c6  STAB HKADRH
+f1
+41
+80  // 80c9  LDAB #XFERL
+05
+a1  // 80cb  STAB HKADRL
+f1
+42
+90  // 80ce  LDA #OUTBUF
 10
-38  // 819d  INA
-b1  // 819e  STA i
-b0
-10
-71  // 81a1  JMP cm1
+00
+79  // 80d1  JSR setup
+81
+25
+80  // 80d4  LDAB #CMDVER
+04
+a1  // 80d6  STAB HKCMD
+f1
+48
+2f  // 80d9  DMA $06
+06
+79  // 80db  JSR waitbusy
 81
 35
-91  // 81a4  cm4:    LDA bad
+2f  // 80de  DMA $07
+07
+81  // 80e0  LDAB HKSTAT
+f1
+44
+79  // 80e3  JSR puthex
+82
+48
+79  // 80e6  JSR crlf
+82
+3c
+90  // 80e9  LDA #OUTBUF
+10
+00
+5c  // 80ec  XAY
+80  // 80ed  LDAB #$ff           ; the sector holds 5a here, so this must not match
+ff
+a5  // 80ef  STAB [Y]
+60
+90  // 80f1  LDA #m_ver2
+83
+14
+79  // 80f4  JSR puts
+82
+1c
+80  // 80f7  LDAB #XFERH
+00
+a1  // 80f9  STAB HKADRH
+f1
+41
+80  // 80fc  LDAB #XFERL
+05
+a1  // 80fe  STAB HKADRL
+f1
+42
+90  // 8101  LDA #OUTBUF
+10
+00
+79  // 8104  JSR setup
+81
+25
+80  // 8107  LDAB #CMDVER
+04
+a1  // 8109  STAB HKCMD
+f1
+48
+2f  // 810c  DMA $06
+06
+79  // 810e  JSR waitbusy
+81
+35
+2f  // 8111  DMA $07
+07
+81  // 8113  LDAB HKSTAT
+f1
+44
+79  // 8116  JSR puthex
+82
+48
+79  // 8119  JSR crlf
+82
+3c
+90  // 811c  LDA #m_done
+83
+24
+79  // 811f  JSR puts
+82
+1c
+71  // 8122  halt:   JMP halt
+81
+22
+b1  // 8125  setup:  STA tmp
+b0
+12
+2f  // 8128  DMA $04             ; map 0
+04
+91  // 812a  LDA tmp
+b0
+12
+2f  // 812d  DMA $00             ; address
+00
+90  // 812f  LDA #$ffff-LEN
+fe
+6f
+2f  // 8132  DMA $02             ; count
+02
+09  // 8134  RSR
+90  // 8135  LDA #$4000
+40
+00
+b1  // 8138  STA tmp
+b0
+12
+81  // 813b  wb1:    LDAB HKSTAT
+f1
+44
+d0  // 813e  LDB #$0001
+00
+01
+5a  // 8141  NAB
+14  // 8142  BZ wb2
+0c
+91  // 8144  LDA tmp
+b0
+12
+39  // 8147  DCA
+b1  // 8148  STA tmp
+b0
+12
+14  // 814b  BZ wb2
+03
+71  // 814d  JMP wb1
+81
+3b
+09  // 8150  wb2:    RSR
+90  // 8151  fill:   LDA #0
+00
+00
+b1  // 8154  STA i
+b0
+10
+91  // 8157  fl1:    LDA i
+b0
+10
+d0  // 815a  LDB #LEN
+01
+90
+51  // 815d  SUB B,A
+20
+14  // 815f  BZ fl2
+28
+91  // 8161  LDA i
+b0
+10
+d0  // 8164  LDB #$005a
+00
+5a
+54  // 8167  ORE B,A
+20
+b1  // 8169  STA exp
+b0
+16
+90  // 816c  LDA #OUTBUF
+10
+00
+d1  // 816f  LDB i
+b0
+10
+58  // 8172  AAB
+f1  // 8173  STB tmp
+b0
+12
+91  // 8176  LDA tmp
+b0
+12
+5c  // 8179  XAY
+81  // 817a  LDAB exp+1
+b0
+17
+a5  // 817d  STAB [Y]
+60
+91  // 817f  LDA i
+b0
+10
+38  // 8182  INA
+b1  // 8183  STA i
+b0
+10
+71  // 8186  JMP fl1
+81
+57
+09  // 8189  fl2:    RSR
+90  // 818a  LDA #0
+00
+00
+b1  // 818d  STA i
+b0
+10
+b1  // 8190  STA bad
 b0
 14
-14  // 81a7  BZ cm5
-0f
-90  // 81a9  LDA #m_diff
+91  // 8193  cm1:    LDA i
+b0
+10
+d0  // 8196  LDB #LEN
+01
+90
+51  // 8199  SUB B,A
+20
+14  // 819b  BZ cm4
+65
+90  // 819d  LDA #OUTBUF
+10
+00
+d1  // 81a0  LDB i
+b0
+10
+58  // 81a3  AAB
+f1  // 81a4  STB tmp
+b0
+12
+91  // 81a7  LDA tmp
+b0
+12
+5c  // 81aa  XAY
+3a  // 81ab  CLA
+85  // 81ac  LDAB [Y]
+60
+b1  // 81ae  STA exp
+b0
+16
+90  // 81b1  LDA #INBUF
+14
+00
+d1  // 81b4  LDB i
+b0
+10
+58  // 81b7  AAB
+f1  // 81b8  STB tmp
+b0
+12
+91  // 81bb  LDA tmp
+b0
+12
+5c  // 81be  XAY
+3a  // 81bf  CLA
+85  // 81c0  LDAB [Y]
+60
+b1  // 81c2  STA got
+b0
+18
+d1  // 81c5  LDB exp
+b0
+16
+51  // 81c8  SUB B,A
+20
+14  // 81ca  BZ cm3
+2c
+91  // 81cc  LDA bad
+b0
+14
+38  // 81cf  INA
+b1  // 81d0  STA bad
+b0
+14
+d0  // 81d3  LDB #$0005
+00
+05
+51  // 81d6  SUB B,A
+20
+17  // 81d8  BP cm3              ; only print the first few
+1e
+90  // 81da  LDA #m_bad
 82
-85
-79  // 81ac  JSR puts
+dc
+79  // 81dd  JSR puts
+82
+1c
+81  // 81e0  LDAB i+1
+b0
+11
+79  // 81e3  JSR puthex
+82
+48
+79  // 81e6  JSR space
+82
+36
+81  // 81e9  LDAB exp+1
+b0
+17
+79  // 81ec  JSR puthex
+82
+48
+81  // 81ef  LDAB got+1
+b0
+19
+79  // 81f2  JSR puthex
+82
+48
+79  // 81f5  JSR crlf
+82
+3c
+91  // 81f8  cm3:    LDA i
+b0
+10
+38  // 81fb  INA
+b1  // 81fc  STA i
+b0
+10
+71  // 81ff  JMP cm1
 81
-be
-81  // 81af  LDAB bad+1
+93
+91  // 8202  cm4:    LDA bad
+b0
+14
+14  // 8205  BZ cm5
+0f
+90  // 8207  LDA #m_diff
+82
+e3
+79  // 820a  JSR puts
+82
+1c
+81  // 820d  LDAB bad+1
 b0
 15
-79  // 81b2  JSR puthex
-81
-ea
-71  // 81b5  JMP crlf
-81
-de
-90  // 81b8  cm5:    LDA #m_same
+79  // 8210  JSR puthex
 82
-95
-71  // 81bb  JMP puts
-81
-be
-b1  // 81be  puts:   STA scr2+2
+48
+71  // 8213  JMP crlf
+82
+3c
+90  // 8216  cm5:    LDA #m_same
+82
+f3
+71  // 8219  JMP puts
+82
+1c
+b1  // 821c  puts:   STA scr2+2
 b0
 0a
-91  // 81c1  ps1:    LDA scr2+2
+91  // 821f  ps1:    LDA scr2+2
 b0
 0a
-5c  // 81c4  XAY
-3a  // 81c5  CLA
-85  // 81c6  LDAB [Y]
+5c  // 8222  XAY
+3a  // 8223  CLA
+85  // 8224  LDAB [Y]
 60
-14  // 81c8  BZ ps2
+14  // 8226  BZ ps2
 0d
-79  // 81ca  JSR putc
+79  // 8228  JSR putc
 82
-0b
-91  // 81cd  LDA scr2+2
+69
+91  // 822b  LDA scr2+2
 b0
 0a
-38  // 81d0  INA
-b1  // 81d1  STA scr2+2
+38  // 822e  INA
+b1  // 822f  STA scr2+2
 b0
 0a
-71  // 81d4  JMP ps1
-81
-c1
-09  // 81d7  ps2:    RSR
-90  // 81d8  space:  LDA #' '
+71  // 8232  JMP ps1
+82
+1f
+09  // 8235  ps2:    RSR
+90  // 8236  space:  LDA #' '
 00
 20
-71  // 81db  JMP putc
+71  // 8239  JMP putc
 82
-0b
-90  // 81de  crlf:   LDA #$0d
+69
+90  // 823c  crlf:   LDA #$0d
 00
 0d
-79  // 81e1  JSR putc
+79  // 823f  JSR putc
 82
-0b
-90  // 81e4  LDA #$0a
+69
+90  // 8242  LDA #$0a
 00
 0a
-71  // 81e7  JMP putc
+71  // 8245  JMP putc
 82
-0b
-a1  // 81ea  puthex: STAB scr+2
+69
+a1  // 8248  puthex: STAB scr+2
 b0
 08
-2c  // 81ed  SRAB
-2c  // 81ee  SRAB
-2c  // 81ef  SRAB
-2c  // 81f0  SRAB
-d0  // 81f1  LDB #$000f
+2c  // 824b  SRAB
+2c  // 824c  SRAB
+2c  // 824d  SRAB
+2c  // 824e  SRAB
+d0  // 824f  LDB #$000f
 00
 0f
-5a  // 81f4  NAB
-79  // 81f5  JSR putnib
+5a  // 8252  NAB
+79  // 8253  JSR putnib
 82
-02
-81  // 81f8  LDAB scr+2
+60
+81  // 8256  LDAB scr+2
 b0
 08
-d0  // 81fb  LDB #$000f
+d0  // 8259  LDB #$000f
 00
 0f
-5a  // 81fe  NAB
-71  // 81ff  JMP putnib
+5a  // 825c  NAB
+71  // 825d  JMP putnib
 82
-02
-90  // 8202  putnib: LDA #digits
+60
+90  // 8260  putnib: LDA #digits
 82
+7e
+58  // 8263  AAB
+85  // 8264  LDAB [B]
 20
-58  // 8205  AAB
-85  // 8206  LDAB [B]
-20
-71  // 8208  JMP putc
+71  // 8266  JMP putc
 82
-0b
-a1  // 820b  putc:   STAB pcsave
+69
+a1  // 8269  putc:   STAB pcsave
 b0
 04
-81  // 820e  pc1:    LDAB CTRL
+81  // 826c  pc1:    LDAB CTRL
 f2
 00
-2d  // 8211  SLAB
-2d  // 8212  SLAB
-2d  // 8213  SLAB
-2d  // 8214  SLAB
-2d  // 8215  SLAB
-2d  // 8216  SLAB
-17  // 8217  BP pc1
+2d  // 826f  SLAB
+2d  // 8270  SLAB
+2d  // 8271  SLAB
+2d  // 8272  SLAB
+2d  // 8273  SLAB
+2d  // 8274  SLAB
+17  // 8275  BP pc1
 f5
-81  // 8219  LDAB pcsave
+81  // 8277  LDAB pcsave
 b0
 04
-a1  // 821c  STAB TXDATA
+a1  // 827a  STAB TXDATA
 f2
 01
-09  // 821f  RSR
-30  // 8220  digits: .ascii "0123456789abcdef"
+09  // 827d  RSR
+30  // 827e  digits: .ascii "0123456789abcdef"
 31
 32
 33
@@ -559,7 +653,7 @@ f2
 64
 65
 66
-0d  // 8230  banner: .asciiz "\r\nHAWK test\r\n"
+0d  // 828e  banner: .asciiz "\r\nHAWK test\r\n"
 0a
 48
 41
@@ -573,7 +667,7 @@ f2
 0d
 0a
 00
-61  // 823e  m_reg:  .asciiz "addr readback: "
+61  // 829c  m_reg:  .asciiz "addr readback: "
 64
 64
 72
@@ -589,7 +683,7 @@ f2
 3a
 20
 00
-73  // 824e  m_seek: .asciiz "seek stat/drv: "
+73  // 82ac  m_seek: .asciiz "seek stat/drv: "
 65
 65
 6b
@@ -605,7 +699,7 @@ f2
 3a
 20
 00
-77  // 825e  m_out:  .asciiz "write sector:  "
+77  // 82bc  m_out:  .asciiz "write sector:  "
 72
 69
 74
@@ -621,7 +715,7 @@ f2
 20
 20
 00
-72  // 826e  m_in:   .asciiz "read sector:   "
+72  // 82cc  m_in:   .asciiz "read sector:   "
 65
 61
 64
@@ -637,14 +731,14 @@ f2
 20
 20
 00
-20  // 827e  m_bad:  .asciiz "  bad "
+20  // 82dc  m_bad:  .asciiz "  bad "
 20
 62
 61
 64
 20
 00
-4d  // 8285  m_diff: .asciiz "MISMATCH count "
+4d  // 82e3  m_diff: .asciiz "MISMATCH count "
 49
 53
 4d
@@ -660,7 +754,7 @@ f2
 74
 20
 00
-73  // 8295  m_same: .asciiz "sector matches\r\n"
+73  // 82f3  m_same: .asciiz "sector matches\r\n"
 65
 63
 74
@@ -677,7 +771,39 @@ f2
 0d
 0a
 00
-64  // 82a6  m_done: .asciiz "done\r\n"
+76  // 8304  m_ver:  .asciiz "verify same:   "
+65
+72
+69
+66
+79
+20
+73
+61
+6d
+65
+3a
+20
+20
+20
+00
+76  // 8314  m_ver2: .asciiz "verify differs:"
+65
+72
+69
+66
+79
+20
+64
+69
+66
+66
+65
+72
+73
+3a
+00
+64  // 8324  m_done: .asciiz "done\r\n"
 6f
 6e
 65

@@ -9,6 +9,10 @@
 ;   2  seek, and watch busy clear and on-cylinder come up
 ;   3  DMA 400 bytes of pattern out to the controller
 ;   4  DMA them back into a different buffer and compare
+;   5  verify the sector against the data that wrote it - must pass, and must
+;      leave the medium alone
+;   6  corrupt one byte and verify again - must report a data compare error, and
+;      must still leave the medium alone
 ;
 ; Each step prints a line. See asm/dmatest.s for the trap about which scratch
 ; locations the print helpers use.
@@ -28,6 +32,7 @@ HKCMD   .equ $f148
 CMDREAD .equ 0
 CMDWRIT .equ 1
 CMDSEEK .equ 2
+CMDVER  .equ 4
 
 OUTBUF  .equ $1000          ; 400 bytes written to the disk
 INBUF   .equ $1400          ; 400 bytes read back
@@ -132,6 +137,49 @@ start:  LDAB #$c4           ; 19200 7N1
         JSR puthex
         JSR crlf
         JSR compare
+
+; --------------------------------------------- 5: verify against matching data
+; A verify takes its bytes out of memory exactly as a write does and compares
+; them with what is on the disk. It must never store: that is the whole point of
+; the command, and getting it wrong quietly overwrites the medium.
+        LDA #m_ver
+        JSR puts
+        LDAB #XFERH
+        STAB HKADRH
+        LDAB #XFERL
+        STAB HKADRL
+        LDA #OUTBUF
+        JSR setup
+        LDAB #CMDVER
+        STAB HKCMD
+        DMA $06
+        JSR waitbusy
+        DMA $07
+        LDAB HKSTAT
+        JSR puthex
+        JSR crlf
+
+; ------------------------------------------- 6: verify against differing data
+        LDA #OUTBUF
+        XAY
+        LDAB #$ff           ; the sector holds 5a here, so this must not match
+        STAB [Y]
+        LDA #m_ver2
+        JSR puts
+        LDAB #XFERH
+        STAB HKADRH
+        LDAB #XFERL
+        STAB HKADRL
+        LDA #OUTBUF
+        JSR setup
+        LDAB #CMDVER
+        STAB HKCMD
+        DMA $06
+        JSR waitbusy
+        DMA $07
+        LDAB HKSTAT
+        JSR puthex
+        JSR crlf
 
         LDA #m_done
         JSR puts
@@ -310,4 +358,6 @@ m_in:   .asciiz "read sector:   "
 m_bad:  .asciiz "  bad "
 m_diff: .asciiz "MISMATCH count "
 m_same: .asciiz "sector matches\r\n"
+m_ver:  .asciiz "verify same:   "
+m_ver2: .asciiz "verify differs:"
 m_done: .asciiz "done\r\n"

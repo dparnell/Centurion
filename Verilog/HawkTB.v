@@ -142,6 +142,31 @@ module HawkTB;
                 3: begin
                     check_memory;
                     check_image;
+                end
+                // A verify against the data that wrote the sector. It must
+                // report no data compare error, and it must leave the medium
+                // exactly as it was - verify used to be implemented as a write,
+                // which silently overwrote the sector with whatever the driver
+                // was holding, three hundred times over an operating system's
+                // boot.
+                4: begin
+                    if (dut.hawk.verify_fail !== 1'b0) begin
+                        $display("FAIL: verifying against matching data reported a mismatch");
+                        failures = failures + 1;
+                    end else
+                        $display("ok: a verify against matching data passes");
+                    check_image;
+                end
+                // The same verify with one byte of the memory buffer changed.
+                // Now it must report the mismatch - and still not have touched
+                // the sector.
+                5: begin
+                    if (dut.hawk.verify_fail !== 1'b1) begin
+                        $display("FAIL: verifying against differing data reported no mismatch");
+                        failures = failures + 1;
+                    end else
+                        $display("ok: a verify against differing data reports it");
+                    check_image;
                     if (failures == 0)
                         $display("ok: the Hawk controller works over DMA in both directions");
                     $finish;
@@ -177,8 +202,8 @@ module HawkTB;
     endtask
 
     initial begin
-        #250_000_000;
-        $display("FAIL: only %0d of 3 commands finished", commands);
+        #500_000_000;
+        $display("FAIL: only %0d of 5 commands finished", commands);
         $finish;
     end
 endmodule
