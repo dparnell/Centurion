@@ -88,6 +88,8 @@ module PsramBus #(
     // byte loop running out of PSRAM and bought about one percent of stall time
     // over sixteen; the storage stack needs the room more than the benchmark
     // does, and the machine's own working set is in block RAM either way.
+    // Halving it again to eight was tried and saved 44 LUT4 out of 7300, which
+    // is not where the logic is.
     localparam integer LINES = 16;
     localparam integer IDXBITS = 4;      // must be $clog2(LINES)
     reg [15-IDXBITS:0] cache_tag [0:LINES-1];

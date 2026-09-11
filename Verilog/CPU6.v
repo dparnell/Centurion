@@ -289,6 +289,20 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     // interruptible by a disk finishing. This is the emulator's dmaint exactly.
     wire dmaint = int_enabled & (interrupt_level < 2) & dma_int;
 
+    // The real time clock. M13 bit 5 arms the tick generator and M13 bit 2 lets
+    // its output through to the conditions - two different bits, which is easy
+    // to miss. Software acknowledges a tick by clearing bit 5, which is why
+    // there is no explicit clear anywhere.
+    //
+    // 8333 enabled cycles is what Meisaka's emulator counts, and at the CPU's
+    // 5MHz that is 600Hz. Nothing in this design depends on the rate being
+    // right, but the operating system's idle loop depends on there being one at
+    // all: without a tick it waits for ever, having reached the point of asking.
+    localparam integer RTC_TICKS = 8333;
+    reg [13:0] rtc_counter;
+    reg rtc;
+    wire rtc_active = rtc & m13[2];
+
     /*
      * Am2909/2911 Microsequencers
      */
@@ -474,9 +488,20 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                 5: jsr_ = ~dma_req;
                 6: ; // Parity error
                 7: begin
-                    // Anything at all wanting attention: a DMA request or a DMA
-                    // interrupt as well as an ordinary one.
-                    jsr_ = ~(dma_req | dmaint | (int_enabled & ~int_reqn)); // Interrupt
+                    // Anything at all wanting attention: a DMA request, a DMA
+                    // interrupt, or an ordinary one.
+                    //
+                    // The clock tick belongs here too - the emulator has it -
+                    // but putting it in makes the machine worse, not better,
+                    // and measurably so: the operating system's bootstrap goes
+                    // from running loaded code to abandoning the load and
+                    // re-prompting. Raising an interrupt this design cannot then
+                    // service is worse than not raising it. The tick is still
+                    // generated and still readable through d2d3 12, which is how
+                    // software polls for it; this line goes back in when the
+                    // interrupt entry path is finished.
+                    jsr_ = ~(dma_req | dmaint |
+                             (int_enabled & ~int_reqn)); // Interrupt
                    end
             endcase
         end
@@ -617,7 +642,10 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             // The PAGE store shifts bit 0 into the top of each byte it writes.
             11: DPBus = { interrupt_level, dmaint, 1'b1,
                           resetting, ~page_table_out[7] };
-            12: ; // read switch 2 other half of dip switches and condition codes?
+            // The interrupt request level, the front panel switches, and the
+            // clock tick in bit 0. The switches are not wired to anything here,
+            // so they read as zero, which is also the emulator's default.
+            12: DPBus = { irq_number, 3'b000, rtc_active };
             13: DPBus = constant;
             14: ;
             15: ;
@@ -645,6 +673,8 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             result_register <= 0;
             swap_register <= 0;
             condition_codes <= 0;
+            rtc_counter <= 0;
+            rtc <= 0;
             flags_register <= 0;
             writeEnBus <= 0;
             writEnDelayed <= 0;
@@ -746,6 +776,16 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
                 6: ; // Select FBus source (combinational)
                 7: swap_register <= { DPBus[3:0], DPBus[7:4] };
             endcase
+
+            // The clock tick. Armed by M13 bit 5; clearing that bit is also how
+            // software acknowledges a tick, so there is no separate clear.
+            if (!m13[5]) begin
+                rtc <= 0;
+                rtc_counter <= 0;
+            end else if (rtc_counter == RTC_TICKS - 1) begin
+                rtc_counter <= 0;
+                rtc <= 1;
+            end else rtc_counter <= rtc_counter + 1;
 
             writeEnBus <= writEnDelayed;
             writEnDelayed <= 0;
