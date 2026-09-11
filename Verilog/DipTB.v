@@ -103,6 +103,23 @@ module DipTB;
                      dut.cpu.f11, dut.cpu.dma_on);
     end
 
+    // +hawkseq: one line per disk command, in the same shape as the trace the
+    // reference emulator prints. A boot that works issues a definite sequence -
+    // 301 commands to reach the MAX DISK# prompt - so the first line where the
+    // two disagree is the first thing this machine does differently, which is a
+    // far sharper question than "it stopped somewhere". A bus write is asserted
+    // across two enabled cycles, hence the edge detect.
+    reg cmd_seen = 0;
+    always @(posedge in_clk) if ($test$plusargs("hawkseq")) begin
+        if (dut.cpu_en && dut.writeEnBus && dut.addressBus[18:0] == 19'h3f148) begin
+            if (!cmd_seen)
+                $display("cmd=%02h unit=%01h adr=%04h wpm=%02h PC=%04h",
+                         dut.data_c2r, dut.hawk.unit, dut.hawk.sector_addr,
+                         dut.hawk.wpmask, dut.pc_live0);
+            cmd_seen <= 1;
+        end else cmd_seen <= 0;
+    end
+
     // +maptrace: the block-to-LBA lookup, both sides. DiskImage pulses map_req
     // for one clock and Fat32 only notices it in its idle state, so a request
     // that arrives at the wrong moment is simply lost and the image layer times
@@ -160,6 +177,22 @@ module DipTB;
     always @(posedge in_clk) if (dut.instruction_fetch) begin
         pc_ring[pc_head] <= dut.dbg_memory_address;
         pc_head <= pc_head + 1;
+    end
+
+    // The two instruments must agree on every fetch, not just at the end of the
+    // run: pc_live0 inside the top level and this ring are both latched from
+    // dbg_memory_address on the same edge. One run reported a trail whose newest
+    // entry was 0000 while pc_live0 read 0506, which cannot both be true, and
+    // waiting until the end to notice loses the cycle it happened on. This says
+    // so once, immediately.
+    reg mismatch_said = 0;
+    always @(posedge in_clk) if (dut.instruction_fetch && !mismatch_said) begin
+        if (pc_head != 0 && dut.pc_live0 !== pc_ring[(pc_head + 63) % 64]) begin
+            $display("INSTRUMENT MISMATCH at %0t: pc_live0=%04h but the ring's newest is %04h (head %0d, fetching %04h)",
+                     $time, dut.pc_live0, pc_ring[(pc_head + 63) % 64],
+                     pc_head, dut.dbg_memory_address);
+            mismatch_said <= 1;
+        end
     end
 
     // Stop the moment the core stops fetching, rather than at a fixed time. A
