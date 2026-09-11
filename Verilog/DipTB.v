@@ -31,6 +31,12 @@ module DipTB;
     // Booting an operating system is not a prompt-and-answer affair: it wants
     // long enough to read what it needs off the disk and say something.
     parameter integer HOLD = 60;
+    // Milliseconds between one key and the next. HOLD is how long to watch the
+    // machine after the last of them, and using it between keys too makes a long
+    // run unusable: booting an operating system wants seconds of simulated time
+    // at the end and a few milliseconds between the two characters of "H1",
+    // and waiting the first between them costs hours for nothing.
+    parameter integer GAP = 20;
     // The diag board's ROMs shadow 8K the operating system loads code into, so
     // booting it needs them out. See BoardMemory.v.
     parameter DIAG_ROM = 1;
@@ -148,8 +154,11 @@ module DipTB;
     reg [5:0] pc_head = 0;
     integer pk;
     initial for (pk = 0; pk < 64; pk = pk + 1) pc_ring[pk] = 16'hffff;
+    // dbg_memory_address, not pc_live0: pc_live0 is latched from it on this same
+    // edge, so reading pc_live0 here stores the *previous* fetch and the whole
+    // ring lags by one.
     always @(posedge in_clk) if (dut.instruction_fetch) begin
-        pc_ring[pc_head] <= dut.pc_live0;
+        pc_ring[pc_head] <= dut.dbg_memory_address;
         pc_head <= pc_head + 1;
     end
 
@@ -176,6 +185,13 @@ module DipTB;
                      dut.image.fail_why, dut.img_fetches);
             $display("  bridge: need=%b state=%0d   instructions so far %0d",
                      dut.psram_bus.dbg_need, dut.psram_bus.dbg_state, at_101);
+            // Both instruments, side by side. They are built from the same
+            // instruction_fetch but in different files, so a disagreement means
+            // one of them is wrong and it matters which: the board's trail is
+            // what the hardware reports on trigger byte 0x05.
+            $display("  pc_live1=%04h pc_live0=%04h   board trail %04h %04h %04h %04h %04h (head %0d)",
+                     dut.pc_live1, dut.pc_live0,
+                     dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0, pc_head);
             $write("  the last 64 instruction fetches, oldest first:");
             for (pk = 0; pk < 64; pk = pk + 1) begin
                 if (pk % 8 == 0) $write("\n   ");
@@ -235,7 +251,7 @@ module DipTB;
             if (KEYS[k*8 -: 8] != 0) begin
                 $display("\n--- typing %c ---", KEYS[k*8 -: 8]);
                 send(KEYS[k*8 -: 8]);
-                repeat (HOLD) #1000000;
+                repeat (GAP) #1000000;
             end
         end
         repeat (HOLD) #1000000;
@@ -248,6 +264,23 @@ module DipTB;
             $write(" %02x", die.mem[19'h0efe0 + i]);
         end
         $display("");
+        // The fetch trail the board reports on trigger byte 0x05 is a shift
+        // register in the top level, and a dump taken while diag is printing
+        // collides with its output, so the serial line cannot check it. Check it
+        // against the testbench's own ring instead, which is built from the same
+        // instruction_fetch but independently.
+        if ({dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0} !==
+            {pc_ring[(pc_head + 59) % 64], pc_ring[(pc_head + 60) % 64],
+             pc_ring[(pc_head + 61) % 64], pc_ring[(pc_head + 62) % 64],
+             pc_ring[(pc_head + 63) % 64]})
+            $display("FAIL: the fetch trail disagrees with the testbench's ring:\n  board %04h %04h %04h %04h %04h\n  ring  %04h %04h %04h %04h %04h",
+                     dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0,
+                     pc_ring[(pc_head + 59) % 64], pc_ring[(pc_head + 60) % 64],
+                     pc_ring[(pc_head + 61) % 64], pc_ring[(pc_head + 62) % 64],
+                     pc_ring[(pc_head + 63) % 64]);
+        else
+            $display("ok: the fetch trail matches, last five fetches %04h %04h %04h %04h %04h",
+                     dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0);
         $display("microcode: reached 0x101 %0d times, 0x102 %0d times, of which %0d did NOT come from 0x101",
                  at_101, at_102, skipped_101);
         $display("\n--- %0d characters ---", n);
