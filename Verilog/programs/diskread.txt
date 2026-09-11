@@ -20,9 +20,9 @@ e0
 a1  // 8012  STAB HKUNIT
 f1
 40
-80  // 8015  LDAB #$ff           ; every unit write protected: belt and braces on top
-ff
-a1  // 8017  STAB HKWPM          ; of this program never issuing a write
+80  // 8015  LDAB #$00           ; register 3 is a write PERMIT mask, so zero leaves
+00
+a1  // 8017  STAB HKWPM          ; every unit unwritable: belt and braces on top of
 f1
 43
 90  // 801a  LDA #0

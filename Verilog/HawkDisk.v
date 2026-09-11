@@ -172,7 +172,16 @@ module HawkDisk(
         for (j = 0; j < STRIDE; j = j + 1) sector_buf[j] = 8'h00;
     end
 
-    wire write_protected = wpmask[unit[2:0]];
+    // Register 3 is a write *permit* mask, not a protect mask, despite the name
+    // everything uses for it: a bit has to be SET before the corresponding unit
+    // can be written, and the drive status reports it in bit 6, "write enable".
+    // Meisaka's emulator suppresses the transfer unless the bit is set, and an
+    // operating system boot leaves this register at 00 throughout while issuing
+    // twelve write commands - so with the sense inverted, twelve sectors of the
+    // image are overwritten on every boot that the real machine would refuse.
+    // The safe polarity is also the faithful one: nothing is writable until
+    // software says so.
+    wire write_enabled = wpmask[unit[2:0]];
 
     assign dma_req = transferring;
     assign dma_hold = waiting;
@@ -329,7 +338,7 @@ module HawkDisk(
                                 // does nothing, which is what the real board does
                                 // and what the emulator models.
                                 cur_sector <= sector_addr;
-                                if (!write_protected) begin
+                                if (write_enabled) begin
                                     transferring <= 1;
                                     bytes_left <= SECTOR;
                                     buf_index <= 0;
@@ -395,7 +404,11 @@ module HawkDisk(
                                busy | seeking };
             // Drive status: seek complete per drive in the low nibble, then
             // ready, on cylinder, write enable, write protect.
-            4'h5: data_out = { write_protected, ~write_protected, ~seeking, 1'b1,
+            // Bit 7 is the medium's own write protect tab, which an image
+            // mounted off the card does not have, and bit 6 is the permit mask
+            // for this unit. They are independent in the emulator and a write
+            // needs the tab clear and the mask bit set.
+            4'h5: data_out = { 1'b0, write_enabled, ~seeking, 1'b1,
                                3'b000, seek_done };
             4'h8: data_out = { 7'b0, busy | seeking };
             default: data_out = 8'h00;

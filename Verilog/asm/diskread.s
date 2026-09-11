@@ -38,8 +38,9 @@ start:  LDAB #$c4           ; 19200 7N1
         JSR puts
         LDAB #0
         STAB HKUNIT
-        LDAB #$ff           ; every unit write protected: belt and braces on top
-        STAB HKWPM          ; of this program never issuing a write
+        LDAB #$00           ; register 3 is a write PERMIT mask, so zero leaves
+        STAB HKWPM          ; every unit unwritable: belt and braces on top of
+                            ; this program never issuing a write
         LDA #0
         STA sec
 

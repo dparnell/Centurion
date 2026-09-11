@@ -72,8 +72,9 @@ start:  LDAB #$c4           ; 19200 7N1
         JSR puts
         LDAB #0
         STAB HKUNIT
-        LDAB #0
-        STAB HKWPM          ; nothing write protected
+        LDAB #$ff
+        STAB HKWPM          ; register 3 is a write PERMIT mask - a unit cannot
+                            ; be written until its bit is set
         LDAB #SECTORH
         STAB HKADRH
         LDAB #SECTORL

@@ -26,9 +26,9 @@ e0
 a1  // 8018  STAB HKUNIT
 f1
 40
-80  // 801b  LDAB #0
-00
-a1  // 801d  STAB HKWPM          ; nothing write protected
+80  // 801b  LDAB #$ff
+ff
+a1  // 801d  STAB HKWPM          ; register 3 is a write PERMIT mask - a unit cannot
 f1
 43
 80  // 8020  LDAB #SECTORH
