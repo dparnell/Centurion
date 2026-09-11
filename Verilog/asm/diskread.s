@@ -36,8 +36,8 @@ start:  LDAB #$c4           ; 19200 7N1
         XAS
         LDA #banner
         JSR puts
-        LDAB #0
-        STAB HKUNIT
+        LDAB #1             ; the image is on unit 1, which is where the drive
+        STAB HKUNIT         ; status reports a medium and where "H1" boots from
         LDAB #$00           ; register 3 is a write PERMIT mask, so zero leaves
         STAB HKWPM          ; every unit unwritable: belt and braces on top of
                             ; this program never issuing a write

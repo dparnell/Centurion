@@ -21,9 +21,9 @@ e0
 79  // 8013  JSR puts
 82
 1c
-80  // 8016  LDAB #0
-00
-a1  // 8018  STAB HKUNIT
+80  // 8016  LDAB #1             ; the image is on unit 1, which is where the drive
+01
+a1  // 8018  STAB HKUNIT         ; status reports a medium and where "H1" boots from
 f1
 40
 80  // 801b  LDAB #$ff

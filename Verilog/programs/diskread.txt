@@ -15,9 +15,9 @@ e0
 79  // 800d  JSR puts
 81
 04
-80  // 8010  LDAB #0
-00
-a1  // 8012  STAB HKUNIT
+80  // 8010  LDAB #1             ; the image is on unit 1, which is where the drive
+01
+a1  // 8012  STAB HKUNIT         ; status reports a medium and where "H1" boots from
 f1
 40
 80  // 8015  LDAB #$00           ; register 3 is a write PERMIT mask, so zero leaves

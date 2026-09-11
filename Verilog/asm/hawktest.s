@@ -70,8 +70,8 @@ start:  LDAB #$c4           ; 19200 7N1
 ; ---------------------------------------------------- 1: the address registers
         LDA #m_reg
         JSR puts
-        LDAB #0
-        STAB HKUNIT
+        LDAB #1             ; the image is on unit 1, which is where the drive
+        STAB HKUNIT         ; status reports a medium and where "H1" boots from
         LDAB #$ff
         STAB HKWPM          ; register 3 is a write PERMIT mask - a unit cannot
                             ; be written until its bit is set
