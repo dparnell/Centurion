@@ -35,7 +35,13 @@
  * write lasts several board clocks and would otherwise be seen several times;
  * the transfer and timing side runs off the board clock.
  */
-module HawkDisk(
+module HawkDisk #(
+    // Which unit the mounted image is in. There is one image, so there is one
+    // drive, and the documented way to boot an operating system off it is "H1"
+    // - device H, unit 1 - which is also where the emulator's verified CENTOS
+    // procedure mounts it.
+    parameter [3:0] IMAGE_UNIT = 1
+) (
     input wire clock,
     input wire cpu_enable,          // one pulse per CPU clock
     input wire reset,               // synchronous, shared with the core
@@ -408,7 +414,15 @@ module HawkDisk(
             // mounted off the card does not have, and bit 6 is the permit mask
             // for this unit. They are independent in the emulator and a write
             // needs the tab clear and the mask bit set.
-            4'h5: data_out = { 1'b0, write_enabled, ~seeking, 1'b1,
+            //
+            // Bit 4 is "ready", meaning this unit has a medium in it. Reporting
+            // it for every unit says the machine has sixteen drives all loaded,
+            // which is not a cosmetic lie: the boot walks the units and
+            // recalibrates each one it believes is there, so it issues eight
+            // RTZs where a real machine issues one, and whatever counts drives
+            // later counts sixteen. There is one image, on one unit.
+            4'h5: data_out = { 1'b0, write_enabled, ~seeking,
+                               img_mounted && unit == IMAGE_UNIT,
                                3'b000, seek_done };
             4'h8: data_out = { 7'b0, busy | seeking };
             default: data_out = 8'h00;

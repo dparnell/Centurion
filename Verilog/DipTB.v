@@ -103,6 +103,22 @@ module DipTB;
                      dut.cpu.f11, dut.cpu.dma_on);
     end
 
+    // +heartbeat: where the machine is, once every simulated 100ms. A boot takes
+    // tens of minutes of wall clock and says nothing while it runs, so "is it
+    // stuck, is it slow, or is it fine" has repeatedly been answered by waiting
+    // another half hour. This answers it in one line.
+    integer beat = 0, beat_instr = 0;
+    integer hawk_cmds = 0;
+    always @(posedge in_clk) if ($test$plusargs("heartbeat")) begin
+        if (dut.instruction_fetch) beat_instr = beat_instr + 1;
+        beat = beat + 1;
+        if (beat == 2_700_000) begin        // 100ms at 27MHz
+            beat = 0;
+            $display("[%0t] pc=%04h uc=%03h instructions=%0d disk commands=%0d",
+                     $time, dut.pc_live0, dut.dbg_uc_address, beat_instr, hawk_cmds);
+        end
+    end
+
     // +hawkseq: one line per disk command, in the same shape as the trace the
     // reference emulator prints. A boot that works issues a definite sequence -
     // 301 commands to reach the MAX DISK# prompt - so the first line where the
@@ -110,14 +126,34 @@ module DipTB;
     // far sharper question than "it stopped somewhere". A bus write is asserted
     // across two enabled cycles, hence the edge detect.
     reg cmd_seen = 0;
-    always @(posedge in_clk) if ($test$plusargs("hawkseq")) begin
+    always @(posedge in_clk) begin
         if (dut.cpu_en && dut.writeEnBus && dut.addressBus[18:0] == 19'h3f148) begin
-            if (!cmd_seen)
-                $display("cmd=%02h unit=%01h adr=%04h wpm=%02h PC=%04h",
-                         dut.data_c2r, dut.hawk.unit, dut.hawk.sector_addr,
-                         dut.hawk.wpmask, dut.pc_live0);
+            if (!cmd_seen) begin
+                hawk_cmds = hawk_cmds + 1;
+                if ($test$plusargs("hawkseq"))
+                    $display("cmd=%02h unit=%01h adr=%04h wpm=%02h PC=%04h",
+                             dut.data_c2r, dut.hawk.unit, dut.hawk.sector_addr,
+                             dut.hawk.wpmask, dut.pc_live0);
+            end
             cmd_seen <= 1;
         end else cmd_seen <= 0;
+    end
+
+    // ... and one line when each finishes, with the status the driver is about
+    // to read. "The sequence diverges after the first read" is only half an
+    // answer; whether that read reported an error is the other half, and it is
+    // invisible from the command stream alone.
+    reg was_busy = 0;
+    always @(posedge in_clk) if ($test$plusargs("hawkseq")) begin
+        was_busy <= dut.hawk.busy;
+        if (was_busy && !dut.hawk.busy)
+            $display("   done cmd=%0d adr=%04h stat4=%02h stat5=%02h  img failed=%b why=%0d fetches=%0d",
+                     dut.hawk.command, dut.hawk.sector_addr,
+                     { dut.hawk.media_error, dut.hawk.verify_fail, 6'b0 } |
+                       { 7'b0, dut.hawk.busy | dut.hawk.seeking },
+                     { 1'b0, dut.hawk.write_enabled, ~dut.hawk.seeking, 1'b1,
+                       3'b000, dut.hawk.seek_done },
+                     dut.image.failed, dut.image.fail_why, dut.image.dbg_fetches);
     end
 
     // +maptrace: the block-to-LBA lookup, both sides. DiskImage pulses map_req
@@ -216,6 +252,17 @@ module DipTB;
             $display("  image: state=%0d busy=%b failed=%b why=%0d fetches=%0d",
                      dut.image.dbg_state, dut.image.busy, dut.image.failed,
                      dut.image.fail_why, dut.img_fetches);
+            // A jump to 0x0000 in the fetch trail is the signature of an
+            // interrupt taken to a level whose P register is zero, so the state
+            // that decides whether one could have been taken belongs in the
+            // report. int_enabled is f11 bit 0; dma_req and dma_int reach the
+            // "anything wants attention" condition by different routes, and
+            // only one of them is gated on int_enabled.
+            $display("  interrupts: level=%0d f11[0]=%b int_reqn=%b dma_int=%b dmaint=%b   hawk int: en=%b pend=%b   mux int pend=%b",
+                     dut.cpu.interrupt_level, dut.cpu.int_enabled, dut.int_reqn,
+                     dut.cpu.dma_int, dut.cpu.dmaint,
+                     dut.hawk.int_enabled, dut.hawk.int_pending,
+                     dut.mux0.int_pending);
             $display("  bridge: need=%b state=%0d   instructions so far %0d",
                      dut.psram_bus.dbg_need, dut.psram_bus.dbg_state, at_101);
             // Both instruments, side by side. They are built from the same
