@@ -527,16 +527,15 @@ without the CPU. On hardware, with `CENTOS_13.IMG` on a FAT32 card, the board
 mounts it - 12992 blocks, one extent - and reads sectors back byte for byte
 identical to the file. See [docs/sd-card-disk-images.md](docs/sd-card-disk-images.md).
 
-Two of that controller's commands were wrong in a way that damaged the medium,
-and anyone with an image they care about on a card should know about it. **Verify
-compares, it does not write**: command 4 pulls its bytes out of memory exactly as
-a write does and checks them against the sector, reporting a mismatch in bit 6 of
-the read status. And **register 3 is a write *permit* mask**, so a unit cannot be
-written until its bit is set - the drive status calls bit 6 "write enable". Both
-were the other way round here until recently, and an operating system boot issues
-93 verifies and 12 writes with that register left at `00`, so every attempt
-rewrote about a hundred sectors of the image. If a boot was ever attempted with a
-build from before this, copy the image onto the card again.
+Two of that controller's commands were wrong. **Verify compares, it does not
+write**: command 4 pulls its bytes out of memory exactly as a write does and
+checks them against the sector, reporting a mismatch in bit 6 of the read status.
+And **register 3 is a write *permit* mask**, so a unit cannot be written until
+its bit is set - the drive status calls bit 6 "write enable". Both were the other
+way round here, which meant a verify quietly overwrote the sector it was meant to
+check and a program that never touched register 3 could write the medium freely.
+Neither is on the boot path, though: a boot to the `MAX DISK#` prompt issues 301
+reads, 300 seeks and 2 RTZs, and nothing else.
 
 **The operating system does not boot yet.** `make load-boot` runs the real boot
 PROM, which prompts `D=`, takes `H1`, reads the pack, loads code and runs it -
