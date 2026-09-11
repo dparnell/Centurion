@@ -1488,6 +1488,19 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // microcode is running; the high water mark says how far it has ranged.
     // Reporting the low water mark instead was a mistake: it is always the first
     // word of the instruction, so it says nothing.
+    // Instructions completed. The one question every other field in this dump
+    // depends on is whether the core is executing at all, and nothing else here
+    // answers it: a microcode address that looks stuck may simply have been
+    // sampled twice at the same point of a loop that is running perfectly well.
+    // Instructions fetched in the last second, restarted each second. A single
+    // dump then answers the one question everything else depends on - is the
+    // core executing - without needing a second sample. It needs one because a
+    // dump request is edge triggered on a byte arriving and only the CPU reading
+    // the data register lets another edge through: an operating system that has
+    // simply stopped polling its console cannot be asked twice, and looks
+    // exactly like a machine that has died.
+    reg [15:0] instr_count, instr_recent;
+    reg [24:0] second;
     reg [10:0] uc_max;
     // The opcode of the instruction being executed. "Some instruction never
     // finishes" is not a diagnosis; "instruction 0xNN never finishes" names the
@@ -1495,16 +1508,27 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // latched one clock after instruction_fetch.
     reg [7:0] last_opcode;
     reg fetch_d;
-    initial begin uc_max = 0; last_opcode = 0; fetch_d = 0; end
+    initial begin uc_max = 0; last_opcode = 0; fetch_d = 0;
+                  instr_count = 0; instr_recent = 0; second = 0; end
     always @(posedge clock) begin
         fetch_d <= instruction_fetch;
+        if (reset) begin
+            instr_count <= 0; instr_recent <= 0; second <= 0;
+        end else begin
+            if (instruction_fetch) instr_count <= instr_count + 1;
+            if (second == 27_000_000 - 1) begin
+                second <= 0;
+                instr_recent <= instr_count;
+                instr_count <= instruction_fetch ? 16'd1 : 16'd0;
+            end else second <= second + 1;
+        end
         if (fetch_d) last_opcode <= dbg_data_in;
         if (reset || instruction_start) uc_max <= dbg_uc_address;
         else if (cpu_en && dbg_uc_address > uc_max) uc_max <= dbg_uc_address;
     end
 
     wire [79:0] cpu_payload =
-        { pc_live0, 5'b0, dbg_uc_address, 5'b0, uc_max, dbg_memory_address,
+        { pc_live0, 5'b0, dbg_uc_address, instr_recent, dbg_memory_address,
           dbg_f11, last_opcode };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
