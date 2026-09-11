@@ -610,7 +610,18 @@ module CPU6 #(
                 3: ; // Not used
             endcase
             case (k13)
-                0: seq0_orin[3] = condition_codes[3]; // OR2 = INT.EN;
+                // OR2 = INT.EN, OR3 = the Link. Both, not one: this used to set
+                // only bit 3, with a comment saying OR2 that did not match the
+                // code, and the disagreement was recorded as an open question.
+                // Meisaka's emulator settles it - "|4 IF INT_EN, |8 IF
+                // CCR.Carry (Link)", neither inverted - and a missing OR bit
+                // does not fail loudly: it silently sends the sequencer to a
+                // different microcode word every time a k13 == 0 branch is
+                // taken with interrupts enabled.
+                0: begin
+                    seq0_orin[2] = int_enabled;
+                    seq0_orin[3] = condition_codes[3];
+                   end
                 // OR2 = LVL15.Q; OR3 = INTR.Q. Both are the *absence* of the
                 // thing, which is how the interrupt entry microcode tells a DMA
                 // interrupt from an ordinary one.
