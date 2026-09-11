@@ -1531,6 +1531,25 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         { pc_live0, 5'b0, dbg_uc_address, instr_recent, dbg_memory_address,
           dbg_f11, last_opcode };
 
+    // The last five instruction fetches, newest last. The CPU dump names the
+    // address the machine stopped at, and when it stopped by halting that
+    // address is wherever it ran off to rather than anywhere meaningful: memory
+    // that holds nothing reads back as zero bytes, the first of which is a HLT,
+    // so the halt lands one byte into the emptiness and says nothing about the
+    // code that jumped there. The four fetches before it are the ones that do.
+    // Kept separate from the diag trace's pc_hist chain, which freezes on a
+    // condition that only exists in a diag build.
+    reg [15:0] fh0, fh1, fh2, fh3, fh4;
+    initial begin fh0 = 0; fh1 = 0; fh2 = 0; fh3 = 0; fh4 = 0; end
+    always @(posedge clock) begin
+        if (reset) begin fh0 <= 0; fh1 <= 0; fh2 <= 0; fh3 <= 0; fh4 <= 0; end
+        else if (instruction_fetch) begin
+            fh0 <= dbg_memory_address;
+            fh1 <= fh0; fh2 <= fh1; fh3 <= fh2; fh4 <= fh3;
+        end
+    end
+    wire [79:0] hist_payload = { fh4, fh3, fh2, fh1, fh0 };
+
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
     //
@@ -1570,7 +1589,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                 dump_request <= 0;   // consumed as the line starts
             else if (dbg_byte_ready && !rx_ready_d &&
                      (dbg_rx_byte == 8'h02 || dbg_rx_byte == 8'h03 ||
-                      dbg_rx_byte == 8'h04)) begin
+                      dbg_rx_byte == 8'h04 || dbg_rx_byte == 8'h05)) begin
                 dump_request <= 1;
                 // The trigger byte picks the form. Cycling through them only
                 // works while the machine is draining the receiver: once it
@@ -1608,6 +1627,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     diag_fail_dump ? (dump_form == 2'd0 ? "C"
                                     : dump_form == 2'd1 ? "P" : "W")
                                    : (dump_pick == 2'd0 ? "P"
+                                    : dump_pick == 2'd1 ? "T"
                                     : dump_pick == 2'd3 || dump_form == 2'd1
                                         ? (PSRAM_SELFTEST && dump_pick != 2'd3 ? "S" : "D")
                                     : fault_caught ? "F" : "L"),
@@ -1615,6 +1635,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                                     : dump_form == 2'd1 ? psram_payload
                                     : wrongmap_payload)
                                    : (dump_pick == 2'd0 ? cpu_payload
+                                    : dump_pick == 2'd1 ? hist_payload
                                     : dump_pick == 2'd3 || dump_form == 2'd1
                                         ? (PSRAM_SELFTEST && dump_pick != 2'd3
                                              ? selftest_payload : disk_payload)
