@@ -1480,20 +1480,20 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // falls again and no further request can be raised. This answers it in that
     // one sample: equal means frozen, a range means looping, and the range says
     // which loop.
-    reg [10:0] uc_min, uc_max;
-    initial begin uc_min = 11'h7ff; uc_max = 0; end
+    // The *live* microcode address, and the highest seen since the last
+    // instruction started. The live one moving between samples says the
+    // microcode is running; the high water mark says how far it has ranged.
+    // Reporting the low water mark instead was a mistake: it is always the first
+    // word of the instruction, so it says nothing.
+    reg [10:0] uc_max;
+    initial uc_max = 0;
     always @(posedge clock) begin
-        if (reset || instruction_start) begin
-            uc_min <= dbg_uc_address;
-            uc_max <= dbg_uc_address;
-        end else if (cpu_en) begin
-            if (dbg_uc_address < uc_min) uc_min <= dbg_uc_address;
-            if (dbg_uc_address > uc_max) uc_max <= dbg_uc_address;
-        end
+        if (reset || instruction_start) uc_max <= dbg_uc_address;
+        else if (cpu_en && dbg_uc_address > uc_max) uc_max <= dbg_uc_address;
     end
 
     wire [79:0] cpu_payload =
-        { pc_live0, 5'b0, uc_min, 5'b0, uc_max, dbg_memory_address,
+        { pc_live0, 5'b0, dbg_uc_address, 5'b0, uc_max, dbg_memory_address,
           dbg_f11, 4'b0, dbg_d2d3 };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's

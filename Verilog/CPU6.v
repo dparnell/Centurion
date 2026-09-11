@@ -316,6 +316,16 @@ module CPU6 #(
     // wrong answers. Nothing else in this design reads it.
     wire rtc_active = RTC_GATED ? (rtc & m13[2]) : rtc;
 
+    // The level of the interrupt that was last *acknowledged*, which is what the
+    // interrupt entry microcode reads back through d2d3 12 to find out who
+    // interrupted it. Latched from the requesting device when M13 bit 7 - the
+    // acknowledge - goes up, and cleared when it comes down, exactly as the
+    // emulator's reqlevel is. This is not the same thing as irq_number, which is
+    // the level the MUX has been *configured* with and is there all the time;
+    // putting that here instead tells the microcode an interrupt is pending for
+    // ever and the machine never completes another instruction.
+    reg [3:0] reqlevel;
+
     /*
      * Am2909/2911 Microsequencers
      */
@@ -701,6 +711,7 @@ module CPU6 #(
             condition_codes <= 0;
             rtc_counter <= 0;
             rtc <= 0;
+            reqlevel <= 0;
             flags_register <= 0;
             writeEnBus <= 0;
             writEnDelayed <= 0;
@@ -808,10 +819,19 @@ module CPU6 #(
             if (RTC_GATED && !m13[5]) begin
                 rtc <= 0;
                 rtc_counter <= 0;
-            end else if (rtc_counter == RTC_TICKS - 1) begin
-                rtc_counter <= 0;
-                rtc <= 1;
-            end else rtc_counter <= rtc_counter + 1;
+            end else begin
+                // Reading the status byte takes the tick down. Ungated there is
+                // no other way to clear it - software acknowledges by clearing
+                // M13 bit 5, and ungated that branch never runs - so without
+                // this the flag latches high after the first tick and stays
+                // there for ever. It is a level, not a tick, and microcode that
+                // waits for it to go away waits for ever.
+                if (d2d3 == 12) rtc <= 0;
+                if (rtc_counter == RTC_TICKS - 1) begin
+                    rtc_counter <= 0;
+                    rtc <= 1;
+                end else rtc_counter <= rtc_counter + 1;
+            end
 
             writeEnBus <= writEnDelayed;
             writEnDelayed <= 0;
@@ -820,7 +840,19 @@ module CPU6 #(
             case (k11)
                 0: ;
                 1: ; // Not a page file write: doing that breaks the instruction test
-                2: m13[alu_b[3:1]] <= alu_b[0];   // M13 'LS259 enable
+                2: begin
+                    m13[alu_b[3:1]] <= alu_b[0];   // M13 'LS259 enable
+                    // Bit 7 is the interrupt acknowledge. Taking it up latches
+                    // the level of whoever is requesting; letting it down clears
+                    // it. Without this the entry microcode asks d2d3 12 who
+                    // interrupted it, is told nobody, and goes round for ever -
+                    // which is what a machine whose lights blink after the
+                    // operating system enables interrupts is doing.
+                    if (alu_b[3:1] == 3'd7) begin
+                        if (alu_b[0] && !m13[7]) reqlevel <= irq_number;
+                        else if (!alu_b[0] && m13[7]) reqlevel <= 0;
+                    end
+                   end
                 3: // F11 addressable latch: machine state and bus state. The address is
                    // alu_b[3:1] and the data is alu_b[0], as the microcode trace above
                    // already documented.
