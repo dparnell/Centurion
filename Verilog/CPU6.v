@@ -693,23 +693,24 @@ module CPU6 #(
             // The PAGE store shifts bit 0 into the top of each byte it writes.
             11: DPBus = { interrupt_level, dmaint, 1'b1,
                           resetting, ~page_table_out[7] };
-            // The acknowledged interrupt level, the front panel switches, and
-            // the clock tick in bit 0.
+            // The acknowledged interrupt level in the high nibble, the front panel
+            // switches in the middle, and the clock tick in bit 0. The emulator
+            // calls the first field sysint and assigns it `reqlevel', which is
+            // set only when an interrupt has actually been acknowledged - and
+            // microcode word 0x655 loads the CPU's interrupt level straight out
+            // of this source, so a wrong value here sends the machine to a level
+            // that was never prepared.
             //
-            // The level is zero, and that is not laziness. The emulator's field
-            // here is its `reqlevel', which is set only when an interrupt has
-            // actually been *acknowledged* and is cleared otherwise. This
-            // design's irq_number is something quite different - the level the
-            // MUX has been *configured* with, a static setting software writes
-            // once - so putting it here tells the microcode an interrupt is
-            // pending at that level for ever. The operating system configures a
-            // non-zero level early in its boot, and from then on the machine
-            // never completes another instruction: it sits in the microcode at
-            // 0x73b, which is reached from the two words at 0x73a and 0x73c that
-            // read this very source. The watchdog blinks the LEDs and it looks
-            // like a crash. Zero until an acknowledged level is actually
-            // tracked. The switches read zero too, as they do in the emulator.
-            12: DPBus = { 4'b0000, 3'b000, rtc_active };
+            // This used to be a hardcoded zero, with a comment saying it would
+            // stay that way until an acknowledged level was tracked. It has been
+            // tracked since reqlevel was added; the comment outlived the reason
+            // for it. What must NOT go here is irq_number, the level the MUX has
+            // been *configured* with, which is a static setting software writes
+            // once: that told the microcode an interrupt was pending for ever
+            // and hung the machine at 0x73b. reqlevel is zero except between an
+            // acknowledge and its release, which is the whole difference.
+            // The switches read zero, as they do in the emulator.
+            12: DPBus = { reqlevel, 3'b000, rtc_active };
             13: DPBus = constant;
             14: ;
             15: ;
