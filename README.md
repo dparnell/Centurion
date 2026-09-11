@@ -31,19 +31,38 @@ The [Verilog](https://en.wikipedia.org/wiki/Verilog) implementation is simulated
 make test
 ```
 
-That builds and runs three testbenches: `CPU6TestBench`, which runs a set of
-small programs against the core; `TopTestBench`, which simulates the real
-synthesis top level including the UART pin and the Gowin hard blocks; and
-`PsramTB`, which exercises the HyperRAM PHY against a behavioural die.
+That builds and runs the self checking testbenches, about sixty checks in a
+couple of minutes:
 
-Two more are too slow to belong in `make test`, because they simulate hundreds
-of milliseconds of a 27 MHz board:
+| testbench | what it covers |
+|---|---|
+| `CPU6TestBench` | small programs against the core |
+| `TopTestBench` | the real synthesis top level, including the UART pin and the Gowin hard blocks |
+| `PsramTB` | the HyperRAM PHY against a behavioural die |
+| `DmaTB` | the DMA path both ways, against a pattern device that stores nothing |
+| `HawkTB` | the Hawk controller: registers, seek, and a sector out and back |
+| `SdTB` | the SD card layer against a deliberately strict card model |
+| `Fat32TB` | the FAT32 reader, against volumes built by `mkfs.vfat` and `mcopy` |
+| `DiskTB` | the whole storage stack: card, filesystem and PSRAM cache together |
+
+Each also runs on its own - `make psramtest`, `make dmatest`, `make hawktest`,
+`make sdtest`, `make fat32test`, `make disktest`. `make dmatest` needs the DMA
+pattern device, which it builds in itself.
+
+Three more are too slow to belong in `make test`, because they simulate
+hundreds of milliseconds of a 27 MHz board:
 
 ```
-make diagtest    # boot the diagnostic ROM and type a test number at it
-make mapfail     # run diag's mapping RAM test until its compare fails
-make psramtest   # just the PSRAM PHY, on its own
+make diagtest            # boot the diagnostic ROM and type a test number at it
+make diagtest TEST=05    # ...or any other entry from its menu
+make mapfail             # run diag's mapping RAM test until its compare fails
+make centostest IMG=...  # read a real Centurion pack through the whole storage stack
 ```
+
+`make centostest` wants a real disk image, which are far too big to vendor -
+point `IMG` at one and it builds a FAT32 volume containing it, reads it back
+through the card, the filesystem and the cache, and checks every byte against
+the original file.
 
 ### Running a program
 
@@ -105,31 +124,50 @@ open source [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) tool
 synthesis, nextpnr-himbaechel for place and route, and gowin_pack for the bitstream.
 
 `make` on its own synthesises; the `load` targets below build and then program
-the attached board with openFPGALoader. There are three of them, because these
-are the three things the machine is usually wanted for:
+the attached board with openFPGALoader. There are four of them, because these
+are the four things the machine is usually wanted for:
 
 ```
 make load        # the diagnostic ROM, switches on the auxiliary test menu
 make load-tos    # the same ROM, switches set for TOS, the machine code monitor
 make load-forth  # the FORTH, assembled from asm/forth.s first
+make load-boot   # boot the operating system off the disk image on the SD card
 ```
 
 Each is a normal build, so they can be combined with the options below or taken
-apart - `make load-forth` is just `make PROGRAM=programs/forth.txt load`.
+apart - `make load-forth` is just `make PROGRAM=programs/forth.txt load`, and
+`make load-boot` is just `make SENSE=1010 load`.
 
 | option | meaning |
 |---|---|
 | `PROGRAM=` | which image the 8K ROM at `0x8000` holds (default `programs/diag.txt`) |
 | `DIP=` | the Diag board's DIP switches, which choose what the machine does out of reset |
+| `SENSE=` | the front panel sense switches, four binary digits (default `0001`) |
 | `PSRAM_SELFTEST=1` | disconnect the memory from the CPU and run the PSRAM's own bring-up test instead |
+| `DMA_TEST=1` | include the DMA pattern device at `0x3f300`, which `make dmatest` needs |
+| `DIAG_TRACE=1` | include the mapping RAM failure instrumentation |
 
 The DIP switches are set at build time because they are physical switches on
 the Diag board: `1d` is the diagnostic test menu, `1a` is TOS, `16` the serial
 board's interrupt test, `17`-`19` the disk tests. `Verilog/DiagBoard.v` lists
 the rest.
 
+The sense switches are the front panel's, and **bit 0 is the one that matters
+most**: it is `S1`, and the boot PROM's first instruction at `0xfc00` is `BS1` -
+clear, it boots the operating system; set, it jumps to `0x8001` and the Diag
+board takes over. So `SENSE=0001` gives you diag and the `DIP` setting, and
+`SENSE=1010` boots the OS and `DIP` does not come into it at all. The other two
+bits in `1010` are `S2` and `S4`, which is the combination the emulator's
+verified CENTOS procedure calls "sense = 10".
+
+`DMA_TEST` and `DIAG_TRACE` are off because hardware that is switched off still
+takes logic, and the device is now 82% full. `DIAG_TRACE` in particular is the
+instrumentation that found the mapping RAM bug; the bug is fixed, and the 300
+LUT4 it costs is the difference between a design that places and one that does
+not.
+
 What a bitstream was built with is not a file, so `make` cannot see it change
-when only an option differs. `build.stamp` records the three options above and
+when only an option differs. `build.stamp` records all of the options above and
 forces a rebuild when any of them does, which is what stops `make load-forth`
 straight after `make load` from quietly programming the board with the previous
 build. An unchanged configuration is still a no-op.
@@ -138,6 +176,35 @@ Pin assignments are in `Verilog/tangnano9k.cst`. Everything is clocked from the
 27 MHz input pin as a single clock domain; the core is gated down to the
 original CPU6's 5 MHz by a clock enable rather than by a divided clock, because
 driving a fabric-generated clock onto a global did not work on real hardware.
+
+## Disks
+
+The machine's Hawk disk controller is at `0x3f140` and its medium is a disk
+image on the microSD card, cached in the PSRAM above the CPU's own memory. Only
+four of the card's pins are brought out on this board, so the interface is SPI.
+
+To use it, format a card **FAT32** and copy a Hawk image onto it. The images in
+the Nakazoto archive under `Software/Data Packs` need no conversion: they are
+flat files of 512 byte records with 400 bytes of sector data used, which is
+exactly the stride this design uses. `CENTOS_13.IMG` is the operating system.
+
+The file is found by name at power up - `HAWK0.IMG` by default, and
+`DISK_IMAGE` in `Verilog/tangnano9k.v` changes it - but a real image's name is
+usually not an 8.3 name, and only the generated alias is visible to the parser.
+So if the configured name is not there, the first regular file in the root
+directory is used instead, which means a card holding one image just works.
+Copy the file on in one go so it lands contiguously; up to four extents are
+handled and anything more fragmented is refused.
+
+Then `make load-boot`, and at the `D=` prompt type `H1` - the device letter and
+unit 1, no Enter.
+
+Sending a single byte down the serial line asks the board about itself, which is
+how everything above is diagnosed. `0x02` gives the running summary, `0x03` the
+storage stack - card state, whether the image mounted and why not, its size in
+blocks, the cache's fetch count - and `0x04` the CPU's position, which is the one
+to reach for when the LEDs are blinking, because that means the core has stopped
+*completing* instructions and only the microcode address will say why.
 
 The board's UART appears on the second channel of its FT2232, usually
 `/dev/ttyUSB1`. Serial settings are per program: the diagnostic ROM reconfigures
@@ -148,20 +215,24 @@ Resource utilisation and timing:
 
 ```
 Info: Device utilisation:
-Info:                  IOB:      21/    276     7%
-Info:                 LUT4:    3043/   8640    35%
-Info:            MUX2_LUT5:     246/   4320     5%
-Info:                  ALU:     548/   6480     8%
-Info:                  DFF:    1745/   6480    26%
-Info:            RAM16SDP4:      71/    270    26%
-Info:                BSRAM:      18/     26    69%
+Info:                 LUT4:    7085/   8640    82%
+Info:                  DFF:    3215/   6480    49%
+Info:            RAM16SDP4:     152/    270    56%
+Info:                BSRAM:      21/     26    80%
 
-Info: Max frequency for clock 'clock': 50.47 MHz (PASS at 27.00 MHz)
+Info: Max frequency for clock 'clock': 72.80 MHz (PASS at 27.00 MHz)
 ```
 
-That `IOB` row does not count `IOBUF` cells, so it reads as though every
-bidirectional pin has been dropped. The eighteen PSRAM data and strobe pins are
-placed; they simply are not in that total.
+**The device is now the binding constraint.** At 84% nextpnr refuses to place,
+and it is not a seed problem - and removing logic can make the LUT4 count go
+*up*, because the mix of `MUX2_LUT*` cells constrains placement more than the
+raw count does. Anything added from here has to pay for itself, which is why the
+PSRAM self test, the DMA pattern device and the mapping RAM instrumentation are
+all excluded from the netlist rather than merely held in reset.
+
+The `IOB` row, when it appears, does not count `IOBUF` cells, so it reads as
+though every bidirectional pin has been dropped. The eighteen PSRAM data and
+strobe pins are placed; they simply are not in that total.
 
 The page table used to dominate the logic, taking roughly 4700 LUT4s because an
 asynchronous reset on its write port stopped yosys mapping it to memory at all.
@@ -431,9 +502,26 @@ minute or so to appear after Control-C.
 
 All CPU6 instruction tests in the local testbench pass. Interrupts are enabled,
 requested and acknowledged. The MMU is implemented, including the mapping RAM.
-DMA is not implemented, so the disk controller tests cannot run yet; see
-[docs/sd-card-disk-images.md](docs/sd-card-disk-images.md) for how disk images
-might eventually be served from the board's SD card.
+
+DMA works in both directions, on hardware as well as in simulation. A device on
+this machine does not master the bus - it borrows the CPU's own address
+registers and its write strobe - so the transfer engine lives in `CPU6.v` and a
+controller only supplies a request, a direction and a byte.
+
+The Hawk disk controller is at `0x3f140`, and its medium is a disk image on the
+SD card cached in PSRAM: `SdSpi.v` is the card, `Fat32.v` finds the image once
+at mount time and turns it into extents, and `DiskImage.v` demand pages blocks
+into the part above the CPU's own memory. All three have testbenches that run
+without the CPU. On hardware, with `CENTOS_13.IMG` on a FAT32 card, the board
+mounts it - 12992 blocks, one extent - and reads sectors back byte for byte
+identical to the file. See [docs/sd-card-disk-images.md](docs/sd-card-disk-images.md).
+
+**The operating system does not boot yet.** `make load-boot` runs the real boot
+PROM, which prompts `D=`, takes `H1`, reads the pack, loads code and runs it -
+but the machine then stops completing instructions and loops in microcode. Each
+unimplemented condition or DP source that gets fixed moves it to a different
+microcode address, so this is a sequence of stubs rather than one fault; the
+remaining ones are listed in `CLAUDE.md`.
 
 The embedded HyperRAM is on the CPU's bus and backs everything the block RAM
 does not, so the machine has its full 256K of physical memory: the FORTH's own
