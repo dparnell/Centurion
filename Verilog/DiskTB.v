@@ -118,6 +118,7 @@ module DiskTB;
     reg img_req = 0, img_store = 0, do_flush = 0;
     reg [15:0] img_req_block = 0;
     wire img_busy, img_failed, img_flushing;
+    wire [2:0] img_fail_why;
     wire [7:0] img_state;
     wire [15:0] img_fetches, img_hits, img_writebacks;
 
@@ -127,7 +128,7 @@ module DiskTB;
         img_read, img_write, img_block, sd_busy, sd_error,
         rx_strobe, rx_index, rx_byte, tx_request, tx_index, tx_byte,
         ps_read, ps_write, ps_byte_write, ps_addr, ps_din, ps_dout, ps_busy,
-        img_req, img_store, img_req_block, img_busy, img_failed,
+        img_req, img_store, img_req_block, img_busy, img_failed, img_fail_why,
         buf_wr, buf_addr, buf_wdata, buf_q,
         do_flush, img_flushing,
         img_state, img_fetches, img_hits, img_writebacks);

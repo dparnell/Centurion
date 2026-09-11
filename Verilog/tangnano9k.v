@@ -184,7 +184,9 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // Whether the diag board's ROMs are fitted at 0x08000. They
                     // have to be out to boot the operating system, which loads
                     // code there; see BoardMemory.v.
-                    parameter DIAG_ROM = 1)
+                    parameter DIAG_ROM = 1,
+                    // See CPU6.v: K13 case 1 and the interrupt conditions.
+                    parameter K13_INTERRUPTS = 1)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -624,6 +626,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         fat_dbg_state, fat_extents, fat_fallback);
 
     wire img_req, img_store, img_busy, img_failed, img_flushing;
+    wire [2:0] img_fail_why;
     wire [15:0] img_block;
     wire hawk_ext_wr;
     wire [8:0] hawk_ext_addr;
@@ -638,7 +641,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         sd_rx_strobe, sd_rx_index, sd_rx_byte,
         sd_tx_request, sd_tx_index, sd_tx_byte,
         disk_read, disk_write, disk_byte_write, disk_addr, disk_din, dout, disk_busy_view,
-        img_req, img_store, img_block, img_busy, img_failed,
+        img_req, img_store, img_block, img_busy, img_failed, img_fail_why,
         hawk_ext_wr, hawk_ext_addr, hawk_ext_wdata, hawk_ext_rdata,
         1'b0, img_flushing,
         img_dbg_state, img_fetches, img_hits, img_writebacks);
@@ -651,7 +654,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                   img_mounted, img_req, img_store, img_block, img_busy, img_failed,
                   hawk_ext_wr, hawk_ext_addr, hawk_ext_wdata, hawk_ext_rdata);
 
-    CPU6 cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
+    CPU6 #(.K13_INTERRUPTS(K13_INTERRUPTS)) cpu (reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r, instruction_start,
               ptinit_write, ptinit_addr, ptinit_addr, SENSE_SWITCHES,
               dma_req, dma_device_write, dma_wdata, dma_step, dma_rdata, dma_end,
               dma_int, dma_hold,

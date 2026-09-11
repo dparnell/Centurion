@@ -91,6 +91,33 @@ module DipTB;
                      dut.cpu.f11, dut.cpu.dma_on);
     end
 
+    // +maptrace: the block-to-LBA lookup, both sides. DiskImage pulses map_req
+    // for one clock and Fat32 only notices it in its idle state, so a request
+    // that arrives at the wrong moment is simply lost and the image layer times
+    // out and reports a media error - which the driver sees as a bad disk.
+    always @(posedge in_clk) if ($test$plusargs("maptrace")) begin
+        if (dut.map_req)
+            $display("map req block=%0d  fat_state=%0d %s", dut.map_block,
+                     dut.fat_dbg_state,
+                     dut.fat_dbg_state == 0 ? "" : "<-- LOST, Fat32 is not idle");
+        if (dut.map_valid)
+            $display("map ans lba=%0d", dut.map_lba);
+        if (dut.sd_error)
+            $display("SD ERROR: card state=%0d r1=%02h  lba=%0d  (fat_read=%b img_read=%b img_write=%b)",
+                     dut.sd_dbg_state, dut.sd_dbg_r1, dut.card_lba,
+                     dut.fat_read, dut.img_sd_read, dut.img_sd_write);
+        // req_block, not block: the failure branch does not latch block, so
+        // printing that shows whatever the *last successful* request was and
+        // sends you looking in the wrong place entirely.
+        if (dut.image.failed && dut.image.dbg_state == 19)
+            $display("image FAILED wanted block=%0d of %0d  why=%0d (%0s)",
+                     dut.hawk.img_block, dut.file_blocks, dut.image.fail_why,
+                     dut.image.fail_why == 1 ? "past the end of the image" :
+                     dut.image.fail_why == 2 ? "lookup never answered" :
+                     dut.image.fail_why == 3 ? "card read error" :
+                     dut.image.fail_why == 4 ? "card write error" : "?");
+    end
+
     // +pctrace: every instruction fetch. Booting is a short sequence that either
     // reaches the loaded code or does not, and the serial line says nothing about
     // which.

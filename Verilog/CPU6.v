@@ -22,7 +22,12 @@ module CPU6 #(
     // Whether the clock tick obeys M13 bits 5 and 2. See rtc_active below: the
     // faithful reading hangs the operating system, so this is off until the
     // reason is understood.
-    parameter RTC_GATED = 0
+    parameter RTC_GATED = 0,
+    // Whether K13 case 1 ORs the interrupt conditions into the sequencer. The
+    // emulator does, and with nothing pending that means *both* bits high where
+    // the stub left them low - the opposite. Under test: the operating system
+    // freezes on one microcode word at 0x73d, which is a K13 case 1 word.
+    parameter K13_INTERRUPTS = 1
 ) (input wire reset, input wire clock, input wire enable, input wire [7:0] dataInBus,
     input wire int_reqn, input wire [3:0] irq_number,
     output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus,
@@ -609,7 +614,7 @@ module CPU6 #(
                 // OR2 = LVL15.Q; OR3 = INTR.Q. Both are the *absence* of the
                 // thing, which is how the interrupt entry microcode tells a DMA
                 // interrupt from an ordinary one.
-                1: begin
+                1: if (K13_INTERRUPTS) begin
                     seq0_orin[2] = ~dmaint;
                     seq0_orin[3] = ~(int_enabled & ~int_reqn);
                    end

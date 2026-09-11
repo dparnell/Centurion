@@ -84,6 +84,10 @@ module DiskImage #(
     input wire [15:0] req_block,
     output reg busy,
     output reg failed,
+    // Which route into failure was taken: 1 past the end of the image, 2 the
+    // block-to-LBA lookup never answered, 3 a card read error, 4 a card write
+    // error. Printing the state at the failure says nothing about its cause.
+    output reg [2:0] fail_why,
 
     // The controller's sector buffer. buf_addr is driven from here throughout,
     // and buf_rdata is that buffer's registered read - one clock behind.
@@ -159,7 +163,7 @@ module DiskImage #(
     initial begin
         state = S_CLEAR; busy = 1; failed = 0; flushing = 0;
         sd_read = 0; sd_write = 0; ps_read = 0; ps_write = 0; ps_byte_write = 0;
-        map_req = 0; buf_wr = 0; meta_wr = 0; clear_i = 0;
+        map_req = 0; buf_wr = 0; meta_wr = 0; clear_i = 0; fail_why = 0;
         dbg_fetches = 0; dbg_hits = 0; dbg_writebacks = 0;
         for (i = 0; i < MAX_BLOCKS; i = i + 1) meta[i] = 2'b00;
     end
@@ -196,6 +200,7 @@ module DiskImage #(
                 // the map timeout for an answer that is never coming.
                 busy <= 1;
                 failed <= 1;
+                fail_why <= 1;
                 state <= S_FAIL;
             end else if (req && mounted) begin
                 busy <= 1;
@@ -242,6 +247,7 @@ module DiskImage #(
             if (lba_valid) state <= flushing ? S_CARD_WR : S_CARD_RD;
             else if (map_timer == 0) begin
                 failed <= 1;
+                fail_why <= 2;
                 state <= S_FAIL;
             end else map_timer <= map_timer - 1;
 
@@ -258,7 +264,7 @@ module DiskImage #(
         // see the rx_strobe block below. Then copy the buffer into PSRAM so the
         // next read of this block does not need the card.
         S_CARD_RD_W: if (!sd_busy) begin
-            if (sd_error) begin failed <= 1; state <= S_FAIL; end
+            if (sd_error) begin failed <= 1; fail_why <= 3; state <= S_FAIL; end
             else begin
                 index <= 0;
                 buf_addr <= 0;
@@ -362,7 +368,7 @@ module DiskImage #(
         end
 
         S_CARD_WR_W: if (!sd_busy) begin
-            if (sd_error) begin failed <= 1; state <= S_FAIL; end
+            if (sd_error) begin failed <= 1; fail_why <= 4; state <= S_FAIL; end
             else begin
                 dbg_writebacks <= dbg_writebacks + 1;
                 meta_addr <= block[META_BITS-1:0];
