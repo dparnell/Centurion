@@ -133,15 +133,78 @@ module DipTB;
     // level being trapped to has a zero P register - which level 15 does, since
     // nothing has ever set it - that somewhere is 0x0000 and the machine then
     // executes the register file.
-    reg [3:0] lvl_prev = 0;
+    // The last 32 microcode words before the first level change. The fetch trail
+    // says which instruction was running; this says which microcode path got
+    // into the entry sequence, and the conditional branch that chose it. That
+    // is the question here, because the reference takes no level change at this
+    // point in the boot at all.
+    reg [10:0] uc_ring [0:255];
+    reg [7:0] uc_head = 0;
+    integer ui;
+    initial for (ui = 0; ui < 256; ui = ui + 1) uc_ring[ui] = 11'h7ff;
     always @(posedge in_clk) if (dut.cpu_en) begin
+        uc_ring[uc_head] <= dut.dbg_uc_address;
+        uc_head <= uc_head + 1;
+    end
+    reg uc_shown = 0;
+
+    // The comparison can only notice the change on the cycle AFTER it, so the
+    // signals that caused it have to be delayed by one too - otherwise the
+    // trace shows e6 = 0 for a load that only happens at e6 == 3, and an F bus
+    // that does not contain the level that was loaded.
+    reg [3:0] lvl_prev = 0;
+    reg [2:0] p_e6, p_d2d3_hi;
+    reg [3:0] p_d2d3;
+    reg [7:0] p_dp, p_f1, p_f0;
+    reg [10:0] p_uc;
+    reg [15:0] p_pc;
+    always @(posedge in_clk) if (dut.cpu_en) begin
+        p_e6 <= dut.cpu.e6; p_d2d3 <= dut.cpu.d2d3; p_dp <= dut.cpu.DPBus;
+        p_f1 <= dut.cpu.alu1_yout; p_f0 <= dut.cpu.alu0_yout;
+        p_uc <= dut.dbg_uc_address; p_pc <= dut.pc_live0;
         lvl_prev <= dut.cpu.interrupt_level;
-        if (dut.cpu.interrupt_level !== lvl_prev && $test$plusargs("leveltrace"))
-            $display("LEVEL %0d -> %0d at pc=%04h uc=%03h mar=%04h e7=%0d k13=%0d k9en=%b k9=%0d f11=%02h page_entry=%02h",
-                     lvl_prev, dut.cpu.interrupt_level, dut.pc_live0,
-                     dut.dbg_uc_address, dut.cpu.dbg_memory_address,
+        if (dut.cpu.interrupt_level !== lvl_prev && $test$plusargs("leveltrace")) begin
+            // The level is loaded from the F bus at e6 == 3, and the F bus
+            // comes from whichever DP source d2d3 names - so d2d3, the DP bus
+            // and the F bus together say where the new level came from, which
+            // the level number alone does not. dma_req matters because k9 == 7,
+            // "anything wants attention", ORs it in without gating it on the
+            // interrupt enable, so a DMA request can start the entry path on a
+            // machine whose interrupts are off.
+            $display("LEVEL %0d -> %0d at pc=%04h uc=%03h mar=%04h | d2d3=%0d dp=%02h f=%02h%02h e6=%0d | e7=%0d k13=%0d k9en=%b k9=%0d | f11=%02h dma_req=%b int_reqn=%b entry=%02h",
+                     lvl_prev, dut.cpu.interrupt_level, p_pc,
+                     p_uc, dut.cpu.dbg_memory_address,
+                     p_d2d3, p_dp, p_f1, p_f0, p_e6,
                      dut.cpu.e7, dut.cpu.k13, dut.cpu.k9_enable, dut.cpu.k9,
-                     dut.cpu.f11, dut.cpu.page_table_out);
+                     dut.cpu.f11, dut.cpu.dma_req, dut.int_reqn,
+                     dut.cpu.page_table_out);
+            if (!uc_shown) begin
+                uc_shown <= 1;
+                $write("     the 256 microcode words before it, oldest first:");
+                for (ui = 0; ui < 256; ui = ui + 1) begin
+                    if (ui % 16 == 0) $write("\n      ");
+                    $write(" %03h", uc_ring[(uc_head + ui) % 256]);
+                end
+                $write("\n");
+            end
+        end
+    end
+
+    // Register file writes aimed at a level other than the one running. That is
+    // how software prepares a level before switching to it, so if the operating
+    // system sets up level 9 before entering it, the writes are here; if none
+    // is ever recorded, the level it enters was never going to have a program
+    // counter.
+    integer other_level_writes = 0;
+    always @(posedge in_clk) if (dut.cpu_en && dut.cpu.k11 == 3'd4) begin
+        if (dut.cpu.reg_addr_hi != dut.cpu.interrupt_level) begin
+            other_level_writes = other_level_writes + 1;
+            if ($test$plusargs("regtrace") && other_level_writes < 60)
+                $display("REG level %0d reg %0d <= %02h  (running level %0d) at pc=%04h",
+                         dut.cpu.reg_addr_hi, dut.cpu.register_index[3:1],
+                         dut.cpu.result_register, dut.cpu.interrupt_level,
+                         dut.pc_live0);
+        end
     end
 
     // +heartbeat: where the machine is, once every simulated 100ms. A boot takes
@@ -159,6 +222,30 @@ module DipTB;
                      $time, dut.pc_live0, dut.dbg_uc_address, beat_instr, hawk_cmds);
         end
     end
+
+    // +waittrace: what the loader's wait-for-the-disk loop actually reads. The
+    // reference leaves that loop after nine passes; this design spins in it and
+    // then takes a level change. "It is waiting on the busy bit" is only half an
+    // answer - which address it reads and what comes back is the other half, and
+    // Z is inside the CPU where nothing outside can see it.
+    integer wt = 0;
+    always @(posedge in_clk) if ($test$plusargs("waittrace") && dut.cpu_en)
+        if (dut.pc_live0 >= 16'h04f5 && dut.pc_live0 <= 16'h04f9 &&
+            dut.bus_read_strobe && wt < 40) begin
+            wt = wt + 1;
+            $display("WAIT pc=%04h reads %05h => %02h | hawk busy=%b cmd=%0d xfer=%b waiting=%b kind=%0d left=%0d stuck=%0d | dma req=%b hold=%b on=%b f11=%02h | img busy=%b state=%0d failed=%b | sd state=%0d r1=%02h lba=%0d read=%b err=%b | psram busy=%b | shifter idx=%0d active=%b bits=%0d div=%0d start=%b done=%b cs=%b clk=%b miso=%b",
+                     dut.pc_live0, dut.addressBus, dut.data_r2c,
+                     dut.hawk.busy, dut.hawk.command,
+                     dut.hawk.transferring, dut.hawk.waiting, dut.hawk.wait_kind,
+                     dut.hawk.bytes_left, dut.hawk.stuck,
+                     dut.hawk_req, dut.hawk_hold, dut.cpu.dma_on, dut.cpu.f11,
+                     dut.image.busy, dut.image.dbg_state, dut.image.failed,
+                     dut.sd_dbg_state, dut.sd_dbg_r1, dut.card_lba,
+                     dut.img_sd_read, dut.sd_error, dut.busy_raw,
+                     dut.sd.byte_index, dut.sd.byte_active, dut.sd.bit_count,
+                     dut.sd.divider, dut.sd.start_byte, dut.sd.byte_done,
+                     dut.sd_cs_n, dut.sd_clk, dut.sd_miso);
+        end
 
     // +hawkseq: one line per disk command, in the same shape as the trace the
     // reference emulator prints. A boot that works issues a definite sequence -
@@ -304,6 +391,7 @@ module DipTB;
                      dut.cpu.dma_int, dut.cpu.dmaint,
                      dut.hawk.int_enabled, dut.hawk.int_pending,
                      dut.mux0.int_pending);
+            $display("  register writes aimed at another level: %0d", other_level_writes);
             $display("  page table: %0d entries written, %0d of them with the write-tracked bit set; the bit read set on %0d cycles",
                      pt_writes, pt_writes_bit7, pt_read_bit7);
             $display("  bridge: need=%b state=%0d   instructions so far %0d",
