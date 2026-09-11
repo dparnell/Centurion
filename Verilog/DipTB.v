@@ -103,6 +103,23 @@ module DipTB;
                      dut.cpu.f11, dut.cpu.dma_on);
     end
 
+    // +leveltrace: every change of the CPU's interrupt level, with enough state
+    // to say what caused it. A trap is invisible from everything else: the
+    // fetch trail just shows control arriving somewhere unexpected, and if the
+    // level being trapped to has a zero P register - which level 15 does, since
+    // nothing has ever set it - that somewhere is 0x0000 and the machine then
+    // executes the register file.
+    reg [3:0] lvl_prev = 0;
+    always @(posedge in_clk) if (dut.cpu_en) begin
+        lvl_prev <= dut.cpu.interrupt_level;
+        if (dut.cpu.interrupt_level !== lvl_prev && $test$plusargs("leveltrace"))
+            $display("LEVEL %0d -> %0d at pc=%04h uc=%03h mar=%04h e7=%0d k13=%0d k9en=%b k9=%0d f11=%02h page_entry=%02h",
+                     lvl_prev, dut.cpu.interrupt_level, dut.pc_live0,
+                     dut.dbg_uc_address, dut.cpu.dbg_memory_address,
+                     dut.cpu.e7, dut.cpu.k13, dut.cpu.k9_enable, dut.cpu.k9,
+                     dut.cpu.f11, dut.cpu.page_table_out);
+    end
+
     // +heartbeat: where the machine is, once every simulated 100ms. A boot takes
     // tens of minutes of wall clock and says nothing while it runs, so "is it
     // stuck, is it slow, or is it fine" has repeatedly been answered by waiting
