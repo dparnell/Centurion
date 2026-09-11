@@ -30,3 +30,4 @@ centos_raw.hex
 sd_fat32long.hex
 DipTB
 sd_c13.hex
+sd_c13big.hex
