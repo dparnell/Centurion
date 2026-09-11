@@ -28,3 +28,5 @@ real_raw.hex
 sd_centos.hex
 centos_raw.hex
 sd_fat32long.hex
+DipTB
+sd_c13.hex
