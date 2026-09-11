@@ -202,9 +202,20 @@ unit 1, no Enter.
 Sending a single byte down the serial line asks the board about itself, which is
 how everything above is diagnosed. `0x02` gives the running summary, `0x03` the
 storage stack - card state, whether the image mounted and why not, its size in
-blocks, the cache's fetch count - and `0x04` the CPU's position, which is the one
+blocks, the cache's fetch count - `0x04` the CPU's position, which is the one
 to reach for when the LEDs are blinking, because that means the core has stopped
-*completing* instructions and only the microcode address will say why.
+*completing* instructions and only the microcode address will say why, and `0x05`
+the last five instruction fetches. Reach for that last one as soon as the CPU
+position reports opcode `00`: that is a `HLT`, so the machine has not crashed but
+halted, and the address it halted at is simply wherever it ran off to - the four
+fetches before it are the ones that name real code.
+
+The blinking LEDs cannot tell the two apart. The watchdog only knows whether the
+core is completing instructions, and a halted machine is not; the microcode parks
+in the eight words `71f`, `720`, `72a`, `72b`, `737`, `73b`, `73c` and `73d`,
+whose only enabled condition is a DMA request, so with interrupts disabled it
+stays there for ever. Seeing those addresses cycle means the machine is waiting,
+not broken.
 
 The board's UART appears on the second channel of its FT2232, usually
 `/dev/ttyUSB1`. Serial settings are per program: the diagnostic ROM reconfigures
@@ -215,12 +226,12 @@ Resource utilisation and timing:
 
 ```
 Info: Device utilisation:
-Info:                 LUT4:    7085/   8640    82%
-Info:                  DFF:    3215/   6480    49%
+Info:                 LUT4:    7213/   8640    83%
+Info:                  DFF:    3386/   6480    52%
 Info:            RAM16SDP4:     152/    270    56%
-Info:                BSRAM:      21/     26    80%
+Info:                BSRAM:      17/     26    65%
 
-Info: Max frequency for clock 'clock': 72.80 MHz (PASS at 27.00 MHz)
+Info: Max frequency for clock 'clock': 72.07 MHz (PASS at 27.00 MHz)
 ```
 
 **The device is now the binding constraint.** At 84% nextpnr refuses to place,
