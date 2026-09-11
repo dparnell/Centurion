@@ -31,6 +31,9 @@ module DipTB;
     // Booting an operating system is not a prompt-and-answer affair: it wants
     // long enough to read what it needs off the disk and say something.
     parameter integer HOLD = 60;
+    // The diag board's ROMs shadow 8K the operating system loads code into, so
+    // booting it needs them out. See BoardMemory.v.
+    parameter DIAG_ROM = 1;
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
@@ -60,12 +63,33 @@ module DipTB;
         #1 $readmemh(sd_image, sdcard.mem);
     end
 
-    tangnano9k #(.DIAG_DIP_SWITCHES(DIP), .SENSE_SWITCHES(SENSE)) dut(in_clk, reset_btn, btn2,
+    tangnano9k #(.DIAG_DIP_SWITCHES(DIP), .SENSE_SWITCHES(SENSE),
+                 .DIAG_ROM(DIAG_ROM)) dut(in_clk, reset_btn, btn2,
                                               L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx,
                                               psram_ck, psram_ck_n, psram_cs_n,
                                               psram_reset_n, psram_rwds, psram_dq,
                                               sd_clk, sd_mosi, sd_miso, sd_cs_n);
     defparam dut.cpu_clock_enable.TICKS = 13;
+
+    // +bustrace: every bus address the machine touches while the PC is in the
+    // disk wait routine. "It is polling a status register" is only half an
+    // answer; which register is the other half, and the base is in Z where
+    // nothing outside the core can see it.
+    reg [15:0] seen_pc = 0;
+    always @(posedge in_clk) if ($test$plusargs("bustrace")) begin
+        if (dut.instruction_fetch) seen_pc <= dut.pc_live0;
+        if (dut.cpu_en && dut.addressBus[18:4] == 15'h3f14)
+            $display("hawk %01x %s %02x  busy=%b seeking=%b seek_done=%b busy_time=%0d",
+                     dut.addressBus[3:0], dut.writeEnBus ? "<=" : "=>",
+                     dut.writeEnBus ? dut.data_c2r : dut.hawk_data,
+                     dut.hawk.busy, dut.hawk.seeking, dut.hawk.seek_done,
+                     dut.hawk.busy_time);
+        if (dut.cpu_en && dut.addressBus[18:4] == 15'h3f14)
+            $display("     hawk: waiting=%b transferring=%b dma_req=%b bytes_left=%0d cmd=%0d | f11=%02h dma_on=%b",
+                     dut.hawk.waiting, dut.hawk.transferring, dut.hawk_req,
+                     dut.hawk.bytes_left, dut.hawk.command,
+                     dut.cpu.f11, dut.cpu.dma_on);
+    end
 
     // +pctrace: every instruction fetch. Booting is a short sequence that either
     // reaches the loaded code or does not, and the serial line says nothing about
@@ -120,6 +144,15 @@ module DipTB;
             end
         end
         repeat (HOLD) #1000000;
+        // The code the machine ended up in, so it can be disassembled. It came
+        // off the disk, so it is nowhere in this repository and the only way to
+        // read it is out of the memory it was loaded into.
+        $write("--- memory at 0x0efe0 ---");
+        for (i = 0; i < 64; i = i + 1) begin
+            if (i % 16 == 0) $write("\n%05x:", 19'h0efe0 + i);
+            $write(" %02x", die.mem[19'h0efe0 + i]);
+        end
+        $display("");
         $display("\n--- %0d characters ---", n);
         $display("--- hawk: sector %04h, status %02h; image: %0d fetches, %0d hits ---",
                  dut.hawk.sector_addr, dut.hawk.data_out,

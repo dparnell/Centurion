@@ -116,6 +116,14 @@ module HawkDisk(
     // nobody wants and then never finishes.
     reg [15:0] cur_sector;
     reg boundary;
+    // A drive that is busy with nothing outstanding never becomes ready again,
+    // and the operating system's wait loop spins on exactly that bit. Every
+    // command arms busy_time except a read, which relies on a DMA transfer
+    // completing - so any path where that transfer does not run wedges the
+    // controller for good. This is the same rule PsramBus already follows: never
+    // let a device stall the machine in a way it cannot recover from.
+    reg [23:0] stuck;
+    localparam integer STUCK_LIMIT = 27_000_000 / 4;   // a quarter of a second
     reg [1:0] wait_kind;
     localparam [1:0] W_PREP = 0, W_MID = 1, W_FINAL = 2;
     // The command moves data out of memory and onto the disk.
@@ -147,7 +155,7 @@ module HawkDisk(
         int_enabled = 0; int_pending = 0;
         bytes_left = 0; buf_index = 0; transferring = 0;
         waiting = 0; saw_busy = 0; media_error = 0;
-        cur_sector = 0; boundary = 0; wait_kind = 0;
+        cur_sector = 0; boundary = 0; wait_kind = 0; stuck = 0;
         img_req = 0; img_store = 0; img_block = 0;
         buf_q = 0; data_out = 0;
         for (j = 0; j < STRIDE; j = j + 1) sector_buf[j] = 8'h00;
@@ -174,6 +182,7 @@ module HawkDisk(
             bytes_left <= 0; buf_index <= 0; transferring <= 0;
             waiting <= 0; saw_busy <= 0; media_error <= 0;
             boundary <= 0;
+            stuck <= 0;
             img_req <= 0; img_store <= 0;
         end else begin
             // ------------------------------------------------ the transfer side
@@ -244,6 +253,14 @@ module HawkDisk(
                     endcase
                 end
             end
+
+            // ------------------------------------------------- the stuck guard
+            if (!busy || transferring || waiting || busy_time != 0) stuck <= 0;
+            else if (stuck == STUCK_LIMIT - 1) begin
+                busy <= 0;
+                media_error <= 1;       // reported as a timeout, which it is
+                stuck <= 0;
+            end else stuck <= stuck + 1;
 
             // -------------------------------------------------- command timing
             if (busy_time != 0) begin
