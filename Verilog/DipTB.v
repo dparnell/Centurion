@@ -103,6 +103,30 @@ module DipTB;
                      dut.cpu.f11, dut.cpu.dma_on);
     end
 
+    // The write-tracked page bit, counted. The operating system installs a map
+    // and then stores into it, and the reference traps to level 15 on that
+    // store - so either the bit is never set in the table, or it is set and the
+    // microcode never branches on it. These three counters tell the two apart
+    // without a trace of any kind.
+    integer pt_writes = 0, pt_writes_bit7 = 0, pt_read_bit7 = 0;
+    always @(posedge in_clk) if (dut.cpu_en) begin
+        if (dut.cpu.k11 == 3'd5) begin
+            pt_writes = pt_writes + 1;
+            if (dut.cpu.result_register[7]) pt_writes_bit7 = pt_writes_bit7 + 1;
+            // Only 134 of these happen in a whole boot, so log them all rather
+            // than counting. The reference ends up with exactly one entry
+            // carrying the write-tracked bit - map 0 entry 31, value 0x81 - and
+            // this design ends up with none, so the question is what it writes
+            // to entry 31 instead and where that value comes from.
+            if ($test$plusargs("pttrace"))
+                $display("PT [%0d] (base %0d page %0d) <= %02h   at pc=%04h uc=%03h dp=%0d",
+                         dut.cpu.page_address, dut.cpu.page_table_base,
+                         dut.cpu.page_address[4:0], dut.cpu.result_register,
+                         dut.pc_live0, dut.dbg_uc_address, dut.cpu.d2d3);
+        end
+        if (dut.cpu.page_table_out[7]) pt_read_bit7 = pt_read_bit7 + 1;
+    end
+
     // +leveltrace: every change of the CPU's interrupt level, with enough state
     // to say what caused it. A trap is invisible from everything else: the
     // fetch trail just shows control arriving somewhere unexpected, and if the
@@ -280,6 +304,8 @@ module DipTB;
                      dut.cpu.dma_int, dut.cpu.dmaint,
                      dut.hawk.int_enabled, dut.hawk.int_pending,
                      dut.mux0.int_pending);
+            $display("  page table: %0d entries written, %0d of them with the write-tracked bit set; the bit read set on %0d cycles",
+                     pt_writes, pt_writes_bit7, pt_read_bit7);
             $display("  bridge: need=%b state=%0d   instructions so far %0d",
                      dut.psram_bus.dbg_need, dut.psram_bus.dbg_state, at_101);
             // Both instruments, side by side. They are built from the same
