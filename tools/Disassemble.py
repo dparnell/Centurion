@@ -39,8 +39,14 @@ def length(ops, mem, i):
     op = ops.get(mem[i])
     if op is None: return 1
     ext = op.get('ext')
-    if ext == 'page' or ext == 'dma':
-        # 2e/2f: selector, count, then an address or a register+displacement
+    if ext == 'dma':
+        # 2f is always two bytes: one selector, whose high nibble is a register
+        # or an immediate and whose low nibble is the sub-operation. Sizing it
+        # like PAGE misaligns everything after it, which is what made diag's
+        # disk bootstrap read as nonsense.
+        return 2
+    if ext == 'page':
+        # 2e: selector, count, then an address or a register+displacement
         sel = mem[i+1] if i+1 < len(mem) else 0
         return 5 if (sel & 0x0f) == 0x0c else 4
     if ext == 'mem':
