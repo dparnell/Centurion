@@ -1448,11 +1448,29 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     //   w4  the image layer's state, and how many blocks it has fetched
     wire [79:0] disk_payload =
         { sd_dbg_state, sd_dbg_r1,
-          4'b0, sd_ready, sd_error, sd_block_addressing, mount_done,
+          // The controller-to-image handshake, in the four bits that were spare.
+          // A machine whose lights are blinking has stopped completing
+          // instructions, and the way this design can do that without being
+          // broken is the microcode sitting in its DMA wait loop - which is
+          // exactly what happens if the Hawk holds the DMA waiting for a medium
+          // that is never going to answer. These four bits say whether that is
+          // what is happening, and nothing else can.
+          hawk_req, hawk_hold, img_req, img_busy,
+          sd_ready, sd_error, sd_block_addressing, mount_done,
                 img_mounted, mount_failed, fat_fallback, img_failed, mount_reason,
           fat_dbg_state, fat_extents,
           file_blocks,
           img_dbg_state, img_fetches[7:0] };
+
+    // Where the CPU actually is. The two most recent instruction fetches, the
+    // microcode address, the address register, and the F11 machine state latch. When the watchdog is blinking, the core has stopped completing
+    // instructions, and the *only* question that matters is whether it is
+    // looping in microcode - which the microcode address answers and nothing
+    // else does. Note dbg_uc_address is the address going *into* the ROM, so it
+    // names the word after the one being executed.
+    wire [79:0] cpu_payload =
+        { pc_live0, pc_live1, 5'b0, dbg_uc_address, dbg_memory_address,
+          dbg_f11, 4'b0, dbg_d2d3 };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's
     // compare has failed, so the board can be driven without anyone holding a button.
@@ -1479,10 +1497,10 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // "running <= trigger" at the end of a line, so running never drops between lines
     // while the trigger is held and a falling edge never arrives.
     reg dump_request;
-    reg dump_pick;               // 0 = the running summary, 1 = the disk
+    reg [1:0] dump_pick;         // 2 = the running summary, 3 = the disk, 0 = the CPU
     reg rx_ready_d;
     reg dump_active_d;
-    initial begin dump_request = 0; dump_pick = 0; rx_ready_d = 0; dump_active_d = 0; end
+    initial begin dump_request = 0; dump_pick = 2; rx_ready_d = 0; dump_active_d = 0; end
     always @(posedge clock) begin
         rx_ready_d <= dbg_byte_ready;
         dump_active_d <= dump_active;
@@ -1492,7 +1510,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
             if (dump_active)
                 dump_request <= 0;   // consumed as the line starts
             else if (dbg_byte_ready && !rx_ready_d &&
-                     (dbg_rx_byte == 8'h02 || dbg_rx_byte == 8'h03)) begin
+                     (dbg_rx_byte == 8'h02 || dbg_rx_byte == 8'h03 ||
+                      dbg_rx_byte == 8'h04)) begin
                 dump_request <= 1;
                 // The trigger byte picks the form. Cycling through them only
                 // works while the machine is draining the receiver: once it
@@ -1500,7 +1519,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                 // like - byteReady never falls, no further edge arrives, and one
                 // dump is all you will ever get. Asking for the one you want is
                 // the difference between diagnosing that and guessing at it.
-                dump_pick <= (dbg_rx_byte == 8'h03);
+                dump_pick <= dbg_rx_byte[1:0];
             end
             // A level triggered fallback was tried here, so that a machine which has
             // stopped reading the data register could still be asked for a dump. It
@@ -1529,14 +1548,16 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     StatusDump dump(clock, ~btn2 | dump_request,
                     diag_fail_dump ? (dump_form == 2'd0 ? "C"
                                     : dump_form == 2'd1 ? "P" : "W")
-                                   : (dump_pick || dump_form == 2'd1
-                                        ? (PSRAM_SELFTEST && !dump_pick ? "S" : "D")
+                                   : (dump_pick == 2'd0 ? "P"
+                                    : dump_pick == 2'd3 || dump_form == 2'd1
+                                        ? (PSRAM_SELFTEST && dump_pick != 2'd3 ? "S" : "D")
                                     : fault_caught ? "F" : "L"),
                     diag_fail_dump ? (dump_form == 2'd0 ? fail_payload
                                     : dump_form == 2'd1 ? psram_payload
                                     : wrongmap_payload)
-                                   : (dump_pick || dump_form == 2'd1
-                                        ? (PSRAM_SELFTEST && !dump_pick
+                                   : (dump_pick == 2'd0 ? cpu_payload
+                                    : dump_pick == 2'd3 || dump_form == 2'd1
+                                        ? (PSRAM_SELFTEST && dump_pick != 2'd3
                                              ? selftest_payload : disk_payload)
                                         : dump_payload),
                     dump_tx, dump_active);
