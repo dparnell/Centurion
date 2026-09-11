@@ -18,7 +18,12 @@
  *
  * See https://github.com/Nakazoto/CenturionComputer/wiki/CPU6-Board
  */
-module CPU6(input wire reset, input wire clock, input wire enable, input wire [7:0] dataInBus,
+module CPU6 #(
+    // Whether the clock tick obeys M13 bits 5 and 2. See rtc_active below: the
+    // faithful reading hangs the operating system, so this is off until the
+    // reason is understood.
+    parameter RTC_GATED = 0
+) (input wire reset, input wire clock, input wire enable, input wire [7:0] dataInBus,
     input wire int_reqn, input wire [3:0] irq_number,
     output reg writeEnBus, output wire [18:0] addressBus, output wire [7:0] dataOutBus,
     output wire instruction_start,
@@ -301,7 +306,15 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
     localparam integer RTC_TICKS = 8333;
     reg [13:0] rtc_counter;
     reg rtc;
-    wire rtc_active = rtc & m13[2];
+    // Meisaka's emulator arms the generator on M13 bit 5 and gates its output on
+    // bit 2. Implemented faithfully, the operating system hangs: it reaches a
+    // microcode loop at 0x737 that polls d2d3 12 and waits for a tick that never
+    // comes, because nothing has set those bits by then. Free running, it gets
+    // past that loop and on into other microcode. So the gating is wrong
+    // somewhere - either the bit numbering, or when the bits are set - and until
+    // that is understood a tick that always runs is the more useful of the two
+    // wrong answers. Nothing else in this design reads it.
+    wire rtc_active = RTC_GATED ? (rtc & m13[2]) : rtc;
 
     /*
      * Am2909/2911 Microsequencers
@@ -642,10 +655,23 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
             // The PAGE store shifts bit 0 into the top of each byte it writes.
             11: DPBus = { interrupt_level, dmaint, 1'b1,
                           resetting, ~page_table_out[7] };
-            // The interrupt request level, the front panel switches, and the
-            // clock tick in bit 0. The switches are not wired to anything here,
-            // so they read as zero, which is also the emulator's default.
-            12: DPBus = { irq_number, 3'b000, rtc_active };
+            // The acknowledged interrupt level, the front panel switches, and
+            // the clock tick in bit 0.
+            //
+            // The level is zero, and that is not laziness. The emulator's field
+            // here is its `reqlevel', which is set only when an interrupt has
+            // actually been *acknowledged* and is cleared otherwise. This
+            // design's irq_number is something quite different - the level the
+            // MUX has been *configured* with, a static setting software writes
+            // once - so putting it here tells the microcode an interrupt is
+            // pending at that level for ever. The operating system configures a
+            // non-zero level early in its boot, and from then on the machine
+            // never completes another instruction: it sits in the microcode at
+            // 0x73b, which is reached from the two words at 0x73a and 0x73c that
+            // read this very source. The watchdog blinks the LEDs and it looks
+            // like a crash. Zero until an acknowledged level is actually
+            // tracked. The switches read zero too, as they do in the emulator.
+            12: DPBus = { 4'b0000, 3'b000, rtc_active };
             13: DPBus = constant;
             14: ;
             15: ;
@@ -779,7 +805,7 @@ module CPU6(input wire reset, input wire clock, input wire enable, input wire [7
 
             // The clock tick. Armed by M13 bit 5; clearing that bit is also how
             // software acknowledges a tick, so there is no separate clear.
-            if (!m13[5]) begin
+            if (RTC_GATED && !m13[5]) begin
                 rtc <= 0;
                 rtc_counter <= 0;
             end else if (rtc_counter == RTC_TICKS - 1) begin
