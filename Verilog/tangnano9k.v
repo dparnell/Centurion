@@ -77,7 +77,7 @@ endmodule
  * read bus. Everything that can be read has to be decoded here so that exactly one
  * device drives data_r2c.
  */
-module AddressDecode(input wire [18:0] address,
+module AddressDecode #(parameter DIAG_ROM = 1) (input wire [18:0] address,
     output wire mux_select, output wire diag_select, output wire ram_select,
     output wire dma_select, output wire hawk_select, output wire psram_select);
 
@@ -99,7 +99,8 @@ module AddressDecode(input wire [18:0] address,
     // The block RAM regions, which must go on answering rather than being folded
     // into the PSRAM: they are about fourteen times faster, and everything the
     // machine runs today lives in them. These have to match BoardMemory.v.
-    wire rom_region      = address[18:13] == 6'd4;                 // 0x08000
+    // With the diag ROMs out, this 8K is ordinary memory and the PSRAM takes it.
+    wire rom_region      = DIAG_ROM[0] && (address[18:13] == 6'd4);  // 0x08000
     wire ram_region      = address[18:12] == 7'h0b
                          || address[18:12] == 7'h0c;               // 0x0b000
     wire low_ram_region  = address[18:12] == 7'h00;                // 0x00000
@@ -179,7 +180,11 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // switching it off is what makes room for the storage stack
                     // - it is several hundred logic cells of scaffolding on a
                     // device that is now 84% full. "make DIAG_TRACE=1" for it.
-                    parameter DIAG_TRACE = 0)
+                    parameter DIAG_TRACE = 0,
+                    // Whether the diag board's ROMs are fitted at 0x08000. They
+                    // have to be out to boot the operating system, which loads
+                    // code there; see BoardMemory.v.
+                    parameter DIAG_ROM = 1)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -491,7 +496,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire hawk_step = dma_step & hawk_req;
     wire test_step = dma_step & test_req & ~hawk_req;
 
-    AddressDecode decode(addressBus, mux_select, diag_select, ram_select,
+    AddressDecode #(.DIAG_ROM(DIAG_ROM)) decode(addressBus, mux_select, diag_select, ram_select,
                          dma_select, hawk_select, psram_select_raw);
 
     // With the self test running the CPU must not touch the memory at all, or the
@@ -533,7 +538,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .dbg_timeout_where(dbg_psram_where), .dbg_state(dbg_bus_state),
         .dbg_need(dbg_bus_need));
 
-    BoardMemory #(.PROGRAM(PROGRAM)) ram(
+    BoardMemory #(.PROGRAM(PROGRAM), .DIAG_ROM(DIAG_ROM)) ram(
         clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
     // The Diag board. Its DIP switches choose what diag does out of reset; see
@@ -1468,8 +1473,27 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // looping in microcode - which the microcode address answers and nothing
     // else does. Note dbg_uc_address is the address going *into* the ROM, so it
     // names the word after the one being executed.
+    // The lowest and highest microcode address seen since the last instruction
+    // was fetched. One sample of the microcode address cannot tell a machine
+    // frozen on one word from one looping over a routine, and a dead CPU can
+    // only be asked for one dump - it stops draining the MUX, so byteReady never
+    // falls again and no further request can be raised. This answers it in that
+    // one sample: equal means frozen, a range means looping, and the range says
+    // which loop.
+    reg [10:0] uc_min, uc_max;
+    initial begin uc_min = 11'h7ff; uc_max = 0; end
+    always @(posedge clock) begin
+        if (reset || instruction_start) begin
+            uc_min <= dbg_uc_address;
+            uc_max <= dbg_uc_address;
+        end else if (cpu_en) begin
+            if (dbg_uc_address < uc_min) uc_min <= dbg_uc_address;
+            if (dbg_uc_address > uc_max) uc_max <= dbg_uc_address;
+        end
+    end
+
     wire [79:0] cpu_payload =
-        { pc_live0, pc_live1, 5'b0, dbg_uc_address, dbg_memory_address,
+        { pc_live0, 5'b0, uc_min, 5'b0, uc_max, dbg_memory_address,
           dbg_f11, 4'b0, dbg_d2d3 };
 
     // Trigger on btn2 as before, and also automatically a few seconds after diag's

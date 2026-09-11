@@ -18,6 +18,12 @@
  * at the end of it. Only the writes are gated, so one bus cycle writes once.
  */
 module BoardMemory #(
+    // Whether the diag board's ROMs are fitted. They shadow 8K at physical
+    // 0x08000, and the operating system loads code there - so with them present
+    // those writes go nowhere and the machine dies the moment execution crosses
+    // out of 0x7fff. The emulator models the same thing as a checkbox, and its
+    // own notes say the diag ROMs have to be off for CENTOS to boot.
+    parameter DIAG_ROM = 1,
     // Which program the ROM holds. Overridable so that a testbench or a build
     // can run something other than diag without editing this file; "make
     // PROGRAM=programs/forth.txt" and the +prog= plusarg below both work.
@@ -52,7 +58,7 @@ module BoardMemory #(
         for (i = 0; i < 4096; i = i + 1) low_ram_cells[i] = 8'h00;
     end
 
-    wire rom_select     = address[18:13] == 4;
+    wire rom_select     = DIAG_ROM[0] && (address[18:13] == 4);
     // 8K of RAM covering physical 0x0b000 to 0x0cfff. It has to reach 0x0c000 because
     // that is where diag puts its stack, and a stack in unbacked memory is not a quiet
     // failure: CPU6's JSR keeps the return address in X and pushes the *old* X, so with
