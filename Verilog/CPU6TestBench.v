@@ -90,6 +90,23 @@ module CPU6TestBench;
     reg reset;
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
 
+    // The microcode never puts k11 == 7 (latch the write data) and h11 == 2
+    // (begin the bus write cycle) in the same word - 47 words do the first, 32
+    // the second, none does both - so which of the two this design uses as its
+    // write strobe is a real question. Meisaka's emulator commits the write on
+    // h11 == 2, with k11 == 7 only latching the data; this design commits on
+    // k11 == 7 and leaves h11 == 2 a stub.
+    integer n_k11_7 = 0, n_h11_2 = 0, n_h11_2_after = 0;
+    reg prev_k11_7 = 0;
+    always @(posedge clock) if (cpu_en) begin
+        prev_k11_7 <= (cpu.k11 == 3'd7);
+        if (cpu.k11 == 3'd7) n_k11_7 = n_k11_7 + 1;
+        if (cpu.h11 == 3'd2) begin
+            n_h11_2 = n_h11_2 + 1;
+            if (prev_k11_7) n_h11_2_after = n_h11_2_after + 1;
+        end
+    end
+
     CPU6 cpu(reset, clock, cpu_en, data_r2c, int_reqn, irq_number, writeEnBus, addressBus, data_c2r,
              , 1'b0, 8'h00, 8'h00, 4'b0001,
              // No DMA device here: request low, and the three outputs unused.
@@ -149,6 +166,8 @@ module CPU6TestBench;
         //sim_end = 0; #0 reset = 0; #50 reset = 1; #1000 reset = 0; #200000000; sim_end = 1;
         //wait(sim_end == 1);
 
+        $display("write strobes: k11==7 fired %0d times, h11==2 fired %0d times, %0d of those right after a k11==7",
+                 n_k11_7, n_h11_2, n_h11_2_after);
         $display("All done!");
         $finish;
     end
