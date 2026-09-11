@@ -66,11 +66,12 @@ $(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
 $(PROJ).fs: $(PROJ)_pnr.json
 	PYTHONPATH=$(CURDIR)/../tools gowin_pack -d ${FAMILY} -o $(PROJ).fs $(PROJ)_pnr.json
 
-# Program Board. Three ways in, because these are the three things the machine
-# is usually wanted for:
+# Program Board. Four ways in, because these are the four things the machine is
+# usually wanted for:
 #   make load        the diag ROM, switches on the auxiliary test menu
 #   make load-tos    the same ROM, switches set for the TOS machine code monitor
 #   make load-forth  the FORTH, assembled from asm/forth.s first
+#   make load-boot   boot the operating system off the disk image on the SD card
 # Each rebuilds whatever the change of configuration invalidates; see build.stamp.
 load: $(PROJ).fs
 	openFPGALoader -b ${BOARD} $(PROJ).fs -f
@@ -80,6 +81,18 @@ load-tos:
 
 load-forth:
 	$(MAKE) PROGRAM=programs/forth.txt load
+
+# Sense switch 1 is the boot PROM's own selector: its first instruction at
+# 0xfc00 is BS1, and clear means boot the operating system where set means jump
+# to 0x8001 and let the diag board take over. So this is the whole difference,
+# and DIP does not come into it. The other two bits are S2 and S4, which is what
+# the emulator's verified CENTOS procedure calls "sense = 10".
+#
+# Then type H1 at the D= prompt - the device letter and unit 1, no Enter. It
+# reads the pack, loads it and runs it; it does not yet reach the OS banner, and
+# sending 0x04 asks the board where the CPU stopped.
+load-boot:
+	$(MAKE) SENSE=1010 load
 
 test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB sd_fat32.hex sd_fat32frag.hex sd_fat32long.hex
 	vvp CPU6TestBench
@@ -219,10 +232,11 @@ psramtest: PsramTB
 PsramTB: *.v
 	iverilog -o PsramTB PsramTB.v
 
-.PHONY: all programs load load-tos load-forth test diagtest mapfail run psramtest clean FORCE
+.PHONY: all programs load load-tos load-forth load-boot test diagtest mapfail run \
+	psramtest sdtest fat32test disktest centostest dmatest hawktest clean FORCE
 
 clean:
 	rm -f build.stamp
 	rm $(PROJ).json $(PROJ).asc $(PROJ).bin $(PROJ).rpt CPU6TestBench TopTestBench DiagTestBench PsramTB MapFailTB
 
-.PHONY: all prog clean test diagtest psramtest mapfail run
+.PHONY: all prog clean test diagtest psramtest mapfail run sdtest fat32test disktest
