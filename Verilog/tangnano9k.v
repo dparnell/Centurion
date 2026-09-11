@@ -172,7 +172,14 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // costs real logic, so a normal build leaves it out; DmaTB
                     // turns it on. Like PSRAM_SELFTEST, this is a build time
                     // choice that no file records, so build.stamp tracks it.
-                    parameter DMA_TEST = 0)
+                    parameter DMA_TEST = 0,
+                    // The mapping RAM failure instrumentation: pass counters,
+                    // the frozen compare pair, who wrote which buffer byte. It
+                    // found that bug and the bug is fixed, so it is off, and
+                    // switching it off is what makes room for the storage stack
+                    // - it is several hundred logic cells of scaffolding on a
+                    // device that is now 84% full. "make DIAG_TRACE=1" for it.
+                    parameter DIAG_TRACE = 0)
                  (input in_clk, input reset_btn, input btn2, output LED1, output LED2, output LED3, output LED4, output LED5, output LED6, output LED7, output LED8, output uart_tx, input uart_rx,
                   // The HyperRAM die shares the package. nextpnr places these on the
                   // dedicated pads by name, so the names have to be exactly these.
@@ -1472,9 +1479,10 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // "running <= trigger" at the end of a line, so running never drops between lines
     // while the trigger is held and a falling edge never arrives.
     reg dump_request;
+    reg dump_pick;               // 0 = the running summary, 1 = the disk
     reg rx_ready_d;
     reg dump_active_d;
-    initial begin dump_request = 0; rx_ready_d = 0; dump_active_d = 0; end
+    initial begin dump_request = 0; dump_pick = 0; rx_ready_d = 0; dump_active_d = 0; end
     always @(posedge clock) begin
         rx_ready_d <= dbg_byte_ready;
         dump_active_d <= dump_active;
@@ -1483,8 +1491,17 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         end else begin
             if (dump_active)
                 dump_request <= 0;   // consumed as the line starts
-            else if (dbg_byte_ready && !rx_ready_d && dbg_rx_byte == 8'h02)
+            else if (dbg_byte_ready && !rx_ready_d &&
+                     (dbg_rx_byte == 8'h02 || dbg_rx_byte == 8'h03)) begin
                 dump_request <= 1;
+                // The trigger byte picks the form. Cycling through them only
+                // works while the machine is draining the receiver: once it
+                // stops - which is exactly what a boot that has gone wrong looks
+                // like - byteReady never falls, no further edge arrives, and one
+                // dump is all you will ever get. Asking for the one you want is
+                // the difference between diagnosing that and guessing at it.
+                dump_pick <= (dbg_rx_byte == 8'h03);
+            end
             // A level triggered fallback was tried here, so that a machine which has
             // stopped reading the data register could still be asked for a dump. It
             // takes the UART pin away from the MUX permanently as soon as a trigger
@@ -1506,18 +1523,21 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
             dump_form <= (dump_form == 2'd2) ? 2'd0 : dump_form + 1;
     end
 
+    // Selecting the failure forms out entirely, rather than merely not printing
+    // them, is what lets yosys remove everything that feeds them.
+    wire diag_fail_dump = DIAG_TRACE[0] && compare_failed;
     StatusDump dump(clock, ~btn2 | dump_request,
-                    compare_failed ? (dump_form == 2'd0 ? "C"
+                    diag_fail_dump ? (dump_form == 2'd0 ? "C"
                                     : dump_form == 2'd1 ? "P" : "W")
-                                   : (dump_form == 2'd1
-                                        ? (PSRAM_SELFTEST ? "S" : "D")
+                                   : (dump_pick || dump_form == 2'd1
+                                        ? (PSRAM_SELFTEST && !dump_pick ? "S" : "D")
                                     : fault_caught ? "F" : "L"),
-                    compare_failed ? (dump_form == 2'd0 ? fail_payload
+                    diag_fail_dump ? (dump_form == 2'd0 ? fail_payload
                                     : dump_form == 2'd1 ? psram_payload
                                     : wrongmap_payload)
-                                   : (dump_form == 2'd1
-                                        ? (PSRAM_SELFTEST ? selftest_payload
-                                                          : disk_payload)
+                                   : (dump_pick || dump_form == 2'd1
+                                        ? (PSRAM_SELFTEST && !dump_pick
+                                             ? selftest_payload : disk_payload)
                                         : dump_payload),
                     dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
