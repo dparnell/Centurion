@@ -193,7 +193,21 @@ module HawkDisk #(
     // software says so.
     wire write_enabled = wpmask[unit[2:0]];
 
-    assign dma_req = transferring;
+    // The request has to stand from the moment the command is accepted, not
+    // from the moment the first byte is ready. Microcode word 0x65a tests this
+    // with k9 == 5 and treats a low request as "the transfer has finished" -
+    // and W_PREP, the fetch of the sector from the medium that a read does
+    // before any byte moves, used to drop it. The microcode then walked out of
+    // its DMA wait and on into the interrupt entry sequence, which loads a
+    // level nothing had prepared, and the machine ended up executing the
+    // register file. The mid-transfer waits never had the problem because
+    // transferring stays set across them; only the one before the first byte
+    // did. This is the rule the comment on W_MID already states: hold the DMA,
+    // do not drop the request.
+    //
+    // W_FINAL is deliberately not included: by then dma_end has been seen and
+    // the transfer really is over, so the request must fall.
+    assign dma_req = transferring || (waiting && wait_kind == W_PREP);
     assign dma_hold = waiting;
     assign dma_write = (command == CMD_READ);   // read from disk = write to memory
     assign dma_wdata = buf_q;
