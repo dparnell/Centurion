@@ -302,10 +302,26 @@ module HawkDisk #(
             end
 
             // ------------------------------------------------- the stuck guard
-            if (!busy || transferring || waiting || busy_time != 0) stuck <= 0;
+            // Every state the controller can sit in with a command outstanding
+            // has to be able to give up, not just the idle-but-busy one. This
+            // used to stop counting whenever the controller was transferring or
+            // waiting - and those are exactly the states it gets stuck in, since
+            // a read depends on its DMA transfer running and a fetch from the
+            // medium depends on the image layer answering. Parked in either, the
+            // guard never counted at all, busy stayed set for ever, and the
+            // operating system's driver spun on that bit with no way to give up.
+            // A quarter of a second is orders of magnitude longer than any real
+            // transfer here, so counting through those states costs nothing.
+            if (!busy) stuck <= 0;
             else if (stuck == STUCK_LIMIT - 1) begin
                 busy <= 0;
                 media_error <= 1;       // reported as a timeout, which it is
+                // Put the controller back in a state it can take a command from,
+                // rather than leaving it half way through one nobody will finish.
+                transferring <= 0;
+                waiting <= 0;
+                saw_busy <= 0;
+                img_req <= 0;
                 stuck <= 0;
             end else stuck <= stuck + 1;
 
