@@ -286,6 +286,10 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // watchdog's crash blink on the LEDs, and the only sign in the log was one
     // "Identifier is implicitly declared" warning.
     wire clock = in_clk;
+    // This board's crystal. Everything that counts time - baud rates, timeouts,
+    // the watchdog's blink, the instructions-per-second window - takes it as a
+    // parameter, so nothing below this file knows what the clock is.
+    localparam integer CLOCK_HZ = 27_000_000;
 
     // The memory. Everything HyperBus-specific - the PLL, the PHY and its pads,
     // the die's 600us wake up, the arbitration between the CPU's bridge and the
@@ -385,7 +389,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // The core is enabled 5 clocks in every 27, giving the original CPU6's 5MHz -
     // except that PsramBus withholds the enable while a PSRAM access runs, so the
     // core sees a long bus cycle rather than a stall it has to understand.
-    ClockEnable cpu_clock_enable(clock, cpu_en_free);
+    ClockEnable #(.TICKS(5), .PERIOD(CLOCK_HZ / 1_000_000)) cpu_clock_enable(clock, cpu_en_free);
 
     Psram #(.PSRAM_MULT(PSRAM_MULT), .PSRAM_PHASE(PSRAM_PHASE), .PSRAM_LATE(PSRAM_LATE),
             .PSRAM_TAP(PSRAM_TAP), .PSRAM_LATENCY(PSRAM_LATENCY),
@@ -454,7 +458,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [7:0] dbg_mux_state, dbg_last_cause;
     wire [15:0] dbg_acks, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx;
 
-    MUX #(.DEBUG(DIAG_TRACE)) mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select,
+    MUX #(.DEBUG(DIAG_TRACE), .CLOCK_HZ(CLOCK_HZ)) mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select,
              { 1'b0, addressBus[3:0] }, writeEnBus, bus_read_strobe, data_c2r,
              interrupt_ack, mux_data, int_reqn, irq_number,
              dbg_byte_ready, dbg_rx_byte, dbg_mux_state, dbg_last_cause,
@@ -492,7 +496,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire card_read = fat_read | img_sd_read;
     wire [31:0] card_lba = fat_read ? fat_lba : img_lba;
 
-    SdSpi sd(clock, reset, sd_clk, sd_mosi, sd_miso, sd_cs_n,
+    SdSpi #(.CLOCK_HZ(CLOCK_HZ)) sd(clock, reset, sd_clk, sd_mosi, sd_miso, sd_cs_n,
              card_read, img_sd_write, card_lba, sd_busy, sd_ready, sd_error,
              sd_rx_strobe, sd_rx_index, sd_rx_byte,
              sd_tx_request, sd_tx_index, sd_tx_byte,
@@ -546,7 +550,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         img_dbg_state, img_fetches, img_hits, img_writebacks);
 
     // The Hawk disk controller.
-    HawkDisk hawk(clock, cpu_en, reset, hawk_select, addressBus[3:0], writeEnBus,
+    HawkDisk #(.CLOCK_HZ(CLOCK_HZ)) hawk(clock, cpu_en, reset, hawk_select, addressBus[3:0], writeEnBus,
                   data_c2r, hawk_data,
                   hawk_req, hawk_write, hawk_wdata,
                   hawk_step, dma_rdata, dma_end, hawk_int, hawk_hold,
@@ -568,8 +572,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // machine. See Instruments.v. It takes the UART pin over while a dump is
     // going out, which is safe because the machine is only worth interrogating
     // when it has stopped printing.
-    Instruments #(.DIAG_TRACE(DIAG_TRACE), .PSRAM_SELFTEST(PSRAM_SELFTEST),
-                  .PARITY_CHECK(PARITY_CHECK)) instruments(
+    Instruments #(.CLOCK_HZ(CLOCK_HZ), .DIAG_TRACE(DIAG_TRACE),
+                  .PSRAM_SELFTEST(PSRAM_SELFTEST), .PARITY_CHECK(PARITY_CHECK)) instruments(
         .in_clk(in_clk),
         .clock(clock),
         .reset(reset),

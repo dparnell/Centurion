@@ -14,7 +14,11 @@ module MUX #(
     // of the card. They cost about 3% of the device's LUT4s, which is the
     // difference between 81% and 84%, so they are excluded from the netlist
     // rather than merely left unread. "make DIAG_TRACE=1" puts them back.
-    parameter DEBUG = 0
+    parameter DEBUG = 0,
+    // The bit clock's frequency. Every baud rate divider derives from it, and
+    // so does the divider's width: the slowest rate, 75 baud, needs the most
+    // bits. Nothing about this board lives in here.
+    parameter integer CLOCK_HZ = 27_000_000
 ) (
     input wire bit_clock, // 27Mhz clock
     input wire cpu_clock,
@@ -55,9 +59,10 @@ module MUX #(
 
 // common stuff - default to 9600 7E1
 
-// 20 bits, because the slowest rate needs 27_000_000/75 = 360000 and that does not fit
-// in the 16 bits this used to have.
-reg [19:0] divider = 27_000_000 / 9600;
+// Wide enough for the slowest rate: at 27MHz that is 27_000_000/75 = 360000, which
+// did not fit in the 16 bits this used to have.
+localparam integer DIV_BITS = $clog2(CLOCK_HZ / 75 + 1);
+reg [DIV_BITS-1:0] divider = CLOCK_HZ / 9600;
 reg parity = 1;                 // 1 = even, 0 = odd
 reg parity_enabled = 1;
 reg [3:0] data_bits = 7;
@@ -141,7 +146,7 @@ always @(posedge cpu_clock) begin
         // Back to the 9600 7E1 power on defaults. Without this the channel keeps its
         // configuration and its pending state across a reset of the core, and diag comes
         // back up talking to a MUX that is still mid-character or still holding a byte.
-        divider <= 27_000_000 / 9600;
+        divider <= CLOCK_HZ / 9600;
         parity <= 1;
         parity_enabled <= 1;
         data_bits <= 7;
@@ -164,14 +169,14 @@ always @(posedge cpu_clock) begin
                     stop_bits <= data_in[5];
 
                     case (data_in[7:5])
-                        0: divider <= 27_000_000 / 75;
-                        1: divider <= 27_000_000 / 300;
-                        2: divider <= 27_000_000 / 1200;
-                        3: divider <= 27_000_000 / 2400;
-                        4: divider <= 27_000_000 / 4800;
-                        5: divider <= 27_000_000 / 9600;
-                        6: divider <= 27_000_000 / 19200;
-                        7: divider <= 27_000_000 / 38400;
+                        0: divider <= CLOCK_HZ / 75;
+                        1: divider <= CLOCK_HZ / 300;
+                        2: divider <= CLOCK_HZ / 1200;
+                        3: divider <= CLOCK_HZ / 2400;
+                        4: divider <= CLOCK_HZ / 4800;
+                        5: divider <= CLOCK_HZ / 9600;
+                        6: divider <= CLOCK_HZ / 19200;
+                        7: divider <= CLOCK_HZ / 38400;
                     endcase
                 end
 
@@ -193,7 +198,7 @@ always @(posedge cpu_clock) begin
                 13: interrupts_enabled <= 0;
                 14: interrupts_enabled <= 1;
                 15: begin
-                    divider <= 27_000_000 / 9600;
+                    divider <= CLOCK_HZ / 9600;
                     parity <= 1;
                     parity_enabled <= 1;
                     data_bits <= 7;
@@ -222,7 +227,7 @@ always @(posedge bit_clock) uart_rx_sync <= { uart_rx_sync[1:0], uart_rx };
 wire uart_rx_s = uart_rx_sync[2];
 
 reg [2:0] rxState = RX_IDLE;
-reg [19:0] rxCounter = 0;
+reg [DIV_BITS-1:0] rxCounter = 0;
 reg [3:0] rxBitNumber = 0;
 reg [7:0] rxShift = 0;
 reg [7:0] dataIn = 0;
@@ -256,7 +261,7 @@ always @(posedge bit_clock) begin
             // Wait half a bit and check the line is still low, so a glitch on an idle
             // line is not mistaken for a start bit.
             rxCounter <= rxCounter + 1;
-            if (rxCounter == divider[19:1]) begin
+            if (rxCounter == divider[DIV_BITS-1:1]) begin
                 rxCounter <= 0;
                 rxBitNumber <= 0;
                 rxShift <= 0;
@@ -312,7 +317,7 @@ localparam TX_STOP   = 4;
 localparam TX_STOP2  = 5;
 
 reg [2:0] txState = TX_IDLE;
-reg [19:0] txCounter = 0;
+reg [DIV_BITS-1:0] txCounter = 0;
 reg txPinRegister = 1;
 reg [3:0] txBitNumber = 0;
 reg [7:0] txShift = 0;

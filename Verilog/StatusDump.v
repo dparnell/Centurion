@@ -17,7 +17,10 @@
  * it has stopped printing.
  */
 module StatusDump #(
-    parameter DIVIDER = 27_000_000 / 19200
+    // 19200 baud, from whatever the clock is. The default is the Tang Nano
+    // 9K's clock only so that the older testbenches keep working unchanged.
+    parameter integer CLOCK_HZ = 27_000_000,
+    parameter DIVIDER = CLOCK_HZ / 19200
 ) (
     input wire clock,
     input wire trigger,                     // held, not an edge

@@ -40,7 +40,10 @@ module HawkDisk #(
     // drive, and the documented way to boot an operating system off it is "H1"
     // - device H, unit 1 - which is also where the emulator's verified CENTOS
     // procedure mounts it.
-    parameter [3:0] IMAGE_UNIT = 1
+    parameter [3:0] IMAGE_UNIT = 1,
+    // The clock, so that "a quarter of a second" is a quarter of a second on
+    // any board.
+    parameter integer CLOCK_HZ = 27_000_000
 ) (
     input wire clock,
     input wire cpu_enable,          // one pulse per CPU clock
@@ -132,8 +135,8 @@ module HawkDisk #(
     // completing - so any path where that transfer does not run wedges the
     // controller for good. This is the same rule PsramBus already follows: never
     // let a device stall the machine in a way it cannot recover from.
-    reg [23:0] stuck;
-    localparam integer STUCK_LIMIT = 27_000_000 / 4;   // a quarter of a second
+    localparam integer STUCK_LIMIT = CLOCK_HZ / 4;   // a quarter of a second
+    reg [$clog2(STUCK_LIMIT + 1)-1:0] stuck;
     // One clock between the buffer being addressed and the transfer starting.
     // buf_q is the sector buffer's *registered* output, so it does not hold
     // sector_buf[buf_index] until the clock after buf_read_addr selects it.

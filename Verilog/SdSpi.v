@@ -31,13 +31,20 @@
  * left by nine. Everything above this module deals in blocks only.
  */
 module SdSpi #(
+    // The board clock. The two SPI rates and the timeout derive from it.
+    parameter integer CLOCK_HZ = 27_000_000,
     // Board clocks per SPI half period during initialisation. The card must see
-    // between 100 and 400kHz until it is out of idle: 27MHz / (2*35) = 386kHz.
-    parameter integer SLOW_DIV = 35,
-    // And afterwards. 27MHz / (2*1) = 13.5MHz, within every card's 25MHz limit.
+    // between 100 and 400kHz until it is out of idle, and the SPI clock is
+    // CLOCK_HZ / (2 * SLOW_DIV): 770kHz in the divisor gives 35 at 27MHz, which
+    // is the value this has always used, 386kHz - and 64 at 50MHz, 129 at
+    // 100MHz, all just under 400kHz.
+    parameter integer SLOW_DIV = CLOCK_HZ / 770_000,
+    // And afterwards: CLOCK_HZ / (2 * FAST_DIV). 13.5MHz at 27MHz, 25MHz at
+    // 50MHz - within every card's 25MHz limit up to a 50MHz board clock. A
+    // faster board has to raise this.
     parameter integer FAST_DIV = 1,
-    // How long to keep retrying ACMD41 before giving up, in board clocks.
-    parameter integer INIT_TIMEOUT = 27_000_000      // one second
+    // How long to keep retrying ACMD41 before giving up: one second.
+    parameter integer INIT_TIMEOUT = CLOCK_HZ
 ) (
     input wire clock,                   // 27MHz board clock
     input wire reset,

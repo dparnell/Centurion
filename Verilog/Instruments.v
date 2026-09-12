@@ -16,6 +16,9 @@
  * reset like anything else; see CLAUDE.md on debug logic that did not.
  */
 module Instruments #(
+    // The board clock: the instructions-per-second window, the dump's baud
+    // rate and the watchdog's timeout and blink all derive from it.
+    parameter integer CLOCK_HZ = 27_000_000,
     parameter DIAG_TRACE = 0,
     parameter PSRAM_SELFTEST = 0,
     parameter PARITY_CHECK = 1
@@ -990,7 +993,7 @@ module Instruments #(
     // simply stopped polling its console cannot be asked twice, and looks
     // exactly like a machine that has died.
     reg [15:0] instr_count, instr_recent;
-    reg [24:0] second;
+    reg [$clog2(CLOCK_HZ)-1:0] second;
     reg [10:0] uc_max;
     // The opcode of the instruction being executed. "Some instruction never
     // finishes" is not a diagnosis; "instruction 0xNN never finishes" names the
@@ -1006,7 +1009,7 @@ module Instruments #(
             instr_count <= 0; instr_recent <= 0; second <= 0;
         end else begin
             if (instruction_fetch) instr_count <= instr_count + 1;
-            if (second == 27_000_000 - 1) begin
+            if (second == CLOCK_HZ - 1) begin
                 second <= 0;
                 instr_recent <= instr_count;
                 instr_count <= instruction_fetch ? 16'd1 : 16'd0;
@@ -1113,7 +1116,7 @@ module Instruments #(
     // Selecting the failure forms out entirely, rather than merely not printing
     // them, is what lets yosys remove everything that feeds them.
     wire diag_fail_dump = DIAG_TRACE[0] && compare_failed;
-    StatusDump dump(clock, ~btn2 | dump_request,
+    StatusDump #(.CLOCK_HZ(CLOCK_HZ)) dump(clock, ~btn2 | dump_request,
                     diag_fail_dump ? (dump_form == 2'd0 ? "C"
                                     : dump_form == 2'd1 ? "P" : "W")
                                    : (dump_pick == 2'd0 ? "P"
@@ -1137,14 +1140,15 @@ module Instruments #(
     // show a count of the bytes handed to the MUX data register instead: that says
     // whether the core is getting as far as talking to the serial channel, without
     // needing a terminal to be connected and correctly configured.
-    Watchdog watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
+    Watchdog #(.TIMEOUT(CLOCK_HZ / 2), .BLINK(CLOCK_HZ / 2))
+        watchdog(in_clk, instruction_start, leds, display_leds, cpu_alive);
 endmodule
 
 module Watchdog #(
-    parameter TIMEOUT = 13_500_000,     // 0.5s at 27MHz with no instruction executed
-    parameter BLINK   = 13_500_000      // 0.5s half period, so a 1Hz blink
+    parameter TIMEOUT = 13_500_000,     // clocks with no instruction executed: 0.5s at 27MHz
+    parameter BLINK   = 13_500_000      // half period in clocks: 0.5s at 27MHz, so a 1Hz blink
 ) (
-    input wire clock_in,                // 27MHz, always running
+    input wire clock_in,                // the board clock, always running
     input wire heartbeat,               // pulses once per instruction
     input wire [7:0] leds_in,           // normal LED panel value
     output wire [7:0] leds_out,
@@ -1155,8 +1159,8 @@ module Watchdog #(
     reg heartbeat_d;
     wire heartbeat_edge = heartbeat & ~heartbeat_d;
 
-    reg [23:0] stall_counter;
-    reg [23:0] blink_counter;
+    reg [$clog2(TIMEOUT + 1)-1:0] stall_counter;
+    reg [$clog2(BLINK + 1)-1:0] blink_counter;
     reg blink;
     reg stalled;
 
