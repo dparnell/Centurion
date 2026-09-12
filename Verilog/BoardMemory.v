@@ -29,12 +29,27 @@ module BoardMemory #(
     // PROGRAM=programs/forth.txt" and the +prog= plusarg below both work.
     parameter PROGRAM = "programs/diag.txt"
 ) (input wire clock, input wire enable, input wire [18:0] address,
-    input wire write_en, input wire [7:0] data_in, output wire [7:0] data_out);
+    input wire write_en, input wire [7:0] data_in, output wire [7:0] data_out,
+    // Parity. The real machine stores a parity bit alongside every byte of RAM
+    // and the CPU checks it on every read; F11 bit 5 makes a write store the
+    // WRONG parity deliberately, which is the only way to test that the
+    // checking circuitry works at all. The operating system does exactly that
+    // during startup - it poisons physical 0x144 upward, two bytes at a time,
+    // and reads each back expecting a fault - and prints
+    // "PARITY CIRCUITRY INOPERATIVE" and gives up if no fault arrives.
+    input wire parity_force, output wire parity_bad);
 
     reg [7:0] rom_cells[0:8191];
-    reg [7:0] ram_cells[0:8191];
-    reg [7:0] low_ram_cells[0:4095];
+    // Nine bits: the byte, and above it the parity bit as it was stored. The
+    // ROM and the bootstrap PROM have none - nothing can write them, so nothing
+    // can ever have given them wrong parity.
+    reg [8:0] ram_cells[0:8191];
+    reg [8:0] low_ram_cells[0:4095];
     reg [7:0] boot_cells[0:511];
+    // What to store: the byte's own parity, inverted when the CPU is asking for
+    // a deliberate error. Reading it back and XOR-ing the two recovers exactly
+    // that bit, which is the fault.
+    wire stored_parity = (^data_in) ^ parity_force;
 
     // Any of the programs can go here; they are linked at 0x8000 and the reset vector
     // above jumps to 0x8001. diag.txt reconfigures MUX 0 to 19200 baud, 7 data bits, no
@@ -54,8 +69,10 @@ module BoardMemory #(
         if ($value$plusargs("prog=%s", progfile))
             $readmemh(progfile, rom_cells);
 `endif
-        for (i = 0; i < 8192; i = i + 1) ram_cells[i] = 8'h00;
-        for (i = 0; i < 4096; i = i + 1) low_ram_cells[i] = 8'h00;
+        // Zero with correct parity, which is what an emulated machine's memory
+        // and parity RAM both start as.
+        for (i = 0; i < 8192; i = i + 1) ram_cells[i] = 9'h000;
+        for (i = 0; i < 4096; i = i + 1) low_ram_cells[i] = 9'h000;
     end
 
     wire rom_select     = DIAG_ROM[0] && (address[18:13] == 4);
@@ -71,7 +88,8 @@ module BoardMemory #(
     // is offset 0x100 of it.
     wire boot_select    = address[18:9] == 10'h1fe;
 
-    reg [7:0] rom_q, ram_q, low_ram_q, boot_q;
+    reg [7:0] rom_q, boot_q;
+    reg [8:0] ram_q, low_ram_q;
 
     always @(posedge clock) begin
         rom_q     <= rom_cells[address[12:0]];
@@ -80,8 +98,8 @@ module BoardMemory #(
         boot_q    <= boot_cells[address[8:0]];
 
         if (enable && write_en) begin
-            if (ram_select)     ram_cells[ram_addr]          <= data_in;
-            if (low_ram_select) low_ram_cells[address[11:0]] <= data_in;
+            if (ram_select)     ram_cells[ram_addr]          <= { stored_parity, data_in };
+            if (low_ram_select) low_ram_cells[address[11:0]] <= { stored_parity, data_in };
         end
     end
 
@@ -89,6 +107,11 @@ module BoardMemory #(
     // safe for the same reason the reads are: the address does not move within a cycle.
     assign data_out = boot_select             ? boot_q :
                       rom_select              ? rom_q :
-                      ram_select              ? ram_q :
-                      low_ram_select          ? low_ram_q : 8'h00;
+                      ram_select              ? ram_q[7:0] :
+                      low_ram_select          ? low_ram_q[7:0] : 8'h00;
+
+    // The byte disagrees with the parity that was stored with it. Only the two
+    // writable regions can, and only because something asked for it.
+    assign parity_bad = (ram_select     && (ram_q[8]     ^ (^ram_q[7:0]))) ||
+                        (low_ram_select && (low_ram_q[8] ^ (^low_ram_q[7:0])));
 endmodule

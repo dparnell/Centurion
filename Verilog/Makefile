@@ -98,9 +98,10 @@ load-forth:
 load-boot:
 	$(MAKE) SENSE=1010 DIAG_ROM=0 load
 
-test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB sd_fat32.hex sd_fat32frag.hex sd_fat32long.hex
+test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB ParityTB sd_fat32.hex sd_fat32frag.hex sd_fat32long.hex
 	vvp CPU6TestBench
 	vvp TopTestBench
+	vvp ParityTB
 	vvp PsramTB
 	vvp DmaTB
 	vvp HawkTB
@@ -198,6 +199,9 @@ DiskTB: *.v
 HawkTB: *.v programs/hawktest.txt
 	iverilog -o HawkTB HawkTB.v
 
+ParityTB: *.v
+	iverilog -g2005-sv -o ParityTB ParityTB.v
+
 DiagTestBench: *.v
 	iverilog -o DiagTestBench DiagTestBench.v
 
@@ -210,6 +214,12 @@ CPU6TestBench: *.v
 # Runs diag's mapping RAM test in simulation until its compare fails. Slow - the
 # failure is thousands of passes in - but it stops exactly there, which is the one
 # thing the board cannot do.
+# The memory's parity bit and the F11 force bit that makes a write store the
+# wrong one. The operating system tests the parity circuitry that way during
+# startup and prints PARITY CIRCUITRY INOPERATIVE if the fault never arrives.
+parity: ParityTB
+	vvp ParityTB
+
 mapfail: MapFailTB
 	vvp MapFailTB
 
@@ -236,7 +246,7 @@ psramtest: PsramTB
 PsramTB: *.v
 	iverilog -o PsramTB PsramTB.v
 
-.PHONY: all programs load load-tos load-forth load-boot test diagtest mapfail run \
+.PHONY: all programs load load-tos load-forth load-boot test diagtest mapfail parity run \
 	psramtest sdtest fat32test disktest centostest dmatest hawktest clean FORCE
 
 clean:
