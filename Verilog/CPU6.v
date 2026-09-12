@@ -78,7 +78,11 @@ module CPU6 #(
     output wire dbg_pt_via_window,
     // M13 bit 7. Without it an enabled interrupt is never acknowledged and the request
     // stands, so the handler is re-entered for ever.
-    output wire interrupt_ack);
+    output wire interrupt_ack,
+    // The byte now on the read bus disagrees with the parity that was stored
+    // beside it. Added at the end of the list on purpose: every instantiation
+    // of this module connects its ports positionally.
+    input wire parity_error);
 
     /*
      * Rising edge triggered registers
@@ -101,6 +105,10 @@ module CPU6 #(
     reg [3:0] condition_codes;
     // bus_read, bus_write A11/A12 Am2907
     reg [7:0] bus_read, bus_write;
+    // Whether the byte in bus_read came back disagreeing with its parity, held
+    // from the read that latched it until the next one - which is what k9 == 6
+    // reports.
+    reg parity_fault;
     // interrupt_level D9 74LS378, only four bits used
     reg [3:0] interrupt_level;
     // Page table base register D11 74LS378
@@ -286,6 +294,7 @@ module CPU6 #(
     // an X there propagates straight into the address registers.
     initial begin
         f11 = 0;
+        parity_fault = 0;
         m13 = 0;
     end
 
@@ -526,7 +535,18 @@ module CPU6 #(
                 // transfer reaches its end; its k9_com is inverted on the way
                 // out, which is what jsr_ already is.
                 5: jsr_ = ~dma_req;
-                6: ; // Parity error
+                // A byte read back disagreeing with the parity stored beside
+                // it. F11 bit 6 is the check enable: with it clear the answer is
+                // always "no error", which is what this used to be unconditionally.
+                // The emulator computes b15a as `memfault ^ 1` when checking is
+                // on and 1 when it is off, and its k9_com is inverted on the way
+                // out, so this is that expression directly.
+                //
+                // Without it the operating system's startup self test - which
+                // writes a byte with deliberately wrong parity through F11 bit 5
+                // and reads it back expecting to fault - never sees the error it
+                // planted, prints PARITY CIRCUITRY INOPERATIVE and stops.
+                6: jsr_ = ~parity_fault;
                 7: begin
                     // Anything at all wanting attention: a DMA request, a DMA
                     // interrupt, or an ordinary one.
@@ -758,6 +778,7 @@ module CPU6 #(
             uc_rom_address_pipe <= 0;
             interrupt_level <= 0;
             bus_read <= 0;
+            parity_fault <= 0;
             bus_write <= 0;
             page_table_base <= 0;
             f11 <= 0;
@@ -824,7 +845,16 @@ module CPU6 #(
                 0: ;
                 1: ;
                 2: flags_register <= { 1'b0, 1'b0, flags_register[0], alu0_cout, alu1_cout, alu1_ovr, alu1_f3, alu0_f0 & alu1_f0 };
-                3: bus_read <= dataInCPU;
+                // The byte and, beside it, whether it disagreed with the parity
+                // stored with it. Latched here rather than read combinationally
+                // at the moment the microcode tests it, because by then the
+                // address register has usually moved on to the next byte and the
+                // answer would be about the wrong one. The emulator latches its
+                // b15a in exactly this cycle for the same reason.
+                3: begin
+                    bus_read <= dataInCPU;
+                    parity_fault <= f11[6] & parity_error;
+                   end
             endcase
 
             // 74LS138

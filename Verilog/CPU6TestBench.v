@@ -114,7 +114,7 @@ module CPU6TestBench;
              // float makes jsr_ x in the interrupt condition and the machine
              // stops on the first instruction with no clue why.
              1'b0, 1'b0, 8'h00, , , , 1'b0, 1'b0,
-             , , , , , , , , , , , , , , );
+             , , , , , , , , , , , , , , , , , 1'b0);
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
 
