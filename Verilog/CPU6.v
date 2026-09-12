@@ -870,7 +870,16 @@ module CPU6 #(
                 // b15a in exactly this cycle for the same reason.
                 3: begin
                     bus_read <= dataInCPU;
-                    parity_fault <= f11[6] & parity_error;
+                    // Only a READ says anything about parity. e7 == 3 also
+                    // latches the bus on a write cycle, and the emulator leaves
+                    // b15a alone for those - it updates it inside the read arm
+                    // and nowhere else. Updating it on a write is actively
+                    // wrong: writing a byte that currently holds bad parity
+                    // would latch a fault from the contents being overwritten,
+                    // and putting good parity back over a deliberately poisoned
+                    // byte is exactly what the operating system's self test does
+                    // when it has finished.
+                    if (bus_read_cycle) parity_fault <= f11[6] & parity_error;
                     bus_read_cycle <= 0;
                    end
             endcase
