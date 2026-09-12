@@ -451,7 +451,7 @@ module DipTB;
                      dut.hawk_req, dut.hawk_hold, dut.cpu.dma_on, dut.cpu.f11,
                      dut.image.busy, dut.image.dbg_state, dut.image.failed,
                      dut.sd_dbg_state, dut.sd_dbg_r1, dut.card_lba,
-                     dut.img_sd_read, dut.sd_error, dut.busy_raw,
+                     dut.img_sd_read, dut.sd_error, dut.psram.busy_raw,
                      dut.sd.byte_index, dut.sd.byte_active, dut.sd.bit_count,
                      dut.sd.divider, dut.sd.start_byte, dut.sd.byte_done,
                      dut.sd_cs_n, dut.sd_clk, dut.sd_miso);

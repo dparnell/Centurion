@@ -267,7 +267,7 @@ module ProgramTB;
                          dut.cpu.dbg_memory_address, dut.cpu.dbg_e7,
                          dut.psram_bus.dbg_need, dut.psram_bus.dbg_state,
                          dut.psram_bus.busy, dut.psram_bus.address,
-                         dut.psram_bus.write_en, dut.psram.state);
+                         dut.psram_bus.write_en, dut.psram.phy.state);
         end else stuck = 0;
         if (dut.psram_bus.dbg_timeouts != last_timeouts) begin
             last_timeouts = dut.psram_bus.dbg_timeouts;

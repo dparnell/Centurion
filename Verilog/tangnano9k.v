@@ -4,6 +4,7 @@
 `include "PsramTest.v"
 `include "PsramSdr.v"
 `include "PsramBus.v"
+`include "Psram.v"
 `include "DmaTest.v"
 `include "HawkDisk.v"
 `include "SdSpi.v"
@@ -212,9 +213,6 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                   // out on this board, so this is SPI and not four bit SD mode.
                   output sd_clk, output sd_mosi, input sd_miso, output sd_cs_n);
 
-    // PsramSdr drives all of these itself, including RESET#, which it pulses low at
-    // start up the way the part wants rather than simply tying it high.
-
     reg reset;
     // reset_btn is a mechanical input with no relation to the clock, and it feeds the
     // reset of the whole core, so sample it through a synchroniser rather than directly.
@@ -289,140 +287,26 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // "Identifier is implicitly declared" warning.
     wire clock = in_clk;
 
-    // The PSRAM's clock, and the only thing in this design that is not the pin.
-    // Everything else stays on `clock': the core cannot go faster - nextpnr puts
-    // this design at about 50MHz and the page table lookup is the critical path
-    // - so the memory is given its own domain and crossed into with a handshake
-    // rather than dragging the whole machine up with it.
-    //
-    // FCLKOUT = FCLKIN * (FBDIV_SEL+1) / (IDIV_SEL+1), and ODIV_SEL sets the VCO,
-    // which has to land between 400MHz and 1200MHz: 27 * 2 * 16 is 864, and
-    // 27 * 4 * 8 is the same.
-    wire psram_clk;
-    wire psram_sample_clk;
-    wire psram_lock;
-    generate
-    if (PSRAM_MULT == 1) begin: no_pll
-        assign psram_clk = clock;
-        assign psram_sample_clk = clock;
-        assign psram_lock = 1'b1;
-    end else begin: pll
-        rPLL #(.FCLKIN("27"), .IDIV_SEL(0), .FBDIV_SEL(PSRAM_MULT-1),
-               .ODIV_SEL(PSRAM_MULT == 2 ? 16 : 8), .DEVICE("GW1NR-9C"),
-               .PSDA_SEL(PSRAM_PHASE), .DYN_DA_EN("false"))
-            psram_pll(.CLKOUT(psram_clk), .LOCK(psram_lock),
-                      .CLKOUTP(psram_sample_clk), .CLKOUTD(), .CLKOUTD3(),
-                      .RESET(1'b0), .RESET_P(1'b0), .CLKIN(clock), .CLKFB(1'b0),
-                      .FBDSEL(6'b0), .IDSEL(6'b0), .ODSEL(6'b0),
-                      .PSDA(4'b0), .DUTYDA(4'b0), .FDLY(4'b0));
-    end
-    endgenerate
-
-    // The PSRAM runs from the board clock with no PLL at all: PsramSdr builds its
-    // 6.75MHz bus clock from four phases of the 27MHz clock in fabric, because
-    // apicula's ODDR/IDDR cannot be used here. That keeps the whole design in one
-    // clock domain and sidesteps the apicula PLL packing bug as a bonus.
-    wire read, write, byte_write;
-    wire [22:0] address;
-    wire [15:0] din;
+    // The memory. Everything HyperBus-specific - the PLL, the PHY and its pads,
+    // the die's 600us wake up, the arbitration between the CPU's bridge and the
+    // disk's cache, and the bring-up self test - is inside Psram. Out here
+    // there are two ports, each speaking the same protocol: hold read or write
+    // until busy rises, then wait for it to fall.
     wire [63:0] dout;          // four words: see PsramSdr's BURST
-    // ClockEnable's output before the PSRAM has had a chance to hold it back.
-    wire [3:0] sdr_state;
-    wire [4:0] sdr_match;
-    wire [15:0] sdr_first, sdr_echo, sdr_nonff;
-
-    // Crossing back out of the PSRAM's domain. busy is a level that changes
-    // slowly compared with either clock and dout is stable by the time it falls,
-    // so two flip flops on busy is the whole of it: everything else in the
-    // protocol is already held steady across the handshake.
-    wire busy_raw;
-    reg [1:0] busy_sync;
-    // Busy until proven otherwise. Starting these at zero says the memory is
-    // ready before anything has asked it, and psram_ready is set from exactly
-    // this signal - so the core left reset while the part was still in its
-    // 300us wake up, and its first access sat there until the bridge gave up.
-    // Three timeouts in eleven thousand accesses, all of them at boot.
-    initial busy_sync = 2'b11;
-    always @(posedge clock) busy_sync <= { busy_sync[0], busy_raw };
-    wire busy = busy_sync[1];
-
-    // At 27MHz CK one phase is 9.3ns, which is not enough for the round trip out
-    // to the die and back: the memory then reads correctly most of the time and
-    // wrong occasionally, which maptest catches in seconds.
-    // PSRAM_LATENCY is the part's initial latency in CK, and it is a parameter
-    // only so that simulation can shorten it. The real die comes up at 6, and
-    // every access costs twice that plus the burst - which makes the operating
-    // system's memory sizer, 96 page probes through the bridge, take hours of
-    // wall clock to simulate. Lowering it changes no protocol logic, only the
-    // number of wait cycles, and the behavioural die takes the same parameter
-    // so the two still agree. Anything found with it shortened must be
-    // confirmed at 6 before it is believed.
-    PsramSdr #(.RX_TAP(PSRAM_TAP), .RESET_CLOCKS(8100 * PSRAM_MULT),
-                   .LATENCY(PSRAM_LATENCY),
-                   .DEBUG_SCAN(PSRAM_MULT >= 4 ? 0 : 1)) psram(
-        .clk(psram_clk), .sample_clk(psram_sample_clk),
-        .resetn(reset_btn & psram_lock),
-        .read(read), .write(write), .addr(address), .din(din),
-        .byte_write(byte_write), .dout(dout), .busy(busy_raw),
-        .O_psram_ck(O_psram_ck), .O_psram_ck_n(O_psram_ck_n),
-        .O_psram_cs_n(O_psram_cs_n), .O_psram_reset_n(O_psram_reset_n),
-        .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
-        .dbg_state(sdr_state), .dbg_match(sdr_match), .dbg_first(sdr_first),
-        .dbg_nonff(sdr_nonff), .dbg_ca_echo(sdr_echo));
-
-    // The bring-up self test. Held in reset and disconnected from the bus unless
-    // PSRAM_SELFTEST is set, which is how to answer "is the memory itself still
-    // good" without having to reason about the CPU at the same time. Build it
-    // with "make PSRAM_SELFTEST=1"; the status dump then reports its result
-    // instead of the bus counters.
-    wire tst_read, tst_write, tst_byte_write;
-    wire [22:0] tst_addr;
-    // The disk image's side of the PSRAM, arbitrated with the CPU's below.
+    wire psram_ready;
+    // The disk image's side of the memory, arbitrated with the CPU's inside.
     wire disk_read, disk_write, disk_byte_write;
     wire [22:0] disk_addr;
     wire [15:0] disk_din;
-    wire [15:0] tst_din;
-    // The part needs 600us to come out of its own reset, and the core's power on
-    // reset is only 1024 clocks, so without this the CPU reaches the memory before
-    // the memory exists. That is not a slow start, it is a hang: the bridge holds
-    // the core's clock enable until the access completes, so the machine sits dead
-    // with the watchdog blinking and even the status dump gone, because the request
-    // for one is only noticed on an enabled cycle. Holding reset until the memory
-    // answers is what the real machine's power on sequence does anyway.
-    //
-    // This latches rather than following busy, which goes high on every access.
-    reg psram_ready;
-    initial psram_ready = 0;
-    always @(posedge clock) begin
-        if (!reset_btn_sync[2]) psram_ready <= 0;   // the button resets the part too
-        else if (!busy) psram_ready <= 1;
-    end
-
+    wire disk_busy_view, bus_busy_view;
+    // What the instruments watch.
+    wire busy, read, write;
+    wire [3:0] sdr_state;
+    wire [4:0] sdr_match;
+    wire [15:0] sdr_echo, sdr_nonff;
     wire psram_done, psram_pass;
-    wire [15:0] psram_got, psram_want;
-    wire [22:0] psram_failed_at;
-    wire [2:0] psram_stage, psram_index;
-    wire psram_saw_idle;
-    wire [15:0] psram_cycles, psram_read0, psram_read1;
-    // Held in reset when PSRAM_SELFTEST is clear, but that is not the same as
-    // not being there: it was still synthesised and still took logic. With the
-    // storage stack on the device there is no room for hardware that is switched
-    // off, so leave it out of the netlist entirely.
-    generate if (PSRAM_SELFTEST) begin : psram_self_test
-    PsramTest psram_test(clock, reset_btn & (PSRAM_SELFTEST != 0),
-                         tst_read, tst_write, tst_byte_write, tst_addr, tst_din,
-                         dout[15:0], busy, psram_done, psram_pass,
-                         psram_got, psram_want, psram_failed_at,
-                         psram_stage, psram_index, psram_saw_idle, psram_cycles,
-                         psram_read0, psram_read1);
-    end else begin : no_psram_self_test
-        assign tst_read = 0; assign tst_write = 0; assign tst_byte_write = 0;
-        assign tst_addr = 0; assign tst_din = 0;
-        assign psram_done = 0; assign psram_pass = 0;
-        assign psram_got = 0; assign psram_want = 0; assign psram_failed_at = 0;
-        assign psram_stage = 0; assign psram_index = 0; assign psram_saw_idle = 0;
-        assign psram_cycles = 0; assign psram_read0 = 0; assign psram_read1 = 0;
-    end endgenerate
+    wire [2:0] psram_stage;
+    wire [15:0] psram_read0, psram_read1;
 
     // The bus side. PsramBus owns the core's clock enable, because stalling the
     // core is how a 2.8us memory access is made to fit in a bus cycle.
@@ -438,56 +322,6 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [7:0] dbg_psram_data;
     wire cpu_en_free, cpu_en;
 
-    // Three things want the one PHY: the self test, the CPU's bridge, and the
-    // disk image's cache. All three speak the same protocol - hold read or write
-    // until busy rises, then wait for it to fall - so the arbitration is a grant
-    // that lasts a whole access and a per client *view* of busy.
-    //
-    // The view is the part that matters and the part that is easy to get wrong.
-    // A loser that saw the real busy would watch the winner's access rise and
-    // fall and conclude that its own request had been served, and take the
-    // winner's data. So a client that does not hold the grant sees busy low,
-    // which leaves it holding its request exactly where it was - which is also
-    // how the arbiter knows it still wants one. Getting this wrong lost four
-    // bytes of a sector, at the two places where the CPU and the disk happened
-    // to collide, and looked like a memory fault rather than an arbiter fault.
-    localparam OWNER_CPU = 1'b0, OWNER_DISK = 1'b1;
-    reg grant_held, grant_owner, grant_seen, last_owner;
-    wire cpu_wants  = bus_read | bus_write;
-    wire disk_wants = disk_read | disk_write;
-    initial begin grant_held = 0; grant_owner = 0; grant_seen = 0; last_owner = 1; end
-    always @(posedge clock) begin
-        if (reset) begin
-            grant_held <= 0; grant_seen <= 0; last_owner <= OWNER_DISK;
-        end else if (!grant_held) begin
-            if (!busy && (cpu_wants || disk_wants)) begin
-                // The CPU first, because stalling it costs a bus cycle and the
-                // disk is standing in for a drive that takes a millisecond a
-                // sector - but alternate when both want it, so neither starves.
-                grant_owner <= (cpu_wants && disk_wants) ? ~last_owner :
-                               cpu_wants ? OWNER_CPU : OWNER_DISK;
-                last_owner  <= (cpu_wants && disk_wants) ? ~last_owner :
-                               cpu_wants ? OWNER_CPU : OWNER_DISK;
-                grant_held <= 1;
-                grant_seen <= 0;
-            end
-        end else if (busy) grant_seen <= 1;
-        else if (grant_seen) begin
-            grant_held <= 0;
-            grant_seen <= 0;
-        end
-    end
-
-    wire disk_owns = grant_held && grant_owner == OWNER_DISK;
-    wire cpu_owns  = grant_held && grant_owner == OWNER_CPU;
-    wire bus_busy_view  = cpu_owns  ? busy : 1'b0;
-    wire disk_busy_view = disk_owns ? busy : 1'b0;
-
-    assign read       = PSRAM_SELFTEST ? tst_read       : disk_owns ? disk_read       : cpu_owns ? bus_read       : 1'b0;
-    assign write      = PSRAM_SELFTEST ? tst_write      : disk_owns ? disk_write      : cpu_owns ? bus_write      : 1'b0;
-    assign byte_write = PSRAM_SELFTEST ? tst_byte_write : disk_owns ? disk_byte_write : bus_byte_write;
-    assign address    = PSRAM_SELFTEST ? tst_addr       : disk_owns ? disk_addr       : bus_addr;
-    assign din        = PSRAM_SELFTEST ? tst_din        : disk_owns ? disk_din        : bus_din;
 
     // Peripheral read bus ---------------------------
     // Every readable peripheral drives its own data_out, and this module picks one.
@@ -552,6 +386,25 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // except that PsramBus withholds the enable while a PSRAM access runs, so the
     // core sees a long bus cycle rather than a stall it has to understand.
     ClockEnable cpu_clock_enable(clock, cpu_en_free);
+
+    Psram #(.PSRAM_MULT(PSRAM_MULT), .PSRAM_PHASE(PSRAM_PHASE), .PSRAM_LATE(PSRAM_LATE),
+            .PSRAM_TAP(PSRAM_TAP), .PSRAM_LATENCY(PSRAM_LATENCY),
+            .PSRAM_SELFTEST(PSRAM_SELFTEST)) psram(
+        .clock(clock), .button_n(reset_btn_sync[2]), .reset(reset),
+        .a_read(bus_read), .a_write(bus_write), .a_byte_write(bus_byte_write),
+        .a_addr(bus_addr), .a_din(bus_din), .a_busy(bus_busy_view),
+        .b_read(disk_read), .b_write(disk_write), .b_byte_write(disk_byte_write),
+        .b_addr(disk_addr), .b_din(disk_din), .b_busy(disk_busy_view),
+        .dout(dout), .ready(psram_ready),
+        .O_psram_ck(O_psram_ck), .O_psram_ck_n(O_psram_ck_n),
+        .O_psram_cs_n(O_psram_cs_n), .O_psram_reset_n(O_psram_reset_n),
+        .IO_psram_rwds(IO_psram_rwds), .IO_psram_dq(IO_psram_dq),
+        .dbg_busy(busy), .dbg_read(read), .dbg_write(write),
+        .dbg_sdr_state(sdr_state), .dbg_sdr_match(sdr_match),
+        .dbg_sdr_echo(sdr_echo), .dbg_sdr_nonff(sdr_nonff),
+        .dbg_test_done(psram_done), .dbg_test_pass(psram_pass),
+        .dbg_test_stage(psram_stage),
+        .dbg_test_read0(psram_read0), .dbg_test_read1(psram_read1));
 
     PsramBus #(.ENFORCE_SPACING(SPACING)) psram_bus(
         .clock(clock), .reset(reset), .cpu_en(cpu_en_free), .select(psram_select),
