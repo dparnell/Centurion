@@ -6,3 +6,4 @@ vcd/
 *.vcd
 tools/opcodes.yaml
 Verilog/build.stamp
+ParityTB
