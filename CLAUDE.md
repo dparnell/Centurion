@@ -231,6 +231,21 @@ Files follow the two Verilog coding guidelines quoted in the comments: blocking 
 - **Driving diag over the serial line: the menu needs a terminating keystroke, and the status dump supplies one.** Typing `02` only echoes; the test starts on the *next* character, whatever it is. This wasted a lot of time today because **the dump trigger is itself a received character**, so every attempt to measure the machine also nudged it: runs that appeared to show "the test started on its own" had actually been started by a dump request, and runs that appeared to show "output is blocked until a key arrives" were the menu waiting for its terminator. The dump also takes the UART pin away from the MUX, so it can truncate diag's output mid-string. **Take dumps well away from anything being measured, and never conclude anything from a run in which dumps were interleaved.**
 - **A transmit write used to discard a received byte, and that is the second time the missing read strobe has bitten.** This bus has no read strobe of its own: the address register simply stays where it was until something needs it again. So the cycles after the CPU writes the MUX's transmit register still have that register on the address bus with `write_en` gone, and the next read strobe reads as the CPU *taking* a received byte - throwing away whatever had arrived. Every character the machine printed could eat one it had been sent. A person typing at a terminal can never see this, because they cannot type inside one character time; feeding a file at line rate shows it at once, as input lost in bursts exactly while the machine is busiest. `mux.v` now ignores a read of the data register until the address bus has moved off it, which a genuine read always does via the instruction fetch that issued it. The same hazard is why `PsramBus` has a one word cache; treat any device whose *read* has a side effect as suspect on this bus.
 - **Pacing the simulated typist: neither level of the receiver flag is a handshake on its own.** Waiting for it to clear is not one, because it is set as the stop bit completes - a moment after `send()` returns it is still low, and the next byte goes out on top of one the machine has not taken. Waiting for it to be *set* after sending hangs, because the program can read the byte out within a few cycles of its arriving. And silence is not readiness either: the machine is silent precisely while it is compiling. `ProgramTB` pairs the empty flag with the receive count, which only ever goes up, and bounds both waits. Getting this wrong produces input loss that looks exactly like the program mis-parsing what it was sent, and it hid the board fault above behind three rounds of blaming the harness.
+- **THE OPERATING SYSTEM RUNS. It boots CENTOS off a real pack, takes the date and the time, and reaches `CRT0 READY` - the command prompt.** `make SENSE=1010 DIAG_ROM=0 load`, then `H1`, Enter, Enter, a date and a time:
+
+  ```
+  LOS 7.1 - E
+  WELCOME TO THE CENTURION!
+  DOS 7.1 - E
+  MAX DISK# (M)= 1, SYSTEM DISK (S)= 1
+  PREVIOUS SYSTEM DATE: 08/23/84
+  ENTER NEW SYSTEM DATE: 082384
+  ENTER SYSTEM TIME: 120000
+  CRT0 READY
+  ```
+
+  It then aborts with `CD:01, LVL:04, MAP:00, IAD:0001, EAD:000152`, and that is the next thing to chase. The reference, driven through exactly the same prompts, reaches that prompt and **stays there**, so the abort belongs to this design rather than to the pack.
+- **`tools/`-style driving of the reference: `server/src/tests/crt0.ts` in Meisaka's emulator boots it headlessly and answers the prompts.** Two things about it are not obvious and cost an hour between them. The core needs `mcsim.hspre()` once before any `hsstep()`, or it runs and nothing ever happens. And **the devices have to be ticked alongside the core** - `muxports[i].run_tx()` and `run(1)` on everything in `window.__runHW` and `window.__runHSHW`, which is what the browser's run loop does - or the machine executes perfectly and never gets a character onto the wire. Each answer must also wait for its own prompt, because characters sent before the operating system is asking are simply dropped.
 - **THE OPERATING SYSTEM BOOTS AND PRINTS ITS BANNER.** `make SENSE=1010 DIAG_ROM=0 load`, then type `H1`: the machine reads CENTOS off a real Hawk pack on the SD card, runs it, and prints
 
   ```
