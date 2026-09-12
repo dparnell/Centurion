@@ -540,8 +540,17 @@ module CPU6 #(
                     // generated and still readable through d2d3 12, which is how
                     // software polls for it; this line goes back in when the
                     // interrupt entry path is finished.
+                    // A request only interrupts if its level is HIGHER than
+                    // the level the machine is already running at. Without that
+                    // test a device that keeps asking - and the MUX asks once
+                    // per character it finishes transmitting - re-enters its own
+                    // handler the instant the handler returns, so the foreground
+                    // never runs again. Meisaka's emulator gates both the
+                    // request and the acknowledge on `dev.getlevel() > cpl`, and
+                    // dmaint just below has always had the same kind of test.
                     jsr_ = ~(dma_req | dmaint |
-                             (int_enabled & ~int_reqn)); // Interrupt
+                             (int_enabled & ~int_reqn
+                              & (irq_number > interrupt_level))); // Interrupt
                    end
             endcase
         end
