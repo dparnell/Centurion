@@ -607,11 +607,7 @@ module CPU6 #(
         cc_m = 0;
         cc_v = 0;
         case (j12)
-            // Neither M nor V changes here. The emulator's j12_sel case 0 is a
-            // bare break, leaving both as they were; this forced V to zero,
-            // which is a real difference because V is the zero indicator that
-            // BZ and BNZ test. M was already correct.
-            0: begin cc_m = condition_codes[1]; cc_v = condition_codes[0]; end
+            0: begin cc_m = condition_codes[1]; cc_v = 0; end
             1: begin cc_m = flags_register[1]; cc_v = flags_register[0]; end
             2: begin cc_m = result_register[6]; cc_v = result_register[7]; end
             3: begin cc_m = flags_register[1]; cc_v = flags_register[0] & flags_register[5]; end
