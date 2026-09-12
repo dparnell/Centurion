@@ -61,6 +61,16 @@ reg tx_request = 0;
 reg tx_taken = 0;
 wire tx_idle;
 
+// The board is a four channel card and this design wires only channel 0, but the
+// interrupt machinery belongs to the card rather than to a channel: software
+// finds out which channel wants attention, and whether it was a receive or a
+// transmit, by reading the cause register at offset 15. tx_int is one bit per
+// channel, so one bit here.
+reg tx_int = 0;             // channel 0 has finished sending a character
+reg mux_cause = 0;          // this card raised the request, and has not said why
+reg overrun = 0;            // a byte arrived on top of one nobody had read
+reg tx_complete = 0;        // one cycle as the transmitter returns to idle
+
 // A read of the data register consumes the received byte. Which makes it
 // dangerous, because this bus has no read strobe of its own: the address
 // register simply stays where it was until something needs it again. So the
@@ -85,6 +95,29 @@ end
 
 wire read_data_register = cpu_enable & selected & ~write_en & read_strobe
                           & (address == 1) & ~wrote_data;
+// Reading the cause register and reading a channel register both have side
+// effects, so they need the same protection from this bus having no read strobe
+// of its own that the data register needs. wrote_data only tracks the data
+// register, so track the last written address as well.
+reg wrote_any = 0;
+reg [4:0] wrote_addr = 0;
+always @(posedge cpu_clock) begin
+    if (reset) begin wrote_any <= 0; wrote_addr <= 0; end
+    else if (cpu_enable && selected) begin
+        if (write_en) begin wrote_any <= 1; wrote_addr <= address; end
+        else if (address != wrote_addr) wrote_any <= 0;
+    end else if (cpu_enable && !selected) wrote_any <= 0;
+end
+wire real_read = cpu_enable & selected & ~write_en & read_strobe
+                 & ~(wrote_any & (address == wrote_addr));
+wire read_cause_register = real_read & (address == 15);
+// Writing 12 forces a transmit interrupt for the channels in the low bits, and
+// writing 15 resets the card. Both are strobes rather than state, so that
+// everything that touches tx_int can live in one always block.
+wire write_strobe = cpu_enable & selected & write_en;
+wire force_tx_int = write_strobe & (address == 5'd12) & data_in[0];
+wire card_reset   = write_strobe & (address == 5'd15);
+wire read_channel_register = real_read & (address < 8);
 
 // CPU interface
 always @(posedge cpu_clock) begin
@@ -135,6 +168,12 @@ always @(posedge cpu_clock) begin
                     interrupt_level <= data_in[3:0];
                 end
 
+                // 8 is the RTS control and 11 is unknown; the operating
+                // system writes both during its console setup. There are no
+                // flow control pins on this board and the reference emulator
+                // does not model 11 either, so both are deliberately ignored
+                // rather than merely unimplemented.
+
                 13: interrupts_enabled <= 0;
                 14: interrupts_enabled <= 1;
                 15: begin
@@ -143,6 +182,8 @@ always @(posedge cpu_clock) begin
                     parity_enabled <= 1;
                     data_bits <= 7;
                     stop_bits <= 0;
+                    interrupts_enabled <= 0;
+                    interrupt_level <= 0;
                 end
             endcase
         end
@@ -179,11 +220,13 @@ always @(posedge bit_clock) begin
         rxShift <= 0;
         dataIn <= 0;
         byteReady <= 0;
+        overrun <= 0;
     end else begin
     // Clearing comes first so that a byte arriving in the same cycle the CPU reads the
     // data register still leaves byteReady set, rather than being lost.
     if (read_data_register) begin
         byteReady <= 0;
+        overrun <= 0;
     end
 
     case (rxState)
@@ -234,6 +277,9 @@ always @(posedge bit_clock) begin
                 // be shifted down to be right aligned.
                 dataIn <= rxShift >> (8 - char_bits);
                 byteReady <= 1;
+                // A character landing on top of one nobody has read is an
+                // overrun, and the card reports it in the channel status.
+                if (byteReady && !read_data_register) overrun <= 1;
             end
         end
     endcase
@@ -268,8 +314,14 @@ always @(posedge bit_clock) begin
         txShift <= 0;
         txParity <= 0;
         tx_taken <= 0;
+        tx_complete <= 0;
     end else begin
     tx_taken <= 0;
+    // The card raises an interrupt when a character has finished going out on
+    // the wire, not when the CPU hands it over. That is what paces an
+    // interrupt driven output queue: one character sent, one interrupt, the
+    // next character taken from the queue.
+    tx_complete <= 0;
 
     case (txState)
         TX_IDLE: begin
@@ -320,6 +372,7 @@ always @(posedge bit_clock) begin
             if (txCounter == divider) begin
                 txCounter <= 0;
                 txState <= stop_bits ? TX_STOP2 : TX_IDLE;
+                if (!stop_bits) tx_complete <= 1;
             end
         end
         TX_STOP2: begin
@@ -328,6 +381,7 @@ always @(posedge bit_clock) begin
             if (txCounter == divider) begin
                 txCounter <= 0;
                 txState <= TX_IDLE;
+                tx_complete <= 1;
             end
         end
     endcase
@@ -358,14 +412,44 @@ always @(posedge bit_clock) begin
         int_pending <= 0;
         byte_ready_d <= 0;
         interrupt_ack_d <= 0;
-    end else if (read_data_register || (interrupt_ack && !interrupt_ack_d)) begin
-        int_pending <= 0;
-    end else if (interrupts_enabled && byteReady && !byte_ready_d) begin
-        int_pending <= 1;
+    end else begin
+        // A received character, a transmitted one, and a forced interrupt all
+        // raise the request; the CPU's acknowledge is what drops it. Reading a
+        // channel register raises it again while a transmit interrupt is still
+        // unreported, which is how the card makes sure a second completion is
+        // not lost behind the first.
+        if (card_reset) begin
+            int_pending <= 0;
+            mux_cause <= 0;
+            tx_int <= 0;
+        end else begin
+            if (interrupt_ack && !interrupt_ack_d) int_pending <= 0;
+            if (read_data_register) int_pending <= 0;
+
+            if (tx_complete) tx_int <= 1;
+            if (force_tx_int) tx_int <= 1;
+            // The cause register reports a waiting character first and a
+            // completed transmission second, and taking a transmit cause
+            // clears it - so one completion is reported exactly once.
+            if (read_cause_register && mux_cause && !byteReady && tx_int)
+                tx_int <= 0;
+
+            if (tx_complete || force_tx_int ||
+                (byteReady && !byte_ready_d) ||
+                (read_channel_register && tx_int)) begin
+                int_pending <= 1;
+                mux_cause <= 1;
+            end else if (read_cause_register) begin
+                mux_cause <= 0;
+            end
+        end
     end
 end
 
-assign int_reqn = ~int_pending;
+// interrupts_enabled gates the request rather than the pending flag, exactly as
+// the card does: software can turn interrupts off without losing what happened
+// while they were off.
+assign int_reqn = ~(int_pending & interrupts_enabled);
 assign irq_number = interrupt_level;
 assign dbg_byte_ready = byteReady;
 assign dbg_rx_byte = dataIn;
@@ -376,8 +460,19 @@ always @(*) begin
     data_out = 8'h00;
     if (selected && !write_en) begin
         case (address)
-            0: data_out = { 6'b000000, tx_idle, byteReady };   // status register
+            // Channel status: bit 5 clear to send, bit 4 overrun, bit 1 the
+            // transmitter is free, bit 0 a character is waiting. The line here
+            // is a terminal that is always ready, so CTS is tied on.
+            0: data_out = { 2'b00, 1'b1, overrun, 2'b00, tx_idle, byteReady };
             1: data_out = dataIn;                              // received byte
+            // The interrupt cause: which channel, and whether it was a receive
+            // or a transmit. Bit 0 set means a transmission completed; bits 2:1
+            // are the channel, and only channel 0 is wired here. Zero when this
+            // card did not raise the request, which is also what an unasked
+            // question should answer.
+            15: data_out = mux_cause ? (byteReady ? 8'h00
+                                        : (tx_int ? 8'h01 : 8'h00))
+                                     : 8'h00;
         endcase
     end
 end
