@@ -166,6 +166,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // landing the far side of a cycle boundary needs and no
                     // amount of phase shifting can give.
                     parameter integer PSRAM_TAP = 2,
+                    parameter [4:0] PSRAM_LATENCY = 6,
                     // The 8.3 name of the image file on the card, as it is
                     // stored in the directory: eight characters then three.
                     parameter [87:0] DISK_IMAGE = "HAWK0   IMG",
@@ -336,7 +337,16 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // At 27MHz CK one phase is 9.3ns, which is not enough for the round trip out
     // to the die and back: the memory then reads correctly most of the time and
     // wrong occasionally, which maptest catches in seconds.
+    // PSRAM_LATENCY is the part's initial latency in CK, and it is a parameter
+    // only so that simulation can shorten it. The real die comes up at 6, and
+    // every access costs twice that plus the burst - which makes the operating
+    // system's memory sizer, 96 page probes through the bridge, take hours of
+    // wall clock to simulate. Lowering it changes no protocol logic, only the
+    // number of wait cycles, and the behavioural die takes the same parameter
+    // so the two still agree. Anything found with it shortened must be
+    // confirmed at 6 before it is believed.
     PsramSdr #(.RX_TAP(PSRAM_TAP), .RESET_CLOCKS(8100 * PSRAM_MULT),
+                   .LATENCY(PSRAM_LATENCY),
                    .DEBUG_SCAN(PSRAM_MULT >= 4 ? 0 : 1)) psram(
         .clk(psram_clk), .sample_clk(psram_sample_clk),
         .resetn(reset_btn & psram_lock),

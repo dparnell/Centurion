@@ -42,6 +42,9 @@ module DipTB;
     parameter DIAG_ROM = 1;
     parameter integer TICKS = 13;
     parameter [7:0] PSRAM_FILL = 8'hff;
+    // Shorten the part's initial latency to make long boots simulatable.
+    // Protocol logic is unchanged; confirm anything found at the real 6.
+    parameter [4:0] PSRAM_LATENCY = 6;
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
@@ -56,7 +59,7 @@ module DipTB;
     wire [15:0] psram_dq;
     // PSRAM_FILL makes the experiment above runnable: 00 matches the reference
     // emulator's zeroed memory, ff is what a real part looks like out of reset.
-    HyperRamModel #(.ADDR_BITS(23), .FILL(PSRAM_FILL)) die(
+    HyperRamModel #(.ADDR_BITS(23), .FILL(PSRAM_FILL), .LATENCY(PSRAM_LATENCY)) die(
         .ck(psram_ck[0]), .cs_n(psram_cs_n[0]), .resetn(psram_reset_n[0]),
         .rwds(psram_rwds[0]), .dq(psram_dq[7:0]));
 
@@ -78,7 +81,7 @@ module DipTB;
     end
 
     tangnano9k #(.DIAG_DIP_SWITCHES(DIP), .SENSE_SWITCHES(SENSE),
-                 .DIAG_ROM(DIAG_ROM)) dut(in_clk, reset_btn, btn2,
+                 .DIAG_ROM(DIAG_ROM), .PSRAM_LATENCY(PSRAM_LATENCY)) dut(in_clk, reset_btn, btn2,
                                               L1,L2,L3,L4,L5,L6,L7,L8, uart_tx, uart_rx,
                                               psram_ck, psram_ck_n, psram_cs_n,
                                               psram_reset_n, psram_rwds, psram_dq,
