@@ -1445,6 +1445,31 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // diag's, because the question here is how much traffic there is and how
     // fast it goes - and dots per second on a serial line has turned out to
     // measure the program's instruction count far more than the memory's speed.
+    // Who is writing the console, and what. The machine now loads the operating
+    // system and then prints a solid stream of BEL, from a routine the reference
+    // runs correctly - so the character reaching that routine is wrong, and the
+    // question is which instruction hands it over. This latches the last two
+    // writes to the MUX data register with the program counter that made them.
+    // A bus write is asserted across two enabled cycles, hence the edge detect.
+    reg [15:0] tx_pc0, tx_pc1;
+    reg [7:0] tx_ch0, tx_ch1;
+    reg tx_seen;
+    initial begin tx_pc0 = 0; tx_pc1 = 0; tx_ch0 = 0; tx_ch1 = 0; tx_seen = 0; end
+    always @(posedge clock) begin
+        if (reset) begin
+            tx_pc0 <= 0; tx_pc1 <= 0; tx_ch0 <= 0; tx_ch1 <= 0; tx_seen <= 0;
+        end else if (cpu_en && writeEnBus && addressBus == 19'h3f201) begin
+            if (!tx_seen) begin
+                tx_pc1 <= tx_pc0; tx_ch1 <= tx_ch0;
+                tx_pc0 <= pc_live0; tx_ch0 <= data_c2r;
+            end
+            tx_seen <= 1;
+        end else if (!(cpu_en && writeEnBus && addressBus == 19'h3f201))
+            tx_seen <= 0;
+    end
+    wire [79:0] console_payload =
+        { tx_pc0, tx_pc1, pc_live0, dbg_uc_address, 5'b0, tx_ch0, tx_ch1 };
+
     wire [79:0] dump_payload =
         { sdr_state, 4'b0, psram_select, busy, read, write,
             dbg_bus_state, dbg_bus_need, 1'b0,
@@ -1649,7 +1674,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                                     : dump_pick == 2'd3 || dump_form == 2'd1
                                         ? (PSRAM_SELFTEST && dump_pick != 2'd3
                                              ? selftest_payload : disk_payload)
-                                        : dump_payload),
+                                        : console_payload),
                     dump_tx, dump_active);
     assign uart_tx = dump_active ? dump_tx : mux_uart_tx;
 
