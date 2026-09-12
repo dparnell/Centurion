@@ -53,7 +53,13 @@ def length(ops, mem, i):
         return 7                        # selector, count, two 16 bit addresses
     if ext in ('mpush', 'mpop'):
         return 2                        # register mask
-    if ext in ('big', 'rii', 'xio'):
+    if ext == 'xio':
+        # f6, LIO: opcode then two bytes. Measured, not guessed - the operating
+        # system's console routine has LIO at 0xb6ff and the emulator's own
+        # program counter trail goes straight from there to 0xb702, so the byte
+        # at 0xb701 is the instruction's and not a NOP of its own.
+        return 3
+    if ext in ('big', 'rii'):
         return 2                        # not fully known
     n = 1 + operand_bytes(op)
     # The register-indexed mode carries a displacement byte when bit 3 of its
