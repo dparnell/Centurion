@@ -10,6 +10,66 @@ Below is a picure of CPU6 board. Notice the prominent [Am2900 series](https://en
 
 ![CPU6](https://github.com/Nakazoto/CenturionComputer/raw/main/Computer/CPU6%20Board/HiRes%20Photos/CPU6_HiRes_Scan_Front.jpg "CPU6")
 
+## Quick start
+
+From nothing to the operating system's prompt, on a Tang Nano 9K.
+
+**You need:** a [Tang Nano 9K](https://wiki.sipeed.com/hardware/en/tang/Tang-Nano-9K/Nano-9K.html)
+on USB; a microSD card, 4 to 32 GB; the
+[oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) toolchain on
+your `PATH` (yosys, nextpnr-himbaechel, gowin_pack, openFPGALoader and Icarus
+Verilog all come from it); Python 3; and a serial terminal such as `picocom`.
+
+**1. Check the simulation works** - optional, but it proves the toolchain:
+
+```
+cd Verilog
+make test
+```
+
+**2. Put the operating system on the card.** Format it as a partitioned FAT32
+volume and copy `CENTOS_13.IMG` from the Nakazoto archive's `Software/Data
+Packs` into its root, in one go. Details, and why each step matters, under
+[Preparing a card](#preparing-a-card).
+
+**3. Build, and program the board:**
+
+```
+make load-boot
+```
+
+**4. Open a terminal on the board's second serial channel** - 19200 baud, 7
+data bits, no parity:
+
+```
+picocom -b 19200 -d 7 -p n /dev/ttyUSB1
+```
+
+**5. Press the board's reset button and boot.** At the `D=` prompt type `H1`,
+no Enter; then Enter at each of the two disk questions, a date as `MMDDYY`, and
+a time as `HHMMSS`:
+
+```
+D=H1
+LOS 7.1 - E
+WELCOME TO THE CENTURION!
+DOS 7.1 - E
+MAX DISK# (M)= 1, SYSTEM DISK (S)= 1
+PREVIOUS SYSTEM DATE: 08/23/84
+ENTER NEW SYSTEM DATE: 082384
+ENTER SYSTEM TIME: 120000
+CRT0 READY
+```
+
+That is CENTOS, running. If the first letter of a line is missing, that is the
+terminal swallowing the character after an `ESC FS` it does not understand,
+not the machine.
+
+**Without a card**, the machine still has two things to do: `make load` boots
+the original diagnostic ROM to its test menu, and `make load-forth` boots
+[a FORTH written for this machine](#the-built-in-forth). Both talk on the same
+serial settings.
+
 ## Layout
 
 Everything is built from the `Verilog` directory, and all the `make` commands
