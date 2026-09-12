@@ -51,6 +51,19 @@ data bits, no parity:
 picocom -b 19200 -d 7 -p n /dev/ttyUSB1
 ```
 
+If the terminal shows nothing, or garbage, the tty is often what is wrong
+rather than the board - programming over USB can leave it in an odd state, and
+a terminal opened earlier with other settings leaves them behind. Put it right
+from outside before opening the terminal:
+
+```
+stty -F /dev/ttyUSB1 19200 cs7 -parenb -cstopb -crtscts raw -echo
+```
+
+If it is still silent after that, unplug and replug the board; the FTDI's
+serial channel can go quiet after programming and only a re-enumeration brings
+it back.
+
 **5. Press the board's reset button and boot.** At the `D=` prompt type `H1`,
 no Enter; then Enter at each of the two disk questions, a date as `MMDDYY`, and
 a time as `HHMMSS`:
