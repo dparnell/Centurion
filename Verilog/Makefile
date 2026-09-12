@@ -98,10 +98,11 @@ load-forth:
 load-boot:
 	$(MAKE) SENSE=1010 DIAG_ROM=0 load
 
-test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB ParityTB sd_fat32.hex sd_fat32frag.hex sd_fat32long.hex
+test: CPU6TestBench TopTestBench PsramTB MapFailTB DmaTB HawkTB SdTB Fat32TB DiskTB ParityTB FinchTB sd_fat32.hex sd_fat32frag.hex sd_fat32long.hex
 	vvp CPU6TestBench
 	vvp TopTestBench
 	vvp ParityTB
+	vvp FinchTB
 	vvp PsramTB
 	vvp DmaTB
 	vvp HawkTB
@@ -202,6 +203,9 @@ HawkTB: *.v programs/hawktest.txt
 ParityTB: *.v
 	iverilog -g2005-sv -o ParityTB ParityTB.v
 
+FinchTB: *.v
+	iverilog -g2005-sv -o FinchTB FinchTB.v
+
 DiagTestBench: *.v
 	iverilog -o DiagTestBench DiagTestBench.v
 
@@ -219,6 +223,11 @@ CPU6TestBench: *.v
 # startup and prints PARITY CIRCUITRY INOPERATIVE if the fault never arrives.
 parity: ParityTB
 	vvp ParityTB
+
+# The Finch floppy controller's mailbox, against the exact byte sequence the
+# operating system performs during startup. Only the host interface is modelled.
+finch: FinchTB
+	vvp FinchTB
 
 mapfail: MapFailTB
 	vvp MapFailTB
@@ -246,7 +255,7 @@ psramtest: PsramTB
 PsramTB: *.v
 	iverilog -o PsramTB PsramTB.v
 
-.PHONY: all programs load load-tos load-forth load-boot test diagtest mapfail parity run \
+.PHONY: all programs load load-tos load-forth load-boot test diagtest mapfail parity finch run \
 	psramtest sdtest fat32test disktest centostest dmatest hawktest clean FORCE
 
 clean:
