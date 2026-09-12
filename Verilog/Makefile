@@ -27,6 +27,7 @@ SENSE ?= 0001
 # The mapping RAM failure instrumentation. Off: it found that bug, the bug is
 # fixed, and the room it takes is what the storage stack now needs.
 DIAG_TRACE ?= 0
+PARITY_CHECK ?= 1
 # Whether the diag board's ROMs are fitted at physical 0x08000. They shadow 8K
 # that the operating system loads code into, so booting it needs them out.
 DIAG_ROM ?= 1
@@ -51,7 +52,7 @@ programs: $(IMAGES)
 # the board with diag again - the wrong build, silently, which is the sort of
 # thing that costs an afternoon of debugging a machine that is not the one you
 # think you are looking at.
-CONFIG := PROGRAM=$(PROGRAM) DIP=$(DIP) PSRAM_SELFTEST=$(PSRAM_SELFTEST) DMA_TEST=$(DMA_TEST) SENSE=$(SENSE) DIAG_TRACE=$(DIAG_TRACE) DIAG_ROM=$(DIAG_ROM) K13=$(K13_INTERRUPTS)
+CONFIG := PARITY_CHECK=$(PARITY_CHECK) PROGRAM=$(PROGRAM) DIP=$(DIP) PSRAM_SELFTEST=$(PSRAM_SELFTEST) DMA_TEST=$(DMA_TEST) SENSE=$(SENSE) DIAG_TRACE=$(DIAG_TRACE) DIAG_ROM=$(DIAG_ROM) K13=$(K13_INTERRUPTS)
 build.stamp: FORCE
 	@echo '$(CONFIG)' | cmp -s - $@ || { echo '$(CONFIG)' > $@; echo "build config: $(CONFIG)"; }
 FORCE:
@@ -60,7 +61,7 @@ FORCE:
 # resolve $value$plusargs while re-elaborating that module, which is exactly what
 # setting PROGRAM here makes it do.
 $(PROJ).json: $(PROJ).v roms/CodeROM.txt Makefile *.v $(PROGRAM) build.stamp
-	yosys -p 'read_verilog -DSYNTHESIS $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) -set PROGRAM "$(PROGRAM)" -set PSRAM_SELFTEST $(PSRAM_SELFTEST) -set DMA_TEST $(DMA_TEST) -set SENSE_SWITCHES 4'"'"'b$(SENSE) -set DIAG_TRACE $(DIAG_TRACE) -set DIAG_ROM $(DIAG_ROM) -set K13_INTERRUPTS $(K13_INTERRUPTS) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
+	yosys -p 'read_verilog -DSYNTHESIS $(PROJ).v; chparam -set DIAG_DIP_SWITCHES 8'"'"'h$(DIP) -set PROGRAM "$(PROGRAM)" -set PSRAM_SELFTEST $(PSRAM_SELFTEST) -set DMA_TEST $(DMA_TEST) -set SENSE_SWITCHES 4'"'"'b$(SENSE) -set DIAG_TRACE $(DIAG_TRACE) -set PARITY_CHECK $(PARITY_CHECK) -set DIAG_ROM $(DIAG_ROM) -set K13_INTERRUPTS $(K13_INTERRUPTS) $(PROJ); synth_gowin -top $(PROJ) -json $(PROJ).json'
 
 $(PROJ)_pnr.json: $(BOARD).cst $(PROJ).json
 	nextpnr-himbaechel --json $(PROJ).json --write $(PROJ)_pnr.json --freq 27 --device ${DEVICE} --vopt family=${FAMILY} --vopt cst=$(BOARD).cst

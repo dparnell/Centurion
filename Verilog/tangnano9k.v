@@ -189,6 +189,12 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                     // - it is several hundred logic cells of scaffolding on a
                     // device that is now 84% full. "make DIAG_TRACE=1" for it.
                     parameter DIAG_TRACE = 0,
+                    // Whether a parity error is reported to the microcode at
+                    // all. Storing the parity bit costs nothing either way;
+                    // this only gates k9 == 6, so "make PARITY_CHECK=0" asks
+                    // whether a fault this design reports is what aborts the
+                    // operating system, without changing anything else.
+                    parameter PARITY_CHECK = 1,
                     // Whether the diag board's ROMs are fitted at 0x08000. They
                     // have to be out to boot the operating system, which loads
                     // code there; see BoardMemory.v.
@@ -704,7 +710,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
               dbg_e7, dbg_data_in, dbg_entry0,
               dbg_e0_write, dbg_e0_value, dbg_e0_via_window,
               dbg_pt_write, dbg_pt_index, dbg_pt_value, dbg_pt_via_window, interrupt_ack,
-              parity_bad, dbg_bus_read_cycle);
+              parity_bad & PARITY_CHECK[0], dbg_bus_read_cycle);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is
@@ -1499,13 +1505,26 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         end else if (!(cpu_en && writeEnBus && addressBus == 19'h3f201))
             tx_seen <= 0;
     end
-    // The console dump now carries the MUX card's interrupt state as well as
-    // the last two characters, because the two questions turned out to be the
-    // same one: which cause the card reported, and what the CPU did about it.
-    //   byteReady tx_int mux_cause int_pending int_en overrun tx_idle .
+    // Where the first parity fault happened, and how many there have been. The
+    // operating system reaches its command prompt and then aborts with
+    // "CD:01, LVL:04, MAP:00, IAD:0001, EAD:000152", and 0x152 is the last of
+    // the eight bytes its parity self test deliberately poisons - so the
+    // question is whether this design really did fault there, or whether that
+    // address is a coincidence and the trap is something else entirely. A
+    // counter and the first address answer it in one run; a level sampled when
+    // the dump is asked for would not, because by then the machine has moved on.
+    reg [18:0] parity_fault_addr;
+    reg [15:0] parity_faults;
+    initial begin parity_fault_addr = 0; parity_faults = 0; end
+    always @(posedge clock) begin
+        if (reset) begin parity_fault_addr <= 0; parity_faults <= 0; end
+        else if (cpu_en && bus_read_strobe && dbg_f11[6] && parity_bad) begin
+            if (parity_faults == 0) parity_fault_addr <= addressBus;
+            parity_faults <= parity_faults + 1;
+        end
+    end
     wire [79:0] console_payload =
-        { dbg_rx_chars, dbg_cause_rx, dbg_cause_tx, dbg_acks,
-          dbg_mux_state, dbg_rx_byte };
+        { parity_faults, 5'b0, parity_fault_addr, dbg_f11, pc_live0, 16'h0000 };
 
     wire [79:0] dump_payload =
         { sdr_state, 4'b0, psram_select, busy, read, write,
