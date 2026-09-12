@@ -99,7 +99,7 @@ module DipTB;
     // nothing outside the core can see it.
     reg [15:0] seen_pc = 0;
     always @(posedge in_clk) if ($test$plusargs("bustrace")) begin
-        if (dut.instruction_fetch) seen_pc <= dut.pc_live0;
+        if (dut.instruments.instruction_fetch) seen_pc <= dut.instruments.pc_live0;
         if (dut.cpu_en && dut.addressBus[18:4] == 15'h3f14)
             $display("hawk %01x %s %02x  busy=%b seeking=%b seek_done=%b busy_time=%0d",
                      dut.addressBus[3:0], dut.writeEnBus ? "<=" : "=>",
@@ -132,7 +132,7 @@ module DipTB;
                 $display("PT [%0d] (base %0d page %0d) <= %02h   at pc=%04h uc=%03h dp=%0d",
                          dut.cpu.page_address, dut.cpu.page_table_base,
                          dut.cpu.page_address[4:0], dut.cpu.result_register,
-                         dut.pc_live0, dut.dbg_uc_address, dut.cpu.d2d3);
+                         dut.instruments.pc_live0, dut.dbg_uc_address, dut.cpu.d2d3);
         end
         if (dut.cpu.page_table_out[7]) pt_read_bit7 = pt_read_bit7 + 1;
     end
@@ -172,7 +172,7 @@ module DipTB;
         if (dut.cpu_en && dut.writeEnBus && !dut.cpu.dma_on) begin
             cpu_page[dut.addressBus[17:11]] = cpu_page[dut.addressBus[17:11]] + 1;
             cpu_writes = cpu_writes + 1;
-            if (dut.pc_live0 == 16'hef2a) begin
+            if (dut.instruments.pc_live0 == 16'hef2a) begin
                 mvf_page[dut.addressBus[17:11]] = mvf_page[dut.addressBus[17:11]] + 1;
                 mvf_writes = mvf_writes + 1;
             end
@@ -205,7 +205,7 @@ module DipTB;
     integer run_n = 0, run_printed = 0;
     reg in_run = 0;
     always @(posedge in_clk) begin
-        if (dut.cpu_en && dut.writeEnBus && dut.pc_live0 == 16'hef2a) begin
+        if (dut.cpu_en && dut.writeEnBus && dut.instruments.pc_live0 == 16'hef2a) begin
             if (in_run && dut.addressBus == run_last + 1) begin
                 run_last <= dut.addressBus; run_n = run_n + 1;
             end else begin
@@ -251,7 +251,7 @@ module DipTB;
             end else if (dut.bus_read_strobe) begin
                 e55_n = e55_n + 1;
                 $display("E55 READ  => %02h  (%0d disk commands) pc=%04h",
-                         dut.data_r2c, hawk_cmds, dut.pc_live0);
+                         dut.data_r2c, hawk_cmds, dut.instruments.pc_live0);
             end
         end
 
@@ -346,7 +346,7 @@ module DipTB;
     always @(posedge in_clk) if (dut.cpu_en) begin
         p_e6 <= dut.cpu.e6; p_d2d3 <= dut.cpu.d2d3; p_dp <= dut.cpu.DPBus;
         p_f1 <= dut.cpu.alu1_yout; p_f0 <= dut.cpu.alu0_yout;
-        p_uc <= dut.dbg_uc_address; p_pc <= dut.pc_live0;
+        p_uc <= dut.dbg_uc_address; p_pc <= dut.instruments.pc_live0;
         lvl_prev <= dut.cpu.interrupt_level;
         if (dut.cpu.interrupt_level !== lvl_prev && $test$plusargs("leveltrace")) begin
             // The level is loaded from the F bus at e6 == 3, and the F bus
@@ -413,7 +413,7 @@ module DipTB;
                 $display("REG level %0d reg %0d <= %02h  (running level %0d) at pc=%04h",
                          dut.cpu.reg_addr_hi, dut.cpu.register_index[3:1],
                          dut.cpu.result_register, dut.cpu.interrupt_level,
-                         dut.pc_live0);
+                         dut.instruments.pc_live0);
         end
     end
 
@@ -423,12 +423,12 @@ module DipTB;
     // another half hour. This answers it in one line.
     integer beat = 0, beat_instr = 0;
     always @(posedge in_clk) if ($test$plusargs("heartbeat")) begin
-        if (dut.instruction_fetch) beat_instr = beat_instr + 1;
+        if (dut.instruments.instruction_fetch) beat_instr = beat_instr + 1;
         beat = beat + 1;
         if (beat == 2_700_000) begin        // 100ms at 27MHz
             beat = 0;
             $display("[%0t] pc=%04h uc=%03h instructions=%0d disk commands=%0d timeouts=%0d",
-                     $time, dut.pc_live0, dut.dbg_uc_address, beat_instr, hawk_cmds,
+                     $time, dut.instruments.pc_live0, dut.dbg_uc_address, beat_instr, hawk_cmds,
                      dut.dbg_psram_timeouts);
         end
     end
@@ -440,11 +440,11 @@ module DipTB;
     // Z is inside the CPU where nothing outside can see it.
     integer wt = 0;
     always @(posedge in_clk) if ($test$plusargs("waittrace") && dut.cpu_en)
-        if (dut.pc_live0 >= 16'h04f5 && dut.pc_live0 <= 16'h04f9 &&
+        if (dut.instruments.pc_live0 >= 16'h04f5 && dut.instruments.pc_live0 <= 16'h04f9 &&
             dut.bus_read_strobe && wt < 40) begin
             wt = wt + 1;
             $display("WAIT pc=%04h reads %05h => %02h | hawk busy=%b cmd=%0d xfer=%b waiting=%b kind=%0d left=%0d stuck=%0d | dma req=%b hold=%b on=%b f11=%02h | img busy=%b state=%0d failed=%b | sd state=%0d r1=%02h lba=%0d read=%b err=%b | psram busy=%b | shifter idx=%0d active=%b bits=%0d div=%0d start=%b done=%b cs=%b clk=%b miso=%b",
-                     dut.pc_live0, dut.addressBus, dut.data_r2c,
+                     dut.instruments.pc_live0, dut.addressBus, dut.data_r2c,
                      dut.hawk.busy, dut.hawk.command,
                      dut.hawk.transferring, dut.hawk.waiting, dut.hawk.wait_kind,
                      dut.hawk.bytes_left, dut.hawk.stuck,
@@ -467,10 +467,10 @@ module DipTB;
     always @(posedge in_clk)
         if ($test$plusargs("statustrace") && dut.cpu_en && dut.bus_read_strobe &&
             dut.addressBus == 19'h3f144 &&
-            dut.pc_live0 == 16'hefee && sr_n < 80) begin
+            dut.instruments.pc_live0 == 16'hefee && sr_n < 80) begin
             sr_n = sr_n + 1;
             $display("STAT pc=%04h bus=%02h  hawk: busy=%b seeking=%b real_stat4=%02h cmd=%0d xfer=%b waiting=%b",
-                     dut.pc_live0, dut.data_r2c,
+                     dut.instruments.pc_live0, dut.data_r2c,
                      dut.hawk.busy, dut.hawk.seeking,
                      { dut.hawk.media_error, dut.hawk.verify_fail, 6'b0 } |
                        { 7'b0, dut.hawk.busy | dut.hawk.seeking },
@@ -488,7 +488,7 @@ module DipTB;
             dut.addressBus >= 19'h0cf00 && dut.addressBus <= 19'h0cfff && wr_n < 40) begin
             wr_n = wr_n + 1;
             $display("CFWR %05h <= %02h  at pc=%04h uc=%03h dma_on=%b",
-                     dut.addressBus, dut.data_c2r, dut.pc_live0,
+                     dut.addressBus, dut.data_c2r, dut.instruments.pc_live0,
                      dut.dbg_uc_address, dut.cpu.dma_on);
         end
     // The same list walk this design gets wrong. ef39 is LDBB [Z++]; the
@@ -499,7 +499,7 @@ module DipTB;
     integer lw_n = 0;
     always @(posedge in_clk)
         if ($test$plusargs("listwalk") && dut.cpu_en && dut.bus_read_strobe &&
-            dut.pc_live0 == 16'hef39 && hawk_cmds >= 150 && lw_n < 80) begin
+            dut.instruments.pc_live0 == 16'hef39 && hawk_cmds >= 150 && lw_n < 80) begin
             lw_n = lw_n + 1;
             $display("LIST %05h => %02h   (%0d disk commands)  cc=%04b flags=%08b",
                      dut.addressBus, dut.data_r2c, hawk_cmds,
@@ -540,7 +540,7 @@ module DipTB;
                 if ($test$plusargs("hawkseq"))
                     $display("cmd=%02h unit=%01h adr=%04h wpm=%02h PC=%04h",
                              dut.data_c2r, dut.hawk.unit, dut.hawk.sector_addr,
-                             dut.hawk.wpmask, dut.pc_live0);
+                             dut.hawk.wpmask, dut.instruments.pc_live0);
             end
             cmd_seen <= 1;
         end else cmd_seen <= 0;
@@ -617,7 +617,7 @@ module DipTB;
     // dbg_memory_address, not pc_live0: pc_live0 is latched from it on this same
     // edge, so reading pc_live0 here stores the *previous* fetch and the whole
     // ring lags by one.
-    always @(posedge in_clk) if (dut.instruction_fetch) begin
+    always @(posedge in_clk) if (dut.instruments.instruction_fetch) begin
         pc_ring[pc_head] <= dut.dbg_memory_address;
         pc_head <= pc_head + 1;
     end
@@ -629,10 +629,10 @@ module DipTB;
     // waiting until the end to notice loses the cycle it happened on. This says
     // so once, immediately.
     reg mismatch_said = 0;
-    always @(posedge in_clk) if (dut.instruction_fetch && !mismatch_said) begin
-        if (pc_head != 0 && dut.pc_live0 !== pc_ring[(pc_head + 63) % 64]) begin
+    always @(posedge in_clk) if (dut.instruments.instruction_fetch && !mismatch_said) begin
+        if (pc_head != 0 && dut.instruments.pc_live0 !== pc_ring[(pc_head + 63) % 64]) begin
             $display("INSTRUMENT MISMATCH at %0t: pc_live0=%04h but the ring's newest is %04h (head %0d, fetching %04h)",
-                     $time, dut.pc_live0, pc_ring[(pc_head + 63) % 64],
+                     $time, dut.instruments.pc_live0, pc_ring[(pc_head + 63) % 64],
                      pc_head, dut.dbg_memory_address);
             mismatch_said <= 1;
         end
@@ -647,7 +647,7 @@ module DipTB;
     reg diverged = 0;
     integer dv;
     always @(posedge in_clk)
-        if (dut.instruction_fetch && !diverged &&
+        if (dut.instruments.instruction_fetch && !diverged &&
             dut.dbg_memory_address >= 16'ha080 && dut.dbg_memory_address <= 16'ha200) begin
             diverged <= 1;
             $display("\n*** FIRST FETCH IN 0xa080-0xa200: %04h, after %0d instructions and %0d disk commands ***",
@@ -677,7 +677,7 @@ module DipTB;
         if (since_cmd == 400_000_000) begin      // ~15 seconds of simulated time
             $display("\n*** NO DISK COMMAND FOR 15 SIMULATED SECONDS ***");
             $display("  %0d disk commands, %0d instructions, pc=%04h uc=%03h",
-                     hawk_cmds, at_101, dut.pc_live0, dut.dbg_uc_address);
+                     hawk_cmds, at_101, dut.instruments.pc_live0, dut.dbg_uc_address);
             $write("  the last 64 fetches, oldest first:");
             for (dv = 0; dv < 64; dv = dv + 1) begin
                 if (dv % 8 == 0) $write("\n   ");
@@ -696,12 +696,12 @@ module DipTB;
     integer idle_clocks = 0;
     always @(posedge in_clk) if (dut.img_mounted) mounted_seen <= 1;
     always @(posedge in_clk) begin
-        if (dut.instruction_fetch) idle_clocks <= 0;
+        if (dut.instruments.instruction_fetch) idle_clocks <= 0;
         else if (mounted_seen) idle_clocks <= idle_clocks + 1;
         if (idle_clocks == 20_000_000) begin       // three quarters of a second
             $display("\n*** THE CORE STOPPED FETCHING ***");
             $display("  last instruction %04h, opcode %02h, microcode %03h, MAR %04h",
-                     dut.pc_live0, dut.last_opcode, dut.dbg_uc_address,
+                     dut.instruments.pc_live0, dut.instruments.last_opcode, dut.dbg_uc_address,
                      dut.cpu.dbg_memory_address);
             $display("  f11=%02h dma_on=%b hawk: req=%b hold=%b busy=%b cmd=%0d sector=%04h",
                      dut.cpu.f11, dut.cpu.dma_on, dut.hawk_req, dut.hawk_hold,
@@ -736,8 +736,8 @@ module DipTB;
             // one of them is wrong and it matters which: the board's trail is
             // what the hardware reports on trigger byte 0x05.
             $display("  pc_live1=%04h pc_live0=%04h   board trail %04h %04h %04h %04h %04h (head %0d)",
-                     dut.pc_live1, dut.pc_live0,
-                     dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0, pc_head);
+                     dut.instruments.pc_live1, dut.instruments.pc_live0,
+                     dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0, pc_head);
             $write("  the last 64 instruction fetches, oldest first:");
             for (pk = 0; pk < 64; pk = pk + 1) begin
                 if (pk % 8 == 0) $write("\n   ");
@@ -766,7 +766,7 @@ module DipTB;
                 bp_arm <= 1;
                 bp_fd = $fopen("bannerpath.txt", "w");
                 $display("bannerpath: armed on the first %02h at pc %04h",
-                         BANNER_ARM, dut.pc_live0);
+                         BANNER_ARM, dut.instruments.pc_live0);
             end else if (bp_arm) begin
                 bp_arm <= 0; bp_done <= 1; $fclose(bp_fd);
                 $display("bannerpath: second console write (%02h) after %0d entries",
@@ -776,7 +776,7 @@ module DipTB;
                 $finish;
             end
         end
-        if (bp_arm && dut.instruction_fetch && bp_n < 400000) begin
+        if (bp_arm && dut.instruments.instruction_fetch && bp_n < 400000) begin
             if (dut.dbg_memory_address !== bp_last) begin
                 $fwrite(bp_fd, "%0h\n", dut.dbg_memory_address);
                 bp_last <= dut.dbg_memory_address;
@@ -789,7 +789,7 @@ module DipTB;
     // reaches the loaded code or does not, and the serial line says nothing about
     // which.
     always @(posedge in_clk) if ($test$plusargs("pctrace"))
-        if (dut.instruction_fetch) $display("pc %h", dut.pc_live0);
+        if (dut.instruments.instruction_fetch) $display("pc %h", dut.instruments.pc_live0);
 
     localparam BITP = 27_000_000/19200 + 1;
     integer i;
@@ -852,18 +852,18 @@ module DipTB;
         // collides with its output, so the serial line cannot check it. Check it
         // against the testbench's own ring instead, which is built from the same
         // instruction_fetch but independently.
-        if ({dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0} !==
+        if ({dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0} !==
             {pc_ring[(pc_head + 59) % 64], pc_ring[(pc_head + 60) % 64],
              pc_ring[(pc_head + 61) % 64], pc_ring[(pc_head + 62) % 64],
              pc_ring[(pc_head + 63) % 64]})
             $display("FAIL: the fetch trail disagrees with the testbench's ring:\n  board %04h %04h %04h %04h %04h\n  ring  %04h %04h %04h %04h %04h",
-                     dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0,
+                     dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0,
                      pc_ring[(pc_head + 59) % 64], pc_ring[(pc_head + 60) % 64],
                      pc_ring[(pc_head + 61) % 64], pc_ring[(pc_head + 62) % 64],
                      pc_ring[(pc_head + 63) % 64]);
         else
             $display("ok: the fetch trail matches, last five fetches %04h %04h %04h %04h %04h",
-                     dut.fh4, dut.fh3, dut.fh2, dut.fh1, dut.fh0);
+                     dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0);
         $display("microcode: reached 0x101 %0d times, 0x102 %0d times, of which %0d did NOT come from 0x101",
                  at_101, at_102, skipped_101);
         $display("\n--- %0d characters ---", n);

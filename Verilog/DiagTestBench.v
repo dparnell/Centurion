@@ -87,7 +87,7 @@ module DiagTestTB;
     // branches to 0x8f02 when its compare fails; with F11 bit 3 driving the MAR and
     // work AR step direction it should never get there.
     integer npass = 0, failures = 0;
-    always @(posedge dut.clock) if (dut.instruction_fetch) begin
+    always @(posedge dut.clock) if (dut.instruments.instruction_fetch) begin
         if (dut.dbg_memory_address == 16'h8e88) npass = npass + 1;
         if (dut.dbg_memory_address == 16'h8f02) begin
             failures = failures + 1;
@@ -97,7 +97,7 @@ module DiagTestTB;
     integer low_count = 0;
     reg [15:0] last_low = 16'hffff;
     always @(posedge dut.clock) begin
-        if (dut.instruction_fetch && dut.dbg_memory_address < 16'h0100) begin
+        if (dut.instruments.instruction_fetch && dut.dbg_memory_address < 16'h0100) begin
             low_count = low_count + 1;
             last_low = dut.dbg_memory_address;
         end

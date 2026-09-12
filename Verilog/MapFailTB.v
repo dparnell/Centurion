@@ -99,10 +99,10 @@ module MapFailTB;
     // long. diag's own output stops once the test starts.
     integer last_report = 0;
     always @(posedge dut.clock) begin
-        if (dut.pass_count != 0 && dut.pass_count % 500 == 0
-            && dut.pass_count != last_report) begin
-            last_report = dut.pass_count;
-            $display("... pass %0d at %0t", dut.pass_count, $time);
+        if (dut.instruments.pass_count != 0 && dut.instruments.pass_count % 500 == 0
+            && dut.instruments.pass_count != last_report) begin
+            last_report = dut.instruments.pass_count;
+            $display("... pass %0d at %0t", dut.instruments.pass_count, $time);
         end
     end
 
@@ -119,11 +119,11 @@ module MapFailTB;
     end
     integer report_at = 0;
     always @(posedge dut.clock) begin
-        if (dut.pass_count != 0 && dut.pass_count % 200 == 0
-            && dut.pass_count != report_at) begin
-            report_at = dut.pass_count;
+        if (dut.instruments.pass_count != 0 && dut.instruments.pass_count % 200 == 0
+            && dut.instruments.pass_count != report_at) begin
+            report_at = dut.instruments.pass_count;
             $display("pass %0d: adjacent enabled cycles so far = %0d",
-                     dut.pass_count, adjacent);
+                     dut.instruments.pass_count, adjacent);
         end
     end
 
@@ -182,7 +182,7 @@ module MapFailTB;
             caught <= 1;
             $display("");
             $display("=== page table entry %02x written as 00 on pass %0d ===",
-                     dut.dbg_pt_index, dut.pass_count);
+                     dut.dbg_pt_index, dut.instruments.pass_count);
             $display("base=%0d MAR=%04x result=%02x PA=%05x",
                      dut.dbg_page_table_base, dut.dbg_memory_address,
                      dut.cpu.result_register, dut.addressBus);
@@ -197,28 +197,28 @@ module MapFailTB;
         $display("\n--- selecting test 02 ---");
         send("0"); send("2"); send(" ");
 
-        wait (dut.compare_failed);
+        wait (dut.instruments.compare_failed);
         #200000;
         $display("");
         $display("=== compare failed on pass %0d, in map %0d ===",
-                 dut.fail_pass, dut.fail_base);
+                 dut.instruments.fail_pass, dut.instruments.fail_base);
         $display("last four buffer reads: [%03x]=%02x [%03x]=%02x [%03x]=%02x [%03x]=%02x",
-                 dut.f3[17:8], dut.f3[7:0], dut.f2[17:8], dut.f2[7:0],
-                 dut.f1[17:8], dut.f1[7:0], dut.f0[17:8], dut.f0[7:0]);
-        $display("branched from %04x", dut.fail_from);
+                 dut.instruments.f3[17:8], dut.instruments.f3[7:0], dut.instruments.f2[17:8], dut.instruments.f2[7:0],
+                 dut.instruments.f1[17:8], dut.instruments.f1[7:0], dut.instruments.f0[17:8], dut.instruments.f0[7:0]);
+        $display("branched from %04x", dut.instruments.fail_from);
         $finish;
     end
 
     initial begin
         #160000000;                    // 160ms, enough to boot and run the test a while
         $display("=== 160ms: %0d adjacent enabled cycles over %0d passes ===",
-                 adjacent, dut.pass_count);
+                 adjacent, dut.instruments.pass_count);
         $finish;
     end
 
     initial begin
         #40000000000;                  // 40 seconds of simulated board time
-        $display("\nFAIL: no compare failure after %0d passes", dut.pass_count);
+        $display("\nFAIL: no compare failure after %0d passes", dut.instruments.pass_count);
         $finish;
     end
 endmodule

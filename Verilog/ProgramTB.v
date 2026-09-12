@@ -128,7 +128,7 @@ module ProgramTB;
     integer k;
     begin
         k = 0;
-        while (dut.rx_count == was && k < 27000 * 500) begin
+        while (dut.instruments.rx_count == was && k < 27000 * 500) begin
             @(posedge in_clk);
             k = k + 1;
         end
@@ -140,7 +140,7 @@ module ProgramTB;
     reg [15:0] before;
     begin
         waitempty;                           // the last byte has been taken
-        before = dut.rx_count;
+        before = dut.instruments.rx_count;
         if ($test$plusargs("typetrace")) $write("<%s>", c);
         uart_rx = 0;
         repeat (BITP) @(posedge in_clk);
@@ -209,7 +209,7 @@ module ProgramTB;
     // character.
     always @(posedge in_clk) if ($test$plusargs("rxtrace"))
         if (dut.mux0.read_data_register)
-            $display("\nrx read at pc=%h mar=%h ready=%b", dut.pc_live0,
+            $display("\nrx read at pc=%h mar=%h ready=%b", dut.instruments.pc_live0,
                      dut.addressBus, dut.mux0.byteReady);
 
     // +dmatrace: the DMA path, which is otherwise entirely invisible - the CPU
@@ -242,7 +242,7 @@ module ProgramTB;
     // +pctrace: one line per instruction fetch, so a machine that stops can be
     // told from a machine that is stuck in a loop, and the address named.
     always @(posedge in_clk) if ($test$plusargs("pctrace"))
-        if (dut.instruction_fetch) $display("pc %h", dut.pc_live0);
+        if (dut.instruments.instruction_fetch) $display("pc %h", dut.instruments.pc_live0);
 
     // +psramtrace: say what the PSRAM bridge is doing when it holds the core
     // still for a long time, and report every timeout. A stall here is silent
@@ -259,11 +259,11 @@ module ProgramTB;
         // Count clocks since the last instruction fetch, not since the bridge
         // last wanted something: a core that has stopped fetching is the
         // symptom, and the bridge is only one of the things that can cause it.
-        if (!dut.instruction_fetch) begin
+        if (!dut.instruments.instruction_fetch) begin
             stuck = stuck + 1;
             if (stuck % 20000 == 0)
                 $display("\nno fetch for %0d clocks: pc=%h uc=%h mar=%h e7=%b | psram need=%b state=%0d busy=%b addr=%h we=%b sdr=%0d",
-                         stuck, dut.pc_live0, dut.cpu.dbg_uc_address,
+                         stuck, dut.instruments.pc_live0, dut.cpu.dbg_uc_address,
                          dut.cpu.dbg_memory_address, dut.cpu.dbg_e7,
                          dut.psram_bus.dbg_need, dut.psram_bus.dbg_state,
                          dut.psram_bus.busy, dut.psram_bus.address,
