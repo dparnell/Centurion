@@ -41,6 +41,7 @@ module DipTB;
     // booting it needs them out. See BoardMemory.v.
     parameter DIAG_ROM = 1;
     parameter integer TICKS = 13;
+    parameter [7:0] PSRAM_FILL = 8'hff;
     reg in_clk = 0;
     always #18.5185 in_clk = ~in_clk;
     reg reset_btn = 1, btn2 = 1;
@@ -53,7 +54,9 @@ module DipTB;
     wire [1:0] psram_ck, psram_ck_n, psram_cs_n, psram_reset_n;
     wire [1:0] psram_rwds;
     wire [15:0] psram_dq;
-    HyperRamModel #(.ADDR_BITS(23)) die(
+    // PSRAM_FILL makes the experiment above runnable: 00 matches the reference
+    // emulator's zeroed memory, ff is what a real part looks like out of reset.
+    HyperRamModel #(.ADDR_BITS(23), .FILL(PSRAM_FILL)) die(
         .ck(psram_ck[0]), .cs_n(psram_cs_n[0]), .resetn(psram_reset_n[0]),
         .rwds(psram_rwds[0]), .dq(psram_dq[7:0]));
 
@@ -64,6 +67,10 @@ module DipTB;
     wire sd_miso;
     pullup(sd_miso);
     SdCardModel #(.BLOCKS(133120), .FILL(8'h00)) sdcard(sd_clk, sd_cs_n, sd_mosi, sd_miso);
+    // Declared up here rather than beside the trace that maintains it: several
+    // instruments below want the disk command count to line their output up
+    // against the reference, and iverilog will not take a declaration after use.
+    integer hawk_cmds = 0;
     reg [8*64:1] sd_image;
     initial begin
         if (!$value$plusargs("sd=%s", sd_image)) sd_image = "sd_fat32.hex";
@@ -133,6 +140,90 @@ module DipTB;
     // level being trapped to has a zero P register - which level 15 does, since
     // nothing has ever set it - that somewhere is 0x0000 and the machine then
     // executes the register file.
+    // Where does the disk data actually land? A histogram of DMA write
+    // destinations by 2K physical page. The sector reads all match the
+    // reference's, so the bytes are being fetched; if they are not reaching
+    // 0x0cf00 then either the destination address is wrong or they are going
+    // somewhere else entirely, and this says which.
+    integer dma_page [0:127];
+    integer dpi, dma_writes = 0;
+    initial for (dpi = 0; dpi < 128; dpi = dpi + 1) dma_page[dpi] = 0;
+    always @(posedge in_clk)
+        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on) begin
+            dma_page[dut.addressBus[17:11]] = dma_page[dut.addressBus[17:11]] + 1;
+            dma_writes = dma_writes + 1;
+        end
+
+    // The same census for the CPU's own writes. The sector data lands in a
+    // staging buffer at 0x0e800 and something must copy it to where the code
+    // is supposed to live; if that copy is running but landing elsewhere, this
+    // says where. Split by whether the write came from the MVF block copy at
+    // 0xef2a or from anywhere else.
+    integer cpu_page [0:127];
+    integer mvf_page [0:127];
+    integer cpi, cpu_writes = 0, mvf_writes = 0;
+    initial for (cpi = 0; cpi < 128; cpi = cpi + 1) begin
+        cpu_page[cpi] = 0; mvf_page[cpi] = 0;
+    end
+    always @(posedge in_clk)
+        if (dut.cpu_en && dut.writeEnBus && !dut.cpu.dma_on) begin
+            cpu_page[dut.addressBus[17:11]] = cpu_page[dut.addressBus[17:11]] + 1;
+            cpu_writes = cpu_writes + 1;
+            if (dut.pc_live0 == 16'hef2a) begin
+                mvf_page[dut.addressBus[17:11]] = mvf_page[dut.addressBus[17:11]] + 1;
+                mvf_writes = mvf_writes + 1;
+            end
+        end
+
+    // The sixteen bytes the machine actually trapped on. The earlier per-address
+    // log was capped at forty entries, so "nothing writes here" was not yet
+    // established - this counts them with no cap, and records the highest
+    // address the block copy reaches in that page, which says whether the copy
+    // is short or aimed somewhere else.
+    integer cf40_writes = 0;
+    reg [18:0] mvf_lo_c8 = 19'h7ffff, mvf_hi_c8 = 0;
+    always @(posedge in_clk)
+        if (dut.cpu_en && dut.writeEnBus) begin
+            if (dut.addressBus >= 19'h0cf40 && dut.addressBus <= 19'h0cf4f)
+                cf40_writes = cf40_writes + 1;
+            if (dut.addressBus[18:11] == 8'h19) begin
+                if (dut.addressBus < mvf_lo_c8) mvf_lo_c8 = dut.addressBus;
+                if (dut.addressBus > mvf_hi_c8) mvf_hi_c8 = dut.addressBus;
+            end
+        end
+
+    // Each MVF copy as a range rather than as bytes: where it started, where it
+    // ended and how many bytes it moved, with the disk command count so it lines
+    // up against the reference. The reference writes 0x0cf40 during the copies
+    // at commands 155 and 157; this design's copies cover the page all around
+    // those bytes and never on them, so comparing the ranges says whether a copy
+    // is missing, short, or aimed somewhere else.
+    reg [18:0] run_lo = 0, run_last = 0;
+    integer run_n = 0, run_printed = 0;
+    reg in_run = 0;
+    always @(posedge in_clk) begin
+        if (dut.cpu_en && dut.writeEnBus && dut.pc_live0 == 16'hef2a) begin
+            if (in_run && dut.addressBus == run_last + 1) begin
+                run_last <= dut.addressBus; run_n = run_n + 1;
+            end else begin
+                if (in_run && run_printed < 300 && hawk_cmds >= 140) begin
+                    run_printed = run_printed + 1;
+                    $display("MVF %05h..%05h  %0d bytes  (%0d disk commands)",
+                             run_lo, run_last, run_n, hawk_cmds);
+                end
+                run_lo <= dut.addressBus; run_last <= dut.addressBus; run_n = 1;
+                in_run <= 1;
+            end
+        end
+    end
+
+    // And a count of writes anywhere in the 0x0c000 page, so "nothing writes the
+    // page at all" is told apart from "the page is written but not this part".
+    integer page_c_writes = 0;
+    always @(posedge in_clk)
+        if (dut.cpu_en && dut.writeEnBus && dut.addressBus[18:12] == 7'h0c)
+            page_c_writes = page_c_writes + 1;
+
     // The last 32 microcode words before the first level change. The fetch trail
     // says which instruction was running; this says which microcode path got
     // into the entry sequence, and the conditional branch that chose it. That
@@ -180,7 +271,30 @@ module DipTB;
                      dut.cpu.page_table_out);
             if (!uc_shown) begin
                 uc_shown <= 1;
-                $write("     the 256 microcode words before it, oldest first:");
+                // What the machine actually has at the instruction it trapped on.
+            // The reference has 0x32 there - CLR - and this design's microcode
+            // entered at 0x18b, the dispatcher for 00/0f/2e/2f, so the opcode
+            // byte it fetched is not the one that should be there. Physical
+            // 0x0cf46 lives in the board's own RAM block, not the PSRAM.
+            $display("     writes into physical 0x0c000-0x0cfff so far: %0d", page_c_writes);
+            $display("     writes into 0x0cf40-0x0cf4f: %0d   |  writes in page 0x0c800 span %05h to %05h",
+                     cf40_writes, mvf_lo_c8, mvf_hi_c8);
+            $write("     %0d CPU writes, by 2K physical page:", cpu_writes);
+            for (dpi = 0; dpi < 128; dpi = dpi + 1)
+                if (cpu_page[dpi] != 0) $write(" %05h:%0d", dpi * 2048, cpu_page[dpi]);
+            $write("\n     %0d of them from the MVF copy at 0xef2a:", mvf_writes);
+            for (dpi = 0; dpi < 128; dpi = dpi + 1)
+                if (mvf_page[dpi] != 0) $write(" %05h:%0d", dpi * 2048, mvf_page[dpi]);
+            $write("\n");
+            $write("     %0d DMA writes, by 2K physical page:", dma_writes);
+            for (dpi = 0; dpi < 128; dpi = dpi + 1)
+                if (dma_page[dpi] != 0) $write(" %05h:%0d", dpi * 2048, dma_page[dpi]);
+            $write("\n");
+            $write("     memory at physical 0x0cf40:");
+            for (ui = 0; ui < 16; ui = ui + 1)
+                $write(" %02h", dut.ram.ram_cells[13'h0f40 + ui]);
+            $write("   (the reference has 49 15 e5 65 a1 09 32 c0 47 9c ef 00 00 10 55 ba)\n");
+            $write("     the 256 microcode words before it, oldest first:");
                 for (ui = 0; ui < 256; ui = ui + 1) begin
                     if (ui % 16 == 0) $write("\n      ");
                     $write(" %03h", uc_ring[(uc_head + ui) % 256]);
@@ -212,7 +326,6 @@ module DipTB;
     // stuck, is it slow, or is it fine" has repeatedly been answered by waiting
     // another half hour. This answers it in one line.
     integer beat = 0, beat_instr = 0;
-    integer hawk_cmds = 0;
     always @(posedge in_clk) if ($test$plusargs("heartbeat")) begin
         if (dut.instruction_fetch) beat_instr = beat_instr + 1;
         beat = beat + 1;
@@ -246,6 +359,74 @@ module DipTB;
                      dut.sd.divider, dut.sd.start_byte, dut.sd.byte_done,
                      dut.sd_cs_n, dut.sd_clk, dut.sd_miso);
         end
+
+    // Every read of the Hawk's read-status register, with what came back and what
+    // the register actually held at that instant. The driver leaves its wait loop
+    // after one poll while busy is measurably still set, so the question is
+    // whether the poll returns a stale byte - this bus has no read strobe of its
+    // own and the address register simply stays where it was, which has bitten
+    // twice before.
+    integer sr_n = 0;
+    always @(posedge in_clk)
+        if ($test$plusargs("statustrace") && dut.cpu_en && dut.bus_read_strobe &&
+            dut.addressBus == 19'h3f144 &&
+            dut.pc_live0 == 16'hefee && sr_n < 80) begin
+            sr_n = sr_n + 1;
+            $display("STAT pc=%04h bus=%02h  hawk: busy=%b seeking=%b real_stat4=%02h cmd=%0d xfer=%b waiting=%b",
+                     dut.pc_live0, dut.data_r2c,
+                     dut.hawk.busy, dut.hawk.seeking,
+                     { dut.hawk.media_error, dut.hawk.verify_fail, 6'b0 } |
+                       { 7'b0, dut.hawk.busy | dut.hawk.seeking },
+                     dut.hawk.command, dut.hawk.transferring, dut.hawk.waiting);
+        end
+
+    // Every write into the page the missing code belongs in. The reference has
+    // real instructions at physical 0x0cf40 by 195 disk commands and this design
+    // has zeros, so either nothing ever writes there or the writes are landing
+    // somewhere else. Logs the CPU's own writes and the DMA's alike, since the
+    // sector data arrives by DMA.
+    integer wr_n = 0;
+    always @(posedge in_clk)
+        if ($test$plusargs("cfwrite") && dut.cpu_en && dut.writeEnBus &&
+            dut.addressBus >= 19'h0cf00 && dut.addressBus <= 19'h0cfff && wr_n < 40) begin
+            wr_n = wr_n + 1;
+            $display("CFWR %05h <= %02h  at pc=%04h uc=%03h dma_on=%b",
+                     dut.addressBus, dut.data_c2r, dut.pc_live0,
+                     dut.dbg_uc_address, dut.cpu.dma_on);
+        end
+    // The same list walk this design gets wrong. ef39 is LDBB [Z++]; the
+    // reference reads 00, 00, 00 then 80 - bit 7 set is the end of the list -
+    // from records 125 bytes apart in the staging buffer. If this design sees a
+    // set bit sooner, the buffer's contents differ rather than the flag being
+    // wrong, and the bytes are the ones the DMA just delivered.
+    integer lw_n = 0;
+    always @(posedge in_clk)
+        if ($test$plusargs("listwalk") && dut.cpu_en && dut.bus_read_strobe &&
+            dut.pc_live0 == 16'hef39 && lw_n < 80) begin
+            lw_n = lw_n + 1;
+            $display("LIST %05h => %02h   (%0d disk commands)",
+                     dut.addressBus, dut.data_r2c, hawk_cmds);
+        end
+
+    // +busytrace: how long the controller actually holds busy for each command,
+    // and what the driver's first poll of the status register sees. The
+    // reference spins in its wait loop for several passes after a read; this
+    // design was leaving it on the first poll, which means the driver carries on
+    // as though the sector were already in memory.
+    reg prev_busy = 0;
+    integer busy_start = 0, bt_n = 0;
+    always @(posedge in_clk) if ($test$plusargs("busytrace")) begin
+        prev_busy <= dut.hawk.busy;
+        if (dut.hawk.busy && !prev_busy) busy_start = $time / 10;
+        if (!dut.hawk.busy && prev_busy && bt_n < 40) begin
+            bt_n = bt_n + 1;
+            $display("BUSY cmd=%0d adr=%04h held for %0d clocks | xfer=%b waiting=%b kind=%0d left=%0d | img state=%0d fetches=%0d",
+                     dut.hawk.command, dut.hawk.sector_addr,
+                     ($time / 10 - busy_start) / 37,
+                     dut.hawk.transferring, dut.hawk.waiting, dut.hawk.wait_kind,
+                     dut.hawk.bytes_left, dut.image.dbg_state, dut.image.dbg_fetches);
+        end
+    end
 
     // +hawkseq: one line per disk command, in the same shape as the trace the
     // reference emulator prints. A boot that works issues a definite sequence -
@@ -356,6 +537,56 @@ module DipTB;
                      $time, dut.pc_live0, pc_ring[(pc_head + 63) % 64],
                      pc_head, dut.dbg_memory_address);
             mismatch_said <= 1;
+        end
+    end
+
+    // The reference emulator never executes at 0xa080-0xa200 during its whole
+    // boot - counted directly, zero steps - and this design ends up looping
+    // there. So the interesting moment is not the loop, it is the *first* fetch
+    // in that range: the sixty-four fetches before it are the path that took the
+    // machine somewhere the real one does not go. Printed once, then the run
+    // carries on.
+    reg diverged = 0;
+    integer dv;
+    always @(posedge in_clk)
+        if (dut.instruction_fetch && !diverged &&
+            dut.dbg_memory_address >= 16'ha080 && dut.dbg_memory_address <= 16'ha200) begin
+            diverged <= 1;
+            $display("\n*** FIRST FETCH IN 0xa080-0xa200: %04h, after %0d instructions and %0d disk commands ***",
+                     dut.dbg_memory_address, at_101, hawk_cmds);
+            $write("  the 64 fetches before it, oldest first:");
+            for (dv = 0; dv < 64; dv = dv + 1) begin
+                if (dv % 8 == 0) $write("\n   ");
+                $write(" %04h", pc_ring[(pc_head + dv) % 64]);
+            end
+            $write("\n");
+        end
+
+    // Progress, not just liveness. The machine can be executing forty thousand
+    // instructions a second and still be going round; what says it has stopped
+    // making headway is that no new disk command has been issued for a long
+    // time. Dump where it is spending that time and stop, rather than running
+    // to the end of HOLD with nothing to show.
+    integer since_cmd = 0, last_cmds = 0;
+    reg [15:0] loop_hits [0:15];
+    integer lh;
+    initial for (lh = 0; lh < 16; lh = lh + 1) loop_hits[lh] = 0;
+    always @(posedge in_clk) if (dut.img_mounted) begin
+        if (hawk_cmds != last_cmds) begin
+            last_cmds = hawk_cmds;
+            since_cmd = 0;
+        end else since_cmd = since_cmd + 1;
+        if (since_cmd == 400_000_000) begin      // ~15 seconds of simulated time
+            $display("\n*** NO DISK COMMAND FOR 15 SIMULATED SECONDS ***");
+            $display("  %0d disk commands, %0d instructions, pc=%04h uc=%03h",
+                     hawk_cmds, at_101, dut.pc_live0, dut.dbg_uc_address);
+            $write("  the last 64 fetches, oldest first:");
+            for (dv = 0; dv < 64; dv = dv + 1) begin
+                if (dv % 8 == 0) $write("\n   ");
+                $write(" %04h", pc_ring[(pc_head + dv) % 64]);
+            end
+            $write("\n");
+            $finish;
         end
     end
 

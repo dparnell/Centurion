@@ -15,6 +15,7 @@
  * still earns its place.
  */
 module HyperRamModel #(
+    parameter [7:0] FILL = 8'hff,    // what unwritten memory reads back as
     parameter LATENCY = 6,           // initial latency in clocks; fixed latency
                                      // means the die always inserts twice this
     parameter [15:0] ID0 = 16'h0c86, // what a register space read of 0 returns
@@ -48,7 +49,14 @@ module HyperRamModel #(
     initial begin
         dq_oe = 0; rwds_oe = 0; dq_out = 0; rwds_out = 0;
         ca = 0; is_read = 0; is_reg = 0; byteaddr = 0;
-        for (i = 0; i < SIZE; i = i + 1) mem[i] = 8'hff;
+        // What an unwritten byte reads back as. A real part comes up holding
+        // arbitrary data and 0xff is the honest default, but the reference
+        // emulator's memory starts at zero - and that difference is visible in
+        // the boot, where a list walk reads a flag byte out of memory the
+        // operating system has not filled yet and stops on bit 7. FILL makes the
+        // two comparable so the dependence can be measured rather than argued
+        // about.
+        for (i = 0; i < SIZE; i = i + 1) mem[i] = FILL;
     end
 
     // CS# rising ends the burst wherever it had got to.
