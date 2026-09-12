@@ -99,10 +99,10 @@ module MapFailTB;
     // long. diag's own output stops once the test starts.
     integer last_report = 0;
     always @(posedge dut.clock) begin
-        if (dut.instruments.pass_count != 0 && dut.instruments.pass_count % 500 == 0
-            && dut.instruments.pass_count != last_report) begin
-            last_report = dut.instruments.pass_count;
-            $display("... pass %0d at %0t", dut.instruments.pass_count, $time);
+        if (dut.machine.instruments.pass_count != 0 && dut.machine.instruments.pass_count % 500 == 0
+            && dut.machine.instruments.pass_count != last_report) begin
+            last_report = dut.machine.instruments.pass_count;
+            $display("... pass %0d at %0t", dut.machine.instruments.pass_count, $time);
         end
     end
 
@@ -119,11 +119,11 @@ module MapFailTB;
     end
     integer report_at = 0;
     always @(posedge dut.clock) begin
-        if (dut.instruments.pass_count != 0 && dut.instruments.pass_count % 200 == 0
-            && dut.instruments.pass_count != report_at) begin
-            report_at = dut.instruments.pass_count;
+        if (dut.machine.instruments.pass_count != 0 && dut.machine.instruments.pass_count % 200 == 0
+            && dut.machine.instruments.pass_count != report_at) begin
+            report_at = dut.machine.instruments.pass_count;
             $display("pass %0d: adjacent enabled cycles so far = %0d",
-                     dut.instruments.pass_count, adjacent);
+                     dut.machine.instruments.pass_count, adjacent);
         end
     end
 
@@ -144,15 +144,15 @@ module MapFailTB;
     integer r_head = 0;
     integer k;
     always @(posedge dut.clock) if (dut.cpu_en) begin
-        r_uc[r_head]   <= dut.cpu.dbg_uc_address;
-        r_pipe[r_head] <= dut.cpu.pipeline;
-        r_base[r_head] <= dut.dbg_page_table_base;
-        r_mar[r_head]  <= dut.dbg_memory_address;
-        r_res[r_head]  <= dut.cpu.result_register;
-        r_pa[r_head]   <= dut.addressBus;
-        r_din[r_head]  <= dut.dbg_data_in;
-        r_we[r_head]   <= dut.writeEnBus;
-        r_stall[r_head]<= dut.psram_select;
+        r_uc[r_head]   <= dut.machine.cpu.dbg_uc_address;
+        r_pipe[r_head] <= dut.machine.cpu.pipeline;
+        r_base[r_head] <= dut.machine.dbg_page_table_base;
+        r_mar[r_head]  <= dut.machine.dbg_memory_address;
+        r_res[r_head]  <= dut.machine.cpu.result_register;
+        r_pa[r_head]   <= dut.machine.addressBus;
+        r_din[r_head]  <= dut.machine.dbg_data_in;
+        r_we[r_head]   <= dut.machine.writeEnBus;
+        r_stall[r_head]<= dut.machine.psram_select;
         r_head <= (r_head + 1) % RING;
     end
 
@@ -177,15 +177,15 @@ module MapFailTB;
     // so this stops early and prints the whole run up to it.
     reg caught = 0;
     always @(posedge dut.clock) begin
-        if (!caught && dut.cpu_en && dut.dbg_pt_write
-            && dut.dbg_pt_value == 8'h00 && dut.dbg_pt_index != 8'h00) begin
+        if (!caught && dut.cpu_en && dut.machine.dbg_pt_write
+            && dut.machine.dbg_pt_value == 8'h00 && dut.machine.dbg_pt_index != 8'h00) begin
             caught <= 1;
             $display("");
             $display("=== page table entry %02x written as 00 on pass %0d ===",
-                     dut.dbg_pt_index, dut.instruments.pass_count);
+                     dut.machine.dbg_pt_index, dut.machine.instruments.pass_count);
             $display("base=%0d MAR=%04x result=%02x PA=%05x",
-                     dut.dbg_page_table_base, dut.dbg_memory_address,
-                     dut.cpu.result_register, dut.addressBus);
+                     dut.machine.dbg_page_table_base, dut.machine.dbg_memory_address,
+                     dut.machine.cpu.result_register, dut.machine.addressBus);
             report;
             $finish;
         end
@@ -197,28 +197,28 @@ module MapFailTB;
         $display("\n--- selecting test 02 ---");
         send("0"); send("2"); send(" ");
 
-        wait (dut.instruments.compare_failed);
+        wait (dut.machine.instruments.compare_failed);
         #200000;
         $display("");
         $display("=== compare failed on pass %0d, in map %0d ===",
-                 dut.instruments.fail_pass, dut.instruments.fail_base);
+                 dut.machine.instruments.fail_pass, dut.machine.instruments.fail_base);
         $display("last four buffer reads: [%03x]=%02x [%03x]=%02x [%03x]=%02x [%03x]=%02x",
-                 dut.instruments.f3[17:8], dut.instruments.f3[7:0], dut.instruments.f2[17:8], dut.instruments.f2[7:0],
-                 dut.instruments.f1[17:8], dut.instruments.f1[7:0], dut.instruments.f0[17:8], dut.instruments.f0[7:0]);
-        $display("branched from %04x", dut.instruments.fail_from);
+                 dut.machine.instruments.f3[17:8], dut.machine.instruments.f3[7:0], dut.machine.instruments.f2[17:8], dut.machine.instruments.f2[7:0],
+                 dut.machine.instruments.f1[17:8], dut.machine.instruments.f1[7:0], dut.machine.instruments.f0[17:8], dut.machine.instruments.f0[7:0]);
+        $display("branched from %04x", dut.machine.instruments.fail_from);
         $finish;
     end
 
     initial begin
         #160000000;                    // 160ms, enough to boot and run the test a while
         $display("=== 160ms: %0d adjacent enabled cycles over %0d passes ===",
-                 adjacent, dut.instruments.pass_count);
+                 adjacent, dut.machine.instruments.pass_count);
         $finish;
     end
 
     initial begin
         #40000000000;                  // 40 seconds of simulated board time
-        $display("\nFAIL: no compare failure after %0d passes", dut.instruments.pass_count);
+        $display("\nFAIL: no compare failure after %0d passes", dut.machine.instruments.pass_count);
         $finish;
     end
 endmodule

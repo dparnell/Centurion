@@ -99,18 +99,18 @@ module DipTB;
     // nothing outside the core can see it.
     reg [15:0] seen_pc = 0;
     always @(posedge in_clk) if ($test$plusargs("bustrace")) begin
-        if (dut.instruments.instruction_fetch) seen_pc <= dut.instruments.pc_live0;
-        if (dut.cpu_en && dut.addressBus[18:4] == 15'h3f14)
+        if (dut.machine.instruments.instruction_fetch) seen_pc <= dut.machine.instruments.pc_live0;
+        if (dut.cpu_en && dut.machine.addressBus[18:4] == 15'h3f14)
             $display("hawk %01x %s %02x  busy=%b seeking=%b seek_done=%b busy_time=%0d",
-                     dut.addressBus[3:0], dut.writeEnBus ? "<=" : "=>",
-                     dut.writeEnBus ? dut.data_c2r : dut.hawk_data,
-                     dut.hawk.busy, dut.hawk.seeking, dut.hawk.seek_done,
-                     dut.hawk.busy_time);
-        if (dut.cpu_en && dut.addressBus[18:4] == 15'h3f14)
+                     dut.machine.addressBus[3:0], dut.machine.writeEnBus ? "<=" : "=>",
+                     dut.machine.writeEnBus ? dut.machine.data_c2r : dut.machine.hawk_data,
+                     dut.machine.hawk.busy, dut.machine.hawk.seeking, dut.machine.hawk.seek_done,
+                     dut.machine.hawk.busy_time);
+        if (dut.cpu_en && dut.machine.addressBus[18:4] == 15'h3f14)
             $display("     hawk: waiting=%b transferring=%b dma_req=%b bytes_left=%0d cmd=%0d | f11=%02h dma_on=%b",
-                     dut.hawk.waiting, dut.hawk.transferring, dut.hawk_req,
-                     dut.hawk.bytes_left, dut.hawk.command,
-                     dut.cpu.f11, dut.cpu.dma_on);
+                     dut.machine.hawk.waiting, dut.machine.hawk.transferring, dut.machine.hawk_req,
+                     dut.machine.hawk.bytes_left, dut.machine.hawk.command,
+                     dut.machine.cpu.f11, dut.machine.cpu.dma_on);
     end
 
     // The write-tracked page bit, counted. The operating system installs a map
@@ -120,9 +120,9 @@ module DipTB;
     // without a trace of any kind.
     integer pt_writes = 0, pt_writes_bit7 = 0, pt_read_bit7 = 0;
     always @(posedge in_clk) if (dut.cpu_en) begin
-        if (dut.cpu.k11 == 3'd5) begin
+        if (dut.machine.cpu.k11 == 3'd5) begin
             pt_writes = pt_writes + 1;
-            if (dut.cpu.result_register[7]) pt_writes_bit7 = pt_writes_bit7 + 1;
+            if (dut.machine.cpu.result_register[7]) pt_writes_bit7 = pt_writes_bit7 + 1;
             // Only 134 of these happen in a whole boot, so log them all rather
             // than counting. The reference ends up with exactly one entry
             // carrying the write-tracked bit - map 0 entry 31, value 0x81 - and
@@ -130,11 +130,11 @@ module DipTB;
             // to entry 31 instead and where that value comes from.
             if ($test$plusargs("pttrace"))
                 $display("PT [%0d] (base %0d page %0d) <= %02h   at pc=%04h uc=%03h dp=%0d",
-                         dut.cpu.page_address, dut.cpu.page_table_base,
-                         dut.cpu.page_address[4:0], dut.cpu.result_register,
-                         dut.instruments.pc_live0, dut.dbg_uc_address, dut.cpu.d2d3);
+                         dut.machine.cpu.page_address, dut.machine.cpu.page_table_base,
+                         dut.machine.cpu.page_address[4:0], dut.machine.cpu.result_register,
+                         dut.machine.instruments.pc_live0, dut.machine.dbg_uc_address, dut.machine.cpu.d2d3);
         end
-        if (dut.cpu.page_table_out[7]) pt_read_bit7 = pt_read_bit7 + 1;
+        if (dut.machine.cpu.page_table_out[7]) pt_read_bit7 = pt_read_bit7 + 1;
     end
 
     // +leveltrace: every change of the CPU's interrupt level, with enough state
@@ -152,8 +152,8 @@ module DipTB;
     integer dpi, dma_writes = 0;
     initial for (dpi = 0; dpi < 128; dpi = dpi + 1) dma_page[dpi] = 0;
     always @(posedge in_clk)
-        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on) begin
-            dma_page[dut.addressBus[17:11]] = dma_page[dut.addressBus[17:11]] + 1;
+        if (dut.cpu_en && dut.machine.writeEnBus && dut.machine.cpu.dma_on) begin
+            dma_page[dut.machine.addressBus[17:11]] = dma_page[dut.machine.addressBus[17:11]] + 1;
             dma_writes = dma_writes + 1;
         end
 
@@ -169,11 +169,11 @@ module DipTB;
         cpu_page[cpi] = 0; mvf_page[cpi] = 0;
     end
     always @(posedge in_clk)
-        if (dut.cpu_en && dut.writeEnBus && !dut.cpu.dma_on) begin
-            cpu_page[dut.addressBus[17:11]] = cpu_page[dut.addressBus[17:11]] + 1;
+        if (dut.cpu_en && dut.machine.writeEnBus && !dut.machine.cpu.dma_on) begin
+            cpu_page[dut.machine.addressBus[17:11]] = cpu_page[dut.machine.addressBus[17:11]] + 1;
             cpu_writes = cpu_writes + 1;
-            if (dut.instruments.pc_live0 == 16'hef2a) begin
-                mvf_page[dut.addressBus[17:11]] = mvf_page[dut.addressBus[17:11]] + 1;
+            if (dut.machine.instruments.pc_live0 == 16'hef2a) begin
+                mvf_page[dut.machine.addressBus[17:11]] = mvf_page[dut.machine.addressBus[17:11]] + 1;
                 mvf_writes = mvf_writes + 1;
             end
         end
@@ -186,12 +186,12 @@ module DipTB;
     integer cf40_writes = 0;
     reg [18:0] mvf_lo_c8 = 19'h7ffff, mvf_hi_c8 = 0;
     always @(posedge in_clk)
-        if (dut.cpu_en && dut.writeEnBus) begin
-            if (dut.addressBus >= 19'h0cf40 && dut.addressBus <= 19'h0cf4f)
+        if (dut.cpu_en && dut.machine.writeEnBus) begin
+            if (dut.machine.addressBus >= 19'h0cf40 && dut.machine.addressBus <= 19'h0cf4f)
                 cf40_writes = cf40_writes + 1;
-            if (dut.addressBus[18:11] == 8'h19) begin
-                if (dut.addressBus < mvf_lo_c8) mvf_lo_c8 = dut.addressBus;
-                if (dut.addressBus > mvf_hi_c8) mvf_hi_c8 = dut.addressBus;
+            if (dut.machine.addressBus[18:11] == 8'h19) begin
+                if (dut.machine.addressBus < mvf_lo_c8) mvf_lo_c8 = dut.machine.addressBus;
+                if (dut.machine.addressBus > mvf_hi_c8) mvf_hi_c8 = dut.machine.addressBus;
             end
         end
 
@@ -205,16 +205,16 @@ module DipTB;
     integer run_n = 0, run_printed = 0;
     reg in_run = 0;
     always @(posedge in_clk) begin
-        if (dut.cpu_en && dut.writeEnBus && dut.instruments.pc_live0 == 16'hef2a) begin
-            if (in_run && dut.addressBus == run_last + 1) begin
-                run_last <= dut.addressBus; run_n = run_n + 1;
+        if (dut.cpu_en && dut.machine.writeEnBus && dut.machine.instruments.pc_live0 == 16'hef2a) begin
+            if (in_run && dut.machine.addressBus == run_last + 1) begin
+                run_last <= dut.machine.addressBus; run_n = run_n + 1;
             end else begin
                 if (in_run && run_printed < 300 && hawk_cmds >= 140) begin
                     run_printed = run_printed + 1;
                     $display("MVF %05h..%05h  %0d bytes  (%0d disk commands)",
                              run_lo, run_last, run_n, hawk_cmds);
                 end
-                run_lo <= dut.addressBus; run_last <= dut.addressBus; run_n = 1;
+                run_lo <= dut.machine.addressBus; run_last <= dut.machine.addressBus; run_n = 1;
                 in_run <= 1;
             end
         end
@@ -228,11 +228,11 @@ module DipTB;
     reg [18:0] dma_lo_e8 = 19'h7ffff, dma_hi_e8 = 0;
     integer dma_e8 = 0;
     always @(posedge in_clk)
-        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on &&
-            dut.addressBus[18:11] == 8'h1d) begin
+        if (dut.cpu_en && dut.machine.writeEnBus && dut.machine.cpu.dma_on &&
+            dut.machine.addressBus[18:11] == 8'h1d) begin
             dma_e8 = dma_e8 + 1;
-            if (dut.addressBus < dma_lo_e8) dma_lo_e8 = dut.addressBus;
-            if (dut.addressBus > dma_hi_e8) dma_hi_e8 = dut.addressBus;
+            if (dut.machine.addressBus < dma_lo_e8) dma_lo_e8 = dut.machine.addressBus;
+            if (dut.machine.addressBus > dma_hi_e8) dma_hi_e8 = dut.machine.addressBus;
         end
 
     // Every access to the one byte the walk reads wrongly, writes and reads
@@ -242,16 +242,16 @@ module DipTB;
     // and the ordering here tells the two apart.
     integer e55_n = 0;
     always @(posedge in_clk)
-        if ($test$plusargs("e55") && dut.cpu_en && dut.addressBus == 19'h0ed55 &&
+        if ($test$plusargs("e55") && dut.cpu_en && dut.machine.addressBus == 19'h0ed55 &&
             e55_n < 60) begin
-            if (dut.writeEnBus) begin
+            if (dut.machine.writeEnBus) begin
                 e55_n = e55_n + 1;
                 $display("E55 WRITE <= %02h  (%0d disk commands) dma_on=%b",
-                         dut.data_c2r, hawk_cmds, dut.cpu.dma_on);
-            end else if (dut.bus_read_strobe) begin
+                         dut.machine.data_c2r, hawk_cmds, dut.machine.cpu.dma_on);
+            end else if (dut.machine.bus_read_strobe) begin
                 e55_n = e55_n + 1;
                 $display("E55 READ  => %02h  (%0d disk commands) pc=%04h",
-                         dut.data_r2c, hawk_cmds, dut.instruments.pc_live0);
+                         dut.machine.data_r2c, hawk_cmds, dut.machine.instruments.pc_live0);
             end
         end
 
@@ -261,16 +261,16 @@ module DipTB;
     // exactly what the failing sectors deliver, where the image file holds 00.
     integer prev_fetch = 0, prev_hit = 0, ic_n = 0;
     always @(posedge in_clk)
-        if ($test$plusargs("imgcache") && dut.cpu_en && dut.writeEnBus &&
-            dut.addressBus == 19'h3f148 && dut.data_c2r[2:0] == 3'd0 &&
+        if ($test$plusargs("imgcache") && dut.cpu_en && dut.machine.writeEnBus &&
+            dut.machine.addressBus == 19'h3f148 && dut.machine.data_c2r[2:0] == 3'd0 &&
             hawk_cmds >= 148 && ic_n < 30) begin
             ic_n = ic_n + 1;
             $display("IMG read sector %04h at cmd %0d: fetches=%0d (+%0d) hits=%0d (+%0d)",
-                     dut.hawk.sector_addr, hawk_cmds,
-                     dut.image.dbg_fetches, dut.image.dbg_fetches - prev_fetch,
-                     dut.image.dbg_hits, dut.image.dbg_hits - prev_hit);
-            prev_fetch = dut.image.dbg_fetches;
-            prev_hit = dut.image.dbg_hits;
+                     dut.machine.hawk.sector_addr, hawk_cmds,
+                     dut.machine.image.dbg_fetches, dut.machine.image.dbg_fetches - prev_fetch,
+                     dut.machine.image.dbg_hits, dut.machine.image.dbg_hits - prev_hit);
+            prev_fetch = dut.machine.image.dbg_fetches;
+            prev_hit = dut.machine.image.dbg_hits;
         end
 
     // Each DMA transfer as a destination range. The staging area is two 400 byte
@@ -282,16 +282,16 @@ module DipTB;
     integer dr_n = 0, dr_printed = 0;
     reg dr_in = 0;
     always @(posedge in_clk) begin
-        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on) begin
-            if (dr_in && dut.addressBus == dr_last + 1) begin
-                dr_last <= dut.addressBus; dr_n = dr_n + 1;
+        if (dut.cpu_en && dut.machine.writeEnBus && dut.machine.cpu.dma_on) begin
+            if (dr_in && dut.machine.addressBus == dr_last + 1) begin
+                dr_last <= dut.machine.addressBus; dr_n = dr_n + 1;
             end else begin
                 if (dr_in && dr_printed < 40 && hawk_cmds >= 146) begin
                     dr_printed = dr_printed + 1;
                     $display("DMAXFER %05h..%05h  %0d bytes  (sector %04h, %0d disk commands)",
-                             dr_lo, dr_last, dr_n, dut.hawk.sector_addr, hawk_cmds);
+                             dr_lo, dr_last, dr_n, dut.machine.hawk.sector_addr, hawk_cmds);
                 end
-                dr_lo <= dut.addressBus; dr_last <= dut.addressBus; dr_n = 1;
+                dr_lo <= dut.machine.addressBus; dr_last <= dut.machine.addressBus; dr_n = 1;
                 dr_in <= 1;
             end
         end
@@ -304,18 +304,18 @@ module DipTB;
     // mistake that produced three bugs in DiskImage.
     integer fb_n = 0;
     always @(posedge in_clk)
-        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on &&
-            dut.hawk.sector_addr == 16'h04b8 && fb_n < 10) begin
+        if (dut.cpu_en && dut.machine.writeEnBus && dut.machine.cpu.dma_on &&
+            dut.machine.hawk.sector_addr == 16'h04b8 && fb_n < 10) begin
             fb_n = fb_n + 1;
             $display("SECBYTE %0d: %05h <= %02h  (buf_index=%0d)",
-                     fb_n - 1, dut.addressBus, dut.data_c2r, dut.hawk.buf_index);
+                     fb_n - 1, dut.machine.addressBus, dut.machine.data_c2r, dut.machine.hawk.buf_index);
         end
 
     // And a count of writes anywhere in the 0x0c000 page, so "nothing writes the
     // page at all" is told apart from "the page is written but not this part".
     integer page_c_writes = 0;
     always @(posedge in_clk)
-        if (dut.cpu_en && dut.writeEnBus && dut.addressBus[18:12] == 7'h0c)
+        if (dut.cpu_en && dut.machine.writeEnBus && dut.machine.addressBus[18:12] == 7'h0c)
             page_c_writes = page_c_writes + 1;
 
     // The last 32 microcode words before the first level change. The fetch trail
@@ -328,7 +328,7 @@ module DipTB;
     integer ui;
     initial for (ui = 0; ui < 256; ui = ui + 1) uc_ring[ui] = 11'h7ff;
     always @(posedge in_clk) if (dut.cpu_en) begin
-        uc_ring[uc_head] <= dut.dbg_uc_address;
+        uc_ring[uc_head] <= dut.machine.dbg_uc_address;
         uc_head <= uc_head + 1;
     end
     reg uc_shown = 0;
@@ -344,11 +344,11 @@ module DipTB;
     reg [10:0] p_uc;
     reg [15:0] p_pc;
     always @(posedge in_clk) if (dut.cpu_en) begin
-        p_e6 <= dut.cpu.e6; p_d2d3 <= dut.cpu.d2d3; p_dp <= dut.cpu.DPBus;
-        p_f1 <= dut.cpu.alu1_yout; p_f0 <= dut.cpu.alu0_yout;
-        p_uc <= dut.dbg_uc_address; p_pc <= dut.instruments.pc_live0;
-        lvl_prev <= dut.cpu.interrupt_level;
-        if (dut.cpu.interrupt_level !== lvl_prev && $test$plusargs("leveltrace")) begin
+        p_e6 <= dut.machine.cpu.e6; p_d2d3 <= dut.machine.cpu.d2d3; p_dp <= dut.machine.cpu.DPBus;
+        p_f1 <= dut.machine.cpu.alu1_yout; p_f0 <= dut.machine.cpu.alu0_yout;
+        p_uc <= dut.machine.dbg_uc_address; p_pc <= dut.machine.instruments.pc_live0;
+        lvl_prev <= dut.machine.cpu.interrupt_level;
+        if (dut.machine.cpu.interrupt_level !== lvl_prev && $test$plusargs("leveltrace")) begin
             // The level is loaded from the F bus at e6 == 3, and the F bus
             // comes from whichever DP source d2d3 names - so d2d3, the DP bus
             // and the F bus together say where the new level came from, which
@@ -357,12 +357,12 @@ module DipTB;
             // interrupt enable, so a DMA request can start the entry path on a
             // machine whose interrupts are off.
             $display("LEVEL %0d -> %0d at pc=%04h uc=%03h mar=%04h | d2d3=%0d dp=%02h f=%02h%02h e6=%0d | e7=%0d k13=%0d k9en=%b k9=%0d | f11=%02h dma_req=%b int_reqn=%b entry=%02h",
-                     lvl_prev, dut.cpu.interrupt_level, p_pc,
-                     p_uc, dut.cpu.dbg_memory_address,
+                     lvl_prev, dut.machine.cpu.interrupt_level, p_pc,
+                     p_uc, dut.machine.cpu.dbg_memory_address,
                      p_d2d3, p_dp, p_f1, p_f0, p_e6,
-                     dut.cpu.e7, dut.cpu.k13, dut.cpu.k9_enable, dut.cpu.k9,
-                     dut.cpu.f11, dut.cpu.dma_req, dut.int_reqn,
-                     dut.cpu.page_table_out);
+                     dut.machine.cpu.e7, dut.machine.cpu.k13, dut.machine.cpu.k9_enable, dut.machine.cpu.k9,
+                     dut.machine.cpu.f11, dut.machine.cpu.dma_req, dut.machine.int_reqn,
+                     dut.machine.cpu.page_table_out);
             if (!uc_shown) begin
                 uc_shown <= 1;
                 // What the machine actually has at the instruction it trapped on.
@@ -388,7 +388,7 @@ module DipTB;
             $write("\n");
             $write("     memory at physical 0x0cf40:");
             for (ui = 0; ui < 16; ui = ui + 1)
-                $write(" %02h", dut.ram.ram_cells[13'h0f40 + ui]);
+                $write(" %02h", dut.machine.ram.ram_cells[13'h0f40 + ui]);
             $write("   (the reference has 49 15 e5 65 a1 09 32 c0 47 9c ef 00 00 10 55 ba)\n");
             $write("     the 256 microcode words before it, oldest first:");
                 for (ui = 0; ui < 256; ui = ui + 1) begin
@@ -406,14 +406,14 @@ module DipTB;
     // is ever recorded, the level it enters was never going to have a program
     // counter.
     integer other_level_writes = 0;
-    always @(posedge in_clk) if (dut.cpu_en && dut.cpu.k11 == 3'd4) begin
-        if (dut.cpu.reg_addr_hi != dut.cpu.interrupt_level) begin
+    always @(posedge in_clk) if (dut.cpu_en && dut.machine.cpu.k11 == 3'd4) begin
+        if (dut.machine.cpu.reg_addr_hi != dut.machine.cpu.interrupt_level) begin
             other_level_writes = other_level_writes + 1;
             if ($test$plusargs("regtrace") && other_level_writes < 60)
                 $display("REG level %0d reg %0d <= %02h  (running level %0d) at pc=%04h",
-                         dut.cpu.reg_addr_hi, dut.cpu.register_index[3:1],
-                         dut.cpu.result_register, dut.cpu.interrupt_level,
-                         dut.instruments.pc_live0);
+                         dut.machine.cpu.reg_addr_hi, dut.machine.cpu.register_index[3:1],
+                         dut.machine.cpu.result_register, dut.machine.cpu.interrupt_level,
+                         dut.machine.instruments.pc_live0);
         end
     end
 
@@ -423,13 +423,13 @@ module DipTB;
     // another half hour. This answers it in one line.
     integer beat = 0, beat_instr = 0;
     always @(posedge in_clk) if ($test$plusargs("heartbeat")) begin
-        if (dut.instruments.instruction_fetch) beat_instr = beat_instr + 1;
+        if (dut.machine.instruments.instruction_fetch) beat_instr = beat_instr + 1;
         beat = beat + 1;
         if (beat == 2_700_000) begin        // 100ms at 27MHz
             beat = 0;
             $display("[%0t] pc=%04h uc=%03h instructions=%0d disk commands=%0d timeouts=%0d",
-                     $time, dut.instruments.pc_live0, dut.dbg_uc_address, beat_instr, hawk_cmds,
-                     dut.dbg_psram_timeouts);
+                     $time, dut.machine.instruments.pc_live0, dut.machine.dbg_uc_address, beat_instr, hawk_cmds,
+                     dut.machine.dbg_psram_timeouts);
         end
     end
 
@@ -440,20 +440,20 @@ module DipTB;
     // Z is inside the CPU where nothing outside can see it.
     integer wt = 0;
     always @(posedge in_clk) if ($test$plusargs("waittrace") && dut.cpu_en)
-        if (dut.instruments.pc_live0 >= 16'h04f5 && dut.instruments.pc_live0 <= 16'h04f9 &&
-            dut.bus_read_strobe && wt < 40) begin
+        if (dut.machine.instruments.pc_live0 >= 16'h04f5 && dut.machine.instruments.pc_live0 <= 16'h04f9 &&
+            dut.machine.bus_read_strobe && wt < 40) begin
             wt = wt + 1;
             $display("WAIT pc=%04h reads %05h => %02h | hawk busy=%b cmd=%0d xfer=%b waiting=%b kind=%0d left=%0d stuck=%0d | dma req=%b hold=%b on=%b f11=%02h | img busy=%b state=%0d failed=%b | sd state=%0d r1=%02h lba=%0d read=%b err=%b | psram busy=%b | shifter idx=%0d active=%b bits=%0d div=%0d start=%b done=%b cs=%b clk=%b miso=%b",
-                     dut.instruments.pc_live0, dut.addressBus, dut.data_r2c,
-                     dut.hawk.busy, dut.hawk.command,
-                     dut.hawk.transferring, dut.hawk.waiting, dut.hawk.wait_kind,
-                     dut.hawk.bytes_left, dut.hawk.stuck,
-                     dut.hawk_req, dut.hawk_hold, dut.cpu.dma_on, dut.cpu.f11,
-                     dut.image.busy, dut.image.dbg_state, dut.image.failed,
-                     dut.sd_dbg_state, dut.sd_dbg_r1, dut.card_lba,
-                     dut.img_sd_read, dut.sd_error, dut.psram.busy_raw,
-                     dut.sd.byte_index, dut.sd.byte_active, dut.sd.bit_count,
-                     dut.sd.divider, dut.sd.start_byte, dut.sd.byte_done,
+                     dut.machine.instruments.pc_live0, dut.machine.addressBus, dut.machine.data_r2c,
+                     dut.machine.hawk.busy, dut.machine.hawk.command,
+                     dut.machine.hawk.transferring, dut.machine.hawk.waiting, dut.machine.hawk.wait_kind,
+                     dut.machine.hawk.bytes_left, dut.machine.hawk.stuck,
+                     dut.machine.hawk_req, dut.machine.hawk_hold, dut.machine.cpu.dma_on, dut.machine.cpu.f11,
+                     dut.machine.image.busy, dut.machine.image.dbg_state, dut.machine.image.failed,
+                     dut.machine.sd_dbg_state, dut.machine.sd_dbg_r1, dut.machine.card_lba,
+                     dut.machine.img_sd_read, dut.machine.sd_error, dut.psram.busy_raw,
+                     dut.machine.sd.byte_index, dut.machine.sd.byte_active, dut.machine.sd.bit_count,
+                     dut.machine.sd.divider, dut.machine.sd.start_byte, dut.machine.sd.byte_done,
                      dut.sd_cs_n, dut.sd_clk, dut.sd_miso);
         end
 
@@ -465,16 +465,16 @@ module DipTB;
     // twice before.
     integer sr_n = 0;
     always @(posedge in_clk)
-        if ($test$plusargs("statustrace") && dut.cpu_en && dut.bus_read_strobe &&
-            dut.addressBus == 19'h3f144 &&
-            dut.instruments.pc_live0 == 16'hefee && sr_n < 80) begin
+        if ($test$plusargs("statustrace") && dut.cpu_en && dut.machine.bus_read_strobe &&
+            dut.machine.addressBus == 19'h3f144 &&
+            dut.machine.instruments.pc_live0 == 16'hefee && sr_n < 80) begin
             sr_n = sr_n + 1;
             $display("STAT pc=%04h bus=%02h  hawk: busy=%b seeking=%b real_stat4=%02h cmd=%0d xfer=%b waiting=%b",
-                     dut.instruments.pc_live0, dut.data_r2c,
-                     dut.hawk.busy, dut.hawk.seeking,
-                     { dut.hawk.media_error, dut.hawk.verify_fail, 6'b0 } |
-                       { 7'b0, dut.hawk.busy | dut.hawk.seeking },
-                     dut.hawk.command, dut.hawk.transferring, dut.hawk.waiting);
+                     dut.machine.instruments.pc_live0, dut.machine.data_r2c,
+                     dut.machine.hawk.busy, dut.machine.hawk.seeking,
+                     { dut.machine.hawk.media_error, dut.machine.hawk.verify_fail, 6'b0 } |
+                       { 7'b0, dut.machine.hawk.busy | dut.machine.hawk.seeking },
+                     dut.machine.hawk.command, dut.machine.hawk.transferring, dut.machine.hawk.waiting);
         end
 
     // Every write into the page the missing code belongs in. The reference has
@@ -484,12 +484,12 @@ module DipTB;
     // sector data arrives by DMA.
     integer wr_n = 0;
     always @(posedge in_clk)
-        if ($test$plusargs("cfwrite") && dut.cpu_en && dut.writeEnBus &&
-            dut.addressBus >= 19'h0cf00 && dut.addressBus <= 19'h0cfff && wr_n < 40) begin
+        if ($test$plusargs("cfwrite") && dut.cpu_en && dut.machine.writeEnBus &&
+            dut.machine.addressBus >= 19'h0cf00 && dut.machine.addressBus <= 19'h0cfff && wr_n < 40) begin
             wr_n = wr_n + 1;
             $display("CFWR %05h <= %02h  at pc=%04h uc=%03h dma_on=%b",
-                     dut.addressBus, dut.data_c2r, dut.instruments.pc_live0,
-                     dut.dbg_uc_address, dut.cpu.dma_on);
+                     dut.machine.addressBus, dut.machine.data_c2r, dut.machine.instruments.pc_live0,
+                     dut.machine.dbg_uc_address, dut.machine.cpu.dma_on);
         end
     // The same list walk this design gets wrong. ef39 is LDBB [Z++]; the
     // reference reads 00, 00, 00 then 80 - bit 7 set is the end of the list -
@@ -498,12 +498,12 @@ module DipTB;
     // wrong, and the bytes are the ones the DMA just delivered.
     integer lw_n = 0;
     always @(posedge in_clk)
-        if ($test$plusargs("listwalk") && dut.cpu_en && dut.bus_read_strobe &&
-            dut.instruments.pc_live0 == 16'hef39 && hawk_cmds >= 150 && lw_n < 80) begin
+        if ($test$plusargs("listwalk") && dut.cpu_en && dut.machine.bus_read_strobe &&
+            dut.machine.instruments.pc_live0 == 16'hef39 && hawk_cmds >= 150 && lw_n < 80) begin
             lw_n = lw_n + 1;
             $display("LIST %05h => %02h   (%0d disk commands)  cc=%04b flags=%08b",
-                     dut.addressBus, dut.data_r2c, hawk_cmds,
-                     dut.cpu.condition_codes, dut.cpu.flags_register);
+                     dut.machine.addressBus, dut.machine.data_r2c, hawk_cmds,
+                     dut.machine.cpu.condition_codes, dut.machine.cpu.flags_register);
         end
 
     // +busytrace: how long the controller actually holds busy for each command,
@@ -514,15 +514,15 @@ module DipTB;
     reg prev_busy = 0;
     integer busy_start = 0, bt_n = 0;
     always @(posedge in_clk) if ($test$plusargs("busytrace")) begin
-        prev_busy <= dut.hawk.busy;
-        if (dut.hawk.busy && !prev_busy) busy_start = $time / 10;
-        if (!dut.hawk.busy && prev_busy && bt_n < 40) begin
+        prev_busy <= dut.machine.hawk.busy;
+        if (dut.machine.hawk.busy && !prev_busy) busy_start = $time / 10;
+        if (!dut.machine.hawk.busy && prev_busy && bt_n < 40) begin
             bt_n = bt_n + 1;
             $display("BUSY cmd=%0d adr=%04h held for %0d clocks | xfer=%b waiting=%b kind=%0d left=%0d | img state=%0d fetches=%0d",
-                     dut.hawk.command, dut.hawk.sector_addr,
+                     dut.machine.hawk.command, dut.machine.hawk.sector_addr,
                      ($time / 10 - busy_start) / 37,
-                     dut.hawk.transferring, dut.hawk.waiting, dut.hawk.wait_kind,
-                     dut.hawk.bytes_left, dut.image.dbg_state, dut.image.dbg_fetches);
+                     dut.machine.hawk.transferring, dut.machine.hawk.waiting, dut.machine.hawk.wait_kind,
+                     dut.machine.hawk.bytes_left, dut.machine.image.dbg_state, dut.machine.image.dbg_fetches);
         end
     end
 
@@ -534,13 +534,13 @@ module DipTB;
     // across two enabled cycles, hence the edge detect.
     reg cmd_seen = 0;
     always @(posedge in_clk) begin
-        if (dut.cpu_en && dut.writeEnBus && dut.addressBus[18:0] == 19'h3f148) begin
+        if (dut.cpu_en && dut.machine.writeEnBus && dut.machine.addressBus[18:0] == 19'h3f148) begin
             if (!cmd_seen) begin
                 hawk_cmds = hawk_cmds + 1;
                 if ($test$plusargs("hawkseq"))
                     $display("cmd=%02h unit=%01h adr=%04h wpm=%02h PC=%04h",
-                             dut.data_c2r, dut.hawk.unit, dut.hawk.sector_addr,
-                             dut.hawk.wpmask, dut.instruments.pc_live0);
+                             dut.machine.data_c2r, dut.machine.hawk.unit, dut.machine.hawk.sector_addr,
+                             dut.machine.hawk.wpmask, dut.machine.instruments.pc_live0);
             end
             cmd_seen <= 1;
         end else cmd_seen <= 0;
@@ -552,15 +552,15 @@ module DipTB;
     // invisible from the command stream alone.
     reg was_busy = 0;
     always @(posedge in_clk) if ($test$plusargs("hawkseq")) begin
-        was_busy <= dut.hawk.busy;
-        if (was_busy && !dut.hawk.busy)
+        was_busy <= dut.machine.hawk.busy;
+        if (was_busy && !dut.machine.hawk.busy)
             $display("   done cmd=%0d adr=%04h stat4=%02h stat5=%02h  img failed=%b why=%0d fetches=%0d",
-                     dut.hawk.command, dut.hawk.sector_addr,
-                     { dut.hawk.media_error, dut.hawk.verify_fail, 6'b0 } |
-                       { 7'b0, dut.hawk.busy | dut.hawk.seeking },
-                     { 1'b0, dut.hawk.write_enabled, ~dut.hawk.seeking, 1'b1,
-                       3'b000, dut.hawk.seek_done },
-                     dut.image.failed, dut.image.fail_why, dut.image.dbg_fetches);
+                     dut.machine.hawk.command, dut.machine.hawk.sector_addr,
+                     { dut.machine.hawk.media_error, dut.machine.hawk.verify_fail, 6'b0 } |
+                       { 7'b0, dut.machine.hawk.busy | dut.machine.hawk.seeking },
+                     { 1'b0, dut.machine.hawk.write_enabled, ~dut.machine.hawk.seeking, 1'b1,
+                       3'b000, dut.machine.hawk.seek_done },
+                     dut.machine.image.failed, dut.machine.image.fail_why, dut.machine.image.dbg_fetches);
     end
 
     // +maptrace: the block-to-LBA lookup, both sides. DiskImage pulses map_req
@@ -568,26 +568,26 @@ module DipTB;
     // that arrives at the wrong moment is simply lost and the image layer times
     // out and reports a media error - which the driver sees as a bad disk.
     always @(posedge in_clk) if ($test$plusargs("maptrace")) begin
-        if (dut.map_req)
-            $display("map req block=%0d  fat_state=%0d %s", dut.map_block,
-                     dut.fat_dbg_state,
-                     dut.fat_dbg_state == 0 ? "" : "<-- LOST, Fat32 is not idle");
-        if (dut.map_valid)
-            $display("map ans lba=%0d", dut.map_lba);
-        if (dut.sd_error)
+        if (dut.machine.map_req)
+            $display("map req block=%0d  fat_state=%0d %s", dut.machine.map_block,
+                     dut.machine.fat_dbg_state,
+                     dut.machine.fat_dbg_state == 0 ? "" : "<-- LOST, Fat32 is not idle");
+        if (dut.machine.map_valid)
+            $display("map ans lba=%0d", dut.machine.map_lba);
+        if (dut.machine.sd_error)
             $display("SD ERROR: card state=%0d r1=%02h  lba=%0d  (fat_read=%b img_read=%b img_write=%b)",
-                     dut.sd_dbg_state, dut.sd_dbg_r1, dut.card_lba,
-                     dut.fat_read, dut.img_sd_read, dut.img_sd_write);
+                     dut.machine.sd_dbg_state, dut.machine.sd_dbg_r1, dut.machine.card_lba,
+                     dut.machine.fat_read, dut.machine.img_sd_read, dut.machine.img_sd_write);
         // req_block, not block: the failure branch does not latch block, so
         // printing that shows whatever the *last successful* request was and
         // sends you looking in the wrong place entirely.
-        if (dut.image.failed && dut.image.dbg_state == 19)
+        if (dut.machine.image.failed && dut.machine.image.dbg_state == 19)
             $display("image FAILED wanted block=%0d of %0d  why=%0d (%0s)",
-                     dut.hawk.img_block, dut.file_blocks, dut.image.fail_why,
-                     dut.image.fail_why == 1 ? "past the end of the image" :
-                     dut.image.fail_why == 2 ? "lookup never answered" :
-                     dut.image.fail_why == 3 ? "card read error" :
-                     dut.image.fail_why == 4 ? "card write error" : "?");
+                     dut.machine.hawk.img_block, dut.machine.file_blocks, dut.machine.image.fail_why,
+                     dut.machine.image.fail_why == 1 ? "past the end of the image" :
+                     dut.machine.image.fail_why == 2 ? "lookup never answered" :
+                     dut.machine.image.fail_why == 3 ? "card read error" :
+                     dut.machine.image.fail_why == 4 ? "card write error" : "?");
     end
 
     // Does the microcode ever rejoin the fetch sequence at 0x102 without going
@@ -597,9 +597,9 @@ module DipTB;
     integer at_101 = 0, at_102 = 0, skipped_101 = 0;
     reg [10:0] uc_prev = 0;
     always @(posedge in_clk) if (dut.cpu_en) begin
-        uc_prev <= dut.dbg_uc_address;
-        if (dut.dbg_uc_address == 11'h101) at_101 = at_101 + 1;
-        if (dut.dbg_uc_address == 11'h102) begin
+        uc_prev <= dut.machine.dbg_uc_address;
+        if (dut.machine.dbg_uc_address == 11'h101) at_101 = at_101 + 1;
+        if (dut.machine.dbg_uc_address == 11'h102) begin
             at_102 = at_102 + 1;
             if (uc_prev != 11'h101) skipped_101 = skipped_101 + 1;
         end
@@ -617,8 +617,8 @@ module DipTB;
     // dbg_memory_address, not pc_live0: pc_live0 is latched from it on this same
     // edge, so reading pc_live0 here stores the *previous* fetch and the whole
     // ring lags by one.
-    always @(posedge in_clk) if (dut.instruments.instruction_fetch) begin
-        pc_ring[pc_head] <= dut.dbg_memory_address;
+    always @(posedge in_clk) if (dut.machine.instruments.instruction_fetch) begin
+        pc_ring[pc_head] <= dut.machine.dbg_memory_address;
         pc_head <= pc_head + 1;
     end
 
@@ -629,11 +629,11 @@ module DipTB;
     // waiting until the end to notice loses the cycle it happened on. This says
     // so once, immediately.
     reg mismatch_said = 0;
-    always @(posedge in_clk) if (dut.instruments.instruction_fetch && !mismatch_said) begin
-        if (pc_head != 0 && dut.instruments.pc_live0 !== pc_ring[(pc_head + 63) % 64]) begin
+    always @(posedge in_clk) if (dut.machine.instruments.instruction_fetch && !mismatch_said) begin
+        if (pc_head != 0 && dut.machine.instruments.pc_live0 !== pc_ring[(pc_head + 63) % 64]) begin
             $display("INSTRUMENT MISMATCH at %0t: pc_live0=%04h but the ring's newest is %04h (head %0d, fetching %04h)",
-                     $time, dut.instruments.pc_live0, pc_ring[(pc_head + 63) % 64],
-                     pc_head, dut.dbg_memory_address);
+                     $time, dut.machine.instruments.pc_live0, pc_ring[(pc_head + 63) % 64],
+                     pc_head, dut.machine.dbg_memory_address);
             mismatch_said <= 1;
         end
     end
@@ -647,11 +647,11 @@ module DipTB;
     reg diverged = 0;
     integer dv;
     always @(posedge in_clk)
-        if (dut.instruments.instruction_fetch && !diverged &&
-            dut.dbg_memory_address >= 16'ha080 && dut.dbg_memory_address <= 16'ha200) begin
+        if (dut.machine.instruments.instruction_fetch && !diverged &&
+            dut.machine.dbg_memory_address >= 16'ha080 && dut.machine.dbg_memory_address <= 16'ha200) begin
             diverged <= 1;
             $display("\n*** FIRST FETCH IN 0xa080-0xa200: %04h, after %0d instructions and %0d disk commands ***",
-                     dut.dbg_memory_address, at_101, hawk_cmds);
+                     dut.machine.dbg_memory_address, at_101, hawk_cmds);
             $write("  the 64 fetches before it, oldest first:");
             for (dv = 0; dv < 64; dv = dv + 1) begin
                 if (dv % 8 == 0) $write("\n   ");
@@ -669,7 +669,7 @@ module DipTB;
     reg [15:0] loop_hits [0:15];
     integer lh;
     initial for (lh = 0; lh < 16; lh = lh + 1) loop_hits[lh] = 0;
-    always @(posedge in_clk) if (dut.img_mounted) begin
+    always @(posedge in_clk) if (dut.machine.img_mounted) begin
         if (hawk_cmds != last_cmds) begin
             last_cmds = hawk_cmds;
             since_cmd = 0;
@@ -677,7 +677,7 @@ module DipTB;
         if (since_cmd == 400_000_000) begin      // ~15 seconds of simulated time
             $display("\n*** NO DISK COMMAND FOR 15 SIMULATED SECONDS ***");
             $display("  %0d disk commands, %0d instructions, pc=%04h uc=%03h",
-                     hawk_cmds, at_101, dut.instruments.pc_live0, dut.dbg_uc_address);
+                     hawk_cmds, at_101, dut.machine.instruments.pc_live0, dut.machine.dbg_uc_address);
             $write("  the last 64 fetches, oldest first:");
             for (dv = 0; dv < 64; dv = dv + 1) begin
                 if (dv % 8 == 0) $write("\n   ");
@@ -694,21 +694,21 @@ module DipTB;
     // thing being looked for happens, and says where.
     reg mounted_seen = 0;
     integer idle_clocks = 0;
-    always @(posedge in_clk) if (dut.img_mounted) mounted_seen <= 1;
+    always @(posedge in_clk) if (dut.machine.img_mounted) mounted_seen <= 1;
     always @(posedge in_clk) begin
-        if (dut.instruments.instruction_fetch) idle_clocks <= 0;
+        if (dut.machine.instruments.instruction_fetch) idle_clocks <= 0;
         else if (mounted_seen) idle_clocks <= idle_clocks + 1;
         if (idle_clocks == 20_000_000) begin       // three quarters of a second
             $display("\n*** THE CORE STOPPED FETCHING ***");
             $display("  last instruction %04h, opcode %02h, microcode %03h, MAR %04h",
-                     dut.instruments.pc_live0, dut.instruments.last_opcode, dut.dbg_uc_address,
-                     dut.cpu.dbg_memory_address);
+                     dut.machine.instruments.pc_live0, dut.machine.instruments.last_opcode, dut.machine.dbg_uc_address,
+                     dut.machine.cpu.dbg_memory_address);
             $display("  f11=%02h dma_on=%b hawk: req=%b hold=%b busy=%b cmd=%0d sector=%04h",
-                     dut.cpu.f11, dut.cpu.dma_on, dut.hawk_req, dut.hawk_hold,
-                     dut.hawk.busy, dut.hawk.command, dut.hawk.sector_addr);
+                     dut.machine.cpu.f11, dut.machine.cpu.dma_on, dut.machine.hawk_req, dut.machine.hawk_hold,
+                     dut.machine.hawk.busy, dut.machine.hawk.command, dut.machine.hawk.sector_addr);
             $display("  image: state=%0d busy=%b failed=%b why=%0d fetches=%0d",
-                     dut.image.dbg_state, dut.image.busy, dut.image.failed,
-                     dut.image.fail_why, dut.img_fetches);
+                     dut.machine.image.dbg_state, dut.machine.image.busy, dut.machine.image.failed,
+                     dut.machine.image.fail_why, dut.machine.img_fetches);
             // A jump to 0x0000 in the fetch trail is the signature of an
             // interrupt taken to a level whose P register is zero, so the state
             // that decides whether one could have been taken belongs in the
@@ -716,10 +716,10 @@ module DipTB;
             // "anything wants attention" condition by different routes, and
             // only one of them is gated on int_enabled.
             $display("  interrupts: level=%0d f11[0]=%b int_reqn=%b dma_int=%b dmaint=%b   hawk int: en=%b pend=%b   mux int pend=%b",
-                     dut.cpu.interrupt_level, dut.cpu.int_enabled, dut.int_reqn,
-                     dut.cpu.dma_int, dut.cpu.dmaint,
-                     dut.hawk.int_enabled, dut.hawk.int_pending,
-                     dut.mux0.int_pending);
+                     dut.machine.cpu.interrupt_level, dut.machine.cpu.int_enabled, dut.machine.int_reqn,
+                     dut.machine.cpu.dma_int, dut.machine.cpu.dmaint,
+                     dut.machine.hawk.int_enabled, dut.machine.hawk.int_pending,
+                     dut.machine.mux0.int_pending);
             $display("  register writes aimed at another level: %0d", other_level_writes);
             $display("  page table: %0d entries written, %0d of them with the write-tracked bit set; the bit read set on %0d cycles",
                      pt_writes, pt_writes_bit7, pt_read_bit7);
@@ -728,16 +728,16 @@ module DipTB;
             // returns ff and so does every later read of the same line. That is
             // exactly what the failing list walk sees, so the count matters.
             $display("  bridge timeouts: %0d (last where: %0h)",
-                     dut.dbg_psram_timeouts, dut.psram_bus.dbg_timeout_where);
+                     dut.machine.dbg_psram_timeouts, dut.machine.psram_bus.dbg_timeout_where);
             $display("  bridge: need=%b state=%0d   instructions so far %0d",
-                     dut.psram_bus.dbg_need, dut.psram_bus.dbg_state, at_101);
+                     dut.machine.psram_bus.dbg_need, dut.machine.psram_bus.dbg_state, at_101);
             // Both instruments, side by side. They are built from the same
             // instruction_fetch but in different files, so a disagreement means
             // one of them is wrong and it matters which: the board's trail is
             // what the hardware reports on trigger byte 0x05.
             $display("  pc_live1=%04h pc_live0=%04h   board trail %04h %04h %04h %04h %04h (head %0d)",
-                     dut.instruments.pc_live1, dut.instruments.pc_live0,
-                     dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0, pc_head);
+                     dut.machine.instruments.pc_live1, dut.machine.instruments.pc_live0,
+                     dut.machine.instruments.fh4, dut.machine.instruments.fh3, dut.machine.instruments.fh2, dut.machine.instruments.fh1, dut.machine.instruments.fh0, pc_head);
             $write("  the last 64 instruction fetches, oldest first:");
             for (pk = 0; pk < 64; pk = pk + 1) begin
                 if (pk % 8 == 0) $write("\n   ");
@@ -758,28 +758,28 @@ module DipTB;
     reg bp_arm = 0, bp_done = 0, bp_wr = 0;
     integer bp_fd = 0, bp_n = 0;
     reg [15:0] bp_last = 16'hffff;
-    wire bp_write = dut.cpu_en && dut.writeEnBus && dut.addressBus == 19'h3f201;
+    wire bp_write = dut.cpu_en && dut.machine.writeEnBus && dut.machine.addressBus == 19'h3f201;
     always @(posedge in_clk) if ($test$plusargs("bannerpath")) begin
         bp_wr <= bp_write;
         if (bp_write && !bp_wr) begin
-            if (!bp_arm && !bp_done && dut.data_c2r == BANNER_ARM) begin
+            if (!bp_arm && !bp_done && dut.machine.data_c2r == BANNER_ARM) begin
                 bp_arm <= 1;
                 bp_fd = $fopen("bannerpath.txt", "w");
                 $display("bannerpath: armed on the first %02h at pc %04h",
-                         BANNER_ARM, dut.instruments.pc_live0);
+                         BANNER_ARM, dut.machine.instruments.pc_live0);
             end else if (bp_arm) begin
                 bp_arm <= 0; bp_done <= 1; $fclose(bp_fd);
                 $display("bannerpath: second console write (%02h) after %0d entries",
-                         dut.data_c2r, bp_n);
+                         dut.machine.data_c2r, bp_n);
                 // The whole question is what happens between those two writes,
                 // so there is nothing to learn from running on.
                 $finish;
             end
         end
-        if (bp_arm && dut.instruments.instruction_fetch && bp_n < 400000) begin
-            if (dut.dbg_memory_address !== bp_last) begin
-                $fwrite(bp_fd, "%0h\n", dut.dbg_memory_address);
-                bp_last <= dut.dbg_memory_address;
+        if (bp_arm && dut.machine.instruments.instruction_fetch && bp_n < 400000) begin
+            if (dut.machine.dbg_memory_address !== bp_last) begin
+                $fwrite(bp_fd, "%0h\n", dut.machine.dbg_memory_address);
+                bp_last <= dut.machine.dbg_memory_address;
                 bp_n = bp_n + 1;
             end
         end
@@ -789,7 +789,7 @@ module DipTB;
     // reaches the loaded code or does not, and the serial line says nothing about
     // which.
     always @(posedge in_clk) if ($test$plusargs("pctrace"))
-        if (dut.instruments.instruction_fetch) $display("pc %h", dut.instruments.pc_live0);
+        if (dut.machine.instruments.instruction_fetch) $display("pc %h", dut.machine.instruments.pc_live0);
 
     localparam BITP = 27_000_000/19200 + 1;
     integer i;
@@ -852,26 +852,26 @@ module DipTB;
         // collides with its output, so the serial line cannot check it. Check it
         // against the testbench's own ring instead, which is built from the same
         // instruction_fetch but independently.
-        if ({dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0} !==
+        if ({dut.machine.instruments.fh4, dut.machine.instruments.fh3, dut.machine.instruments.fh2, dut.machine.instruments.fh1, dut.machine.instruments.fh0} !==
             {pc_ring[(pc_head + 59) % 64], pc_ring[(pc_head + 60) % 64],
              pc_ring[(pc_head + 61) % 64], pc_ring[(pc_head + 62) % 64],
              pc_ring[(pc_head + 63) % 64]})
             $display("FAIL: the fetch trail disagrees with the testbench's ring:\n  board %04h %04h %04h %04h %04h\n  ring  %04h %04h %04h %04h %04h",
-                     dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0,
+                     dut.machine.instruments.fh4, dut.machine.instruments.fh3, dut.machine.instruments.fh2, dut.machine.instruments.fh1, dut.machine.instruments.fh0,
                      pc_ring[(pc_head + 59) % 64], pc_ring[(pc_head + 60) % 64],
                      pc_ring[(pc_head + 61) % 64], pc_ring[(pc_head + 62) % 64],
                      pc_ring[(pc_head + 63) % 64]);
         else
             $display("ok: the fetch trail matches, last five fetches %04h %04h %04h %04h %04h",
-                     dut.instruments.fh4, dut.instruments.fh3, dut.instruments.fh2, dut.instruments.fh1, dut.instruments.fh0);
+                     dut.machine.instruments.fh4, dut.machine.instruments.fh3, dut.machine.instruments.fh2, dut.machine.instruments.fh1, dut.machine.instruments.fh0);
         $display("microcode: reached 0x101 %0d times, 0x102 %0d times, of which %0d did NOT come from 0x101",
                  at_101, at_102, skipped_101);
         $display("\n--- %0d characters ---", n);
         $display("--- hawk: sector %04h, status %02h; image: %0d fetches, %0d hits ---",
-                 dut.hawk.sector_addr, dut.hawk.data_out,
-                 dut.image.dbg_fetches, dut.image.dbg_hits);
+                 dut.machine.hawk.sector_addr, dut.machine.hawk.data_out,
+                 dut.machine.image.dbg_fetches, dut.machine.image.dbg_hits);
         $display("--- hex display %02x, points %b, blank %b ---",
-                 dut.diag_hex, dut.diag_points, dut.diag_blank);
+                 dut.machine.diag_hex, dut.machine.diag_points, dut.machine.diag_blank);
         $finish;
     end
 endmodule

@@ -119,11 +119,11 @@ module TopTB;
         if (edges == 0) $display("FAIL: the top level never drives the UART pin");
         else $display("ok: the top level drives the UART pin from the MUX");
 
-        $display("received byte count before sending: %0d", dut.instruments.rx_count);
+        $display("received byte count before sending: %0d", dut.machine.instruments.rx_count);
         send_char("A");
         $display("received byte count after sending 'A': %0d (last byte %02x)",
-                 dut.instruments.rx_count, dut.dbg_rx_byte);
-        if (dut.instruments.rx_count == 0) $display("FAIL: the receive counter did not move");
+                 dut.machine.instruments.rx_count, dut.machine.dbg_rx_byte);
+        if (dut.machine.instruments.rx_count == 0) $display("FAIL: the receive counter did not move");
 
         // Hold btn2 and decode the status dump, at diag's 19200 7N1
         btn2 = 0;

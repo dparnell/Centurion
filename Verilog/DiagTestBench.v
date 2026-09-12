@@ -87,9 +87,9 @@ module DiagTestTB;
     // branches to 0x8f02 when its compare fails; with F11 bit 3 driving the MAR and
     // work AR step direction it should never get there.
     integer npass = 0, failures = 0;
-    always @(posedge dut.clock) if (dut.instruments.instruction_fetch) begin
-        if (dut.dbg_memory_address == 16'h8e88) npass = npass + 1;
-        if (dut.dbg_memory_address == 16'h8f02) begin
+    always @(posedge dut.clock) if (dut.machine.instruments.instruction_fetch) begin
+        if (dut.machine.dbg_memory_address == 16'h8e88) npass = npass + 1;
+        if (dut.machine.dbg_memory_address == 16'h8f02) begin
             failures = failures + 1;
             if (failures == 1) $display("*** compare failed on pass %0d", npass);
         end
@@ -97,9 +97,9 @@ module DiagTestTB;
     integer low_count = 0;
     reg [15:0] last_low = 16'hffff;
     always @(posedge dut.clock) begin
-        if (dut.instruments.instruction_fetch && dut.dbg_memory_address < 16'h0100) begin
+        if (dut.machine.instruments.instruction_fetch && dut.machine.dbg_memory_address < 16'h0100) begin
             low_count = low_count + 1;
-            last_low = dut.dbg_memory_address;
+            last_low = dut.machine.dbg_memory_address;
         end
     end
 
@@ -113,9 +113,9 @@ module DiagTestTB;
     reg io_last = 0;
     initial for (k = 0; k < 4096; k = k + 1) begin io_hits[k] = 0; io_writes[k] = 0; end
     always @(posedge in_clk)
-        if (dut.cpu_en && dut.addressBus[18:12] == 7'h3f) begin
-            if (dut.writeEnBus) io_writes[dut.addressBus[11:0]] = io_writes[dut.addressBus[11:0]] + 1;
-            else if (!io_last) io_hits[dut.addressBus[11:0]] = io_hits[dut.addressBus[11:0]] + 1;
+        if (dut.cpu_en && dut.machine.addressBus[18:12] == 7'h3f) begin
+            if (dut.machine.writeEnBus) io_writes[dut.machine.addressBus[11:0]] = io_writes[dut.machine.addressBus[11:0]] + 1;
+            else if (!io_last) io_hits[dut.machine.addressBus[11:0]] = io_hits[dut.machine.addressBus[11:0]] + 1;
             io_last <= 1;
         end else if (dut.cpu_en) io_last <= 0;
 
@@ -135,18 +135,18 @@ module DiagTestTB;
     integer hawk_reads = 0, hawk_writes = 0, hawk_cmds = 0;
     integer shown = 0;
     reg last_sel = 0;
-    always @(posedge in_clk) if (dut.cpu_en && dut.hawk_select) begin
-        if (dut.writeEnBus) begin
+    always @(posedge in_clk) if (dut.cpu_en && dut.machine.hawk_select) begin
+        if (dut.machine.writeEnBus) begin
             hawk_writes = hawk_writes + 1;
-            if (dut.addressBus[3:0] == 8) hawk_cmds = hawk_cmds + 1;
+            if (dut.machine.addressBus[3:0] == 8) hawk_cmds = hawk_cmds + 1;
             if ($test$plusargs("hawktrace") && shown < 60) begin
-                $display("hawk W %h <= %h", dut.addressBus[3:0], dut.data_c2r);
+                $display("hawk W %h <= %h", dut.machine.addressBus[3:0], dut.machine.data_c2r);
                 shown = shown + 1;
             end
         end else if (!last_sel) begin
             hawk_reads = hawk_reads + 1;
             if ($test$plusargs("hawktrace") && shown < 60) begin
-                $display("hawk R %h => %h", dut.addressBus[3:0], dut.hawk_data);
+                $display("hawk R %h => %h", dut.machine.addressBus[3:0], dut.machine.hawk_data);
                 shown = shown + 1;
             end
         end

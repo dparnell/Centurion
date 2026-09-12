@@ -81,7 +81,7 @@ module DmaTB;
             // byte of the transfer is still sitting in the write buffer and the
             // die reads ff for it - a failure of the instrument, not of the DMA,
             // and one that points at exactly the wrong place.
-            while (!dut.psram_bus.wbuf_empty || dut.psram_bus.busy)
+            while (!dut.machine.psram_bus.wbuf_empty || dut.machine.psram_bus.busy)
                 @(posedge in_clk);
             wrong = 0;
             for (i = 0; i < LEN; i = i + 1) begin
@@ -102,11 +102,11 @@ module DmaTB;
     endtask
 
     always @(posedge in_clk) begin
-        if (dut.dma_test_device.dmatest.done && !last_done) begin
+        if (dut.machine.dma_test_device.dmatest.done && !last_done) begin
             transfers = transfers + 1;
-            if (dut.dma_test_device.dmatest.offset !== LEN) begin
+            if (dut.machine.dma_test_device.dmatest.offset !== LEN) begin
                 $display("FAIL: transfer %0d moved %0d bytes, not %0d",
-                         transfers, dut.dma_test_device.dmatest.offset, LEN);
+                         transfers, dut.machine.dma_test_device.dmatest.offset, LEN);
                 failures = failures + 1;
             end
             if (transfers == 1) begin
@@ -114,10 +114,10 @@ module DmaTB;
                 check_buffer;
             end else begin
                 // Memory to device: the device checked every byte as it arrived.
-                if (dut.dma_test_device.dmatest.bad_count !== 0) begin
+                if (dut.machine.dma_test_device.dmatest.bad_count !== 0) begin
                     $display("FAIL: the device saw %0d wrong bytes, first at %0d: wanted %h got %h",
-                             dut.dma_test_device.dmatest.bad_count, dut.dma_test_device.dmatest.bad_offset,
-                             dut.dma_test_device.dmatest.bad_want, dut.dma_test_device.dmatest.bad_got);
+                             dut.machine.dma_test_device.dmatest.bad_count, dut.machine.dma_test_device.dmatest.bad_offset,
+                             dut.machine.dma_test_device.dmatest.bad_want, dut.machine.dma_test_device.dmatest.bad_got);
                     failures = failures + 1;
                 end else
                     $display("ok: the device read back all %0d bytes it wrote", LEN);
@@ -125,7 +125,7 @@ module DmaTB;
                 $finish;
             end
         end
-        last_done <= dut.dma_test_device.dmatest.done;
+        last_done <= dut.machine.dma_test_device.dmatest.done;
     end
 
     initial begin

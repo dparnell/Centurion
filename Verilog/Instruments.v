@@ -20,7 +20,7 @@ module Instruments #(
     // rate and the watchdog's timeout and blink all derive from it.
     parameter integer CLOCK_HZ = 27_000_000,
     parameter DIAG_TRACE = 0,
-    parameter PSRAM_SELFTEST = 0,
+    parameter MEMORY_SELFTEST = 0,
     parameter PARITY_CHECK = 1
 ) (
     input wire in_clk,                  // the board clock, for the watchdog
@@ -805,7 +805,7 @@ module Instruments #(
     // shifted a whole dump by a byte and produced nonsense, so count it again
     // after any change: 4 + 3 + 1 + 1 + 5 + 2 padding is the first word.
     //
-    // With PSRAM_SELFTEST set:
+    // With MEMORY_SELFTEST set:
     //   0  {PsramSdr state, test stage, done, pass, scan match index}
     //   1  the scan window: one bit per CK after the command, set where the bus
     //      was not idle high. The first set bit is the read latency, whatever
@@ -859,7 +859,7 @@ module Instruments #(
 
 
     // The PSRAM self test's own result, on its own dump form. It used to replace the
-    // summary in a PSRAM_SELFTEST build, which made the two builds report different
+    // summary in a MEMORY_SELFTEST build, which made the two builds report different
     // things and cost two rounds of misreading one as the other while comparing them.
     wire [79:0] selftest_payload =
         { sdr_state, psram_stage, psram_done, psram_pass, sdr_match, 2'b0,
@@ -1122,7 +1122,7 @@ module Instruments #(
                                    : (dump_pick == 2'd0 ? "P"
                                     : dump_pick == 2'd1 ? "T"
                                     : dump_pick == 2'd3 || dump_form == 2'd1
-                                        ? (PSRAM_SELFTEST && dump_pick != 2'd3 ? "S" : "D")
+                                        ? (MEMORY_SELFTEST && dump_pick != 2'd3 ? "S" : "D")
                                     : fault_caught ? "F" : "L"),
                     diag_fail_dump ? (dump_form == 2'd0 ? fail_payload
                                     : dump_form == 2'd1 ? psram_payload
@@ -1130,7 +1130,7 @@ module Instruments #(
                                    : (dump_pick == 2'd0 ? cpu_payload
                                     : dump_pick == 2'd1 ? hist_payload
                                     : dump_pick == 2'd3 || dump_form == 2'd1
-                                        ? (PSRAM_SELFTEST && dump_pick != 2'd3
+                                        ? (MEMORY_SELFTEST && dump_pick != 2'd3
                                              ? selftest_payload : disk_payload)
                                         : console_payload),
                     dump_tx, dump_active);

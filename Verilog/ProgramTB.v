@@ -117,7 +117,7 @@ module ProgramTB;
     integer k;
     begin
         k = 0;
-        while (dut.mux0.byteReady && k < 27000 * 500) begin
+        while (dut.machine.mux0.byteReady && k < 27000 * 500) begin
             @(posedge in_clk);
             k = k + 1;
         end
@@ -128,7 +128,7 @@ module ProgramTB;
     integer k;
     begin
         k = 0;
-        while (dut.instruments.rx_count == was && k < 27000 * 500) begin
+        while (dut.machine.instruments.rx_count == was && k < 27000 * 500) begin
             @(posedge in_clk);
             k = k + 1;
         end
@@ -140,7 +140,7 @@ module ProgramTB;
     reg [15:0] before;
     begin
         waitempty;                           // the last byte has been taken
-        before = dut.instruments.rx_count;
+        before = dut.machine.instruments.rx_count;
         if ($test$plusargs("typetrace")) $write("<%s>", c);
         uart_rx = 0;
         repeat (BITP) @(posedge in_clk);
@@ -191,13 +191,13 @@ module ProgramTB;
     reg [8*64:1] atname;
     initial if ($value$plusargs("addrtrace=%s", atname)) atf = $fopen(atname, "w");
     always @(posedge in_clk) if (atf) begin
-        if (dut.cpu_en && dut.psram_select) begin
+        if (dut.cpu_en && dut.machine.psram_select) begin
             // One line per bus cycle the core spends pointing at the PSRAM, but
             // only when the address moves: the address register simply stays
             // where it was, so the same cycle repeats and would swamp the trace.
-            if (!last_valid || dut.addressBus !== last_addr) begin
-                $fwrite(atf, "%0d %h\n", dut.writeEnBus, dut.addressBus);
-                last_addr <= dut.addressBus;
+            if (!last_valid || dut.machine.addressBus !== last_addr) begin
+                $fwrite(atf, "%0d %h\n", dut.machine.writeEnBus, dut.machine.addressBus);
+                last_addr <= dut.machine.addressBus;
                 last_valid <= 1;
             end
         end
@@ -208,25 +208,25 @@ module ProgramTB;
     // the receiver is holding, so a read the program did not ask for loses a
     // character.
     always @(posedge in_clk) if ($test$plusargs("rxtrace"))
-        if (dut.mux0.read_data_register)
-            $display("\nrx read at pc=%h mar=%h ready=%b", dut.instruments.pc_live0,
-                     dut.addressBus, dut.mux0.byteReady);
+        if (dut.machine.mux0.read_data_register)
+            $display("\nrx read at pc=%h mar=%h ready=%b", dut.machine.instruments.pc_live0,
+                     dut.machine.addressBus, dut.machine.mux0.byteReady);
 
     // +dmatrace: the DMA path, which is otherwise entirely invisible - the CPU
     // executes the same wait loop whether a byte moved or not. This prints the
     // latch bits the transfer is gated on when they change, then a line per byte.
     reg [7:0] last_f11 = 8'hxx;
     always @(posedge in_clk) if ($test$plusargs("dmatrace")) begin
-        if (dut.cpu.f11 !== last_f11) begin
+        if (dut.machine.cpu.f11 !== last_f11) begin
             $display("f11 %b -> %b (dma_on needs bit4 set, bit2 clear) req=%b",
-                     last_f11, dut.cpu.f11, dut.cpu.dma_req);
-            last_f11 = dut.cpu.f11;
+                     last_f11, dut.machine.cpu.f11, dut.machine.cpu.dma_req);
+            last_f11 = dut.machine.cpu.f11;
         end
-        if (dut.cpu.dma_step)
+        if (dut.machine.cpu.dma_step)
             $display("dma %s mar=%h war=%h data=%h",
-                     dut.cpu.dma_device_write ? "wr" : "rd",
-                     dut.cpu.memory_address, dut.cpu.work_address,
-                     dut.cpu.dma_device_write ? dut.cpu.dma_wdata : dut.cpu.dma_rdata);
+                     dut.machine.cpu.dma_device_write ? "wr" : "rd",
+                     dut.machine.cpu.memory_address, dut.machine.cpu.work_address,
+                     dut.machine.cpu.dma_device_write ? dut.machine.cpu.dma_wdata : dut.machine.cpu.dma_rdata);
     end
 
     // +uctrace: the microsequencer itself, one line per enabled cycle, with the
@@ -235,14 +235,14 @@ module ProgramTB;
     always @(posedge in_clk) if ($test$plusargs("uctrace"))
         if (dut.cpu_en)
             $display("uc %h k9en=%b k9=%d k13=%d jsr_=%b or=%b f11=%b req=%b",
-                     dut.dbg_uc_address, dut.cpu.k9_enable, dut.cpu.k9,
-                     dut.cpu.k13, dut.cpu.jsr_, dut.cpu.seq0_orin,
-                     dut.cpu.f11, dut.cpu.dma_req);
+                     dut.machine.dbg_uc_address, dut.machine.cpu.k9_enable, dut.machine.cpu.k9,
+                     dut.machine.cpu.k13, dut.machine.cpu.jsr_, dut.machine.cpu.seq0_orin,
+                     dut.machine.cpu.f11, dut.machine.cpu.dma_req);
 
     // +pctrace: one line per instruction fetch, so a machine that stops can be
     // told from a machine that is stuck in a loop, and the address named.
     always @(posedge in_clk) if ($test$plusargs("pctrace"))
-        if (dut.instruments.instruction_fetch) $display("pc %h", dut.instruments.pc_live0);
+        if (dut.machine.instruments.instruction_fetch) $display("pc %h", dut.machine.instruments.pc_live0);
 
     // +psramtrace: say what the PSRAM bridge is doing when it holds the core
     // still for a long time, and report every timeout. A stall here is silent
@@ -253,26 +253,26 @@ module ProgramTB;
     reg [31:0] last_timeouts = 0;
     always @(posedge in_clk) begin
         ran = ran + 1;
-        if (dut.psram_bus.dbg_need) stalled = stalled + 1;
+        if (dut.machine.psram_bus.dbg_need) stalled = stalled + 1;
     end
     always @(posedge in_clk) if ($test$plusargs("psramtrace")) begin
         // Count clocks since the last instruction fetch, not since the bridge
         // last wanted something: a core that has stopped fetching is the
         // symptom, and the bridge is only one of the things that can cause it.
-        if (!dut.instruments.instruction_fetch) begin
+        if (!dut.machine.instruments.instruction_fetch) begin
             stuck = stuck + 1;
             if (stuck % 20000 == 0)
                 $display("\nno fetch for %0d clocks: pc=%h uc=%h mar=%h e7=%b | psram need=%b state=%0d busy=%b addr=%h we=%b sdr=%0d",
-                         stuck, dut.instruments.pc_live0, dut.cpu.dbg_uc_address,
-                         dut.cpu.dbg_memory_address, dut.cpu.dbg_e7,
-                         dut.psram_bus.dbg_need, dut.psram_bus.dbg_state,
-                         dut.psram_bus.busy, dut.psram_bus.address,
-                         dut.psram_bus.write_en, dut.psram.phy.state);
+                         stuck, dut.machine.instruments.pc_live0, dut.machine.cpu.dbg_uc_address,
+                         dut.machine.cpu.dbg_memory_address, dut.machine.cpu.dbg_e7,
+                         dut.machine.psram_bus.dbg_need, dut.machine.psram_bus.dbg_state,
+                         dut.machine.psram_bus.busy, dut.machine.psram_bus.address,
+                         dut.machine.psram_bus.write_en, dut.psram.phy.state);
         end else stuck = 0;
-        if (dut.psram_bus.dbg_timeouts != last_timeouts) begin
-            last_timeouts = dut.psram_bus.dbg_timeouts;
+        if (dut.machine.psram_bus.dbg_timeouts != last_timeouts) begin
+            last_timeouts = dut.machine.psram_bus.dbg_timeouts;
             $display("\npsram timeout #%0d where=%h", last_timeouts,
-                     dut.psram_bus.dbg_timeout_where);
+                     dut.machine.psram_bus.dbg_timeout_where);
         end
     end
 
@@ -282,7 +282,7 @@ module ProgramTB;
         if ($test$plusargs("psramtrace")) begin
             $display("die: %0d bursts, %0d bytes read, %0d written; bridge: %0d accesses, %0d timeouts",
                      die.bursts, die.bytes_read, die.bytes_written,
-                     dut.dbg_psram_accesses, dut.dbg_psram_timeouts);
+                     dut.machine.dbg_psram_accesses, dut.machine.dbg_psram_timeouts);
             // What the memory actually costs the machine: the core is held
             // still for every one of these clocks.
             $display("psram: core stalled %0d of %0d clocks, %0d%%",

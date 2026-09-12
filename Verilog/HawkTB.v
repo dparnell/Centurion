@@ -70,7 +70,7 @@ module HawkTB;
         begin
             wrong = 0;
             for (i = 0; i < LEN; i = i + 1) begin
-                got = dut.hawk.sector_buf[i];
+                got = dut.machine.hawk.sector_buf[i];
                 want = (i & 8'hff) ^ 8'h5a;
                 if (got !== want) begin
                     if (wrong < 4)
@@ -93,7 +93,7 @@ module HawkTB;
             // The buffers are above the 4K of low RAM, so they live in the PSRAM
             // and this goes through the bridge. Let its posted writes drain first
             // or the last byte is still in the write buffer and reads ff.
-            while (!dut.psram_bus.wbuf_empty || dut.psram_bus.busy)
+            while (!dut.machine.psram_bus.wbuf_empty || dut.machine.psram_bus.busy)
                 @(posedge in_clk);
             wrong = 0;
             for (i = 0; i < LEN; i = i + 1) begin
@@ -116,13 +116,13 @@ module HawkTB;
 
     // Every command ends with busy falling. 1 is the seek, 2 the write, 3 the read.
     always @(posedge in_clk) begin
-        if (last_busy && !dut.hawk.busy) begin
+        if (last_busy && !dut.machine.hawk.busy) begin
             commands = commands + 1;
             case (commands)
                 1: begin
-                    if (dut.hawk.seek_done !== 1'b1 || dut.hawk.seeking !== 1'b0) begin
+                    if (dut.machine.hawk.seek_done !== 1'b1 || dut.machine.hawk.seeking !== 1'b0) begin
                         $display("FAIL: after the seek, seek_done=%b seeking=%b",
-                                 dut.hawk.seek_done, dut.hawk.seeking);
+                                 dut.machine.hawk.seek_done, dut.machine.hawk.seeking);
                         failures = failures + 1;
                     end else
                         $display("ok: the seek completed and the drive is on cylinder");
@@ -136,9 +136,9 @@ module HawkTB;
                     // the driver reads this register back, and after the boot
                     // PROM loads fourteen sectors the reference reports the
                     // fourteenth rather than the fifteenth.
-                    if (dut.hawk.sector_addr !== SECTOR) begin
+                    if (dut.machine.hawk.sector_addr !== SECTOR) begin
                         $display("FAIL: after writing one sector the address is %h, not %h",
-                                 dut.hawk.sector_addr, SECTOR);
+                                 dut.machine.hawk.sector_addr, SECTOR);
                         failures = failures + 1;
                     end else
                         $display("ok: one sector transferred leaves the address on it");
@@ -154,7 +154,7 @@ module HawkTB;
                 // was holding, three hundred times over an operating system's
                 // boot.
                 4: begin
-                    if (dut.hawk.verify_fail !== 1'b0) begin
+                    if (dut.machine.hawk.verify_fail !== 1'b0) begin
                         $display("FAIL: verifying against matching data reported a mismatch");
                         failures = failures + 1;
                     end else
@@ -165,7 +165,7 @@ module HawkTB;
                 // Now it must report the mismatch - and still not have touched
                 // the sector.
                 5: begin
-                    if (dut.hawk.verify_fail !== 1'b1) begin
+                    if (dut.machine.hawk.verify_fail !== 1'b1) begin
                         $display("FAIL: verifying against differing data reported no mismatch");
                         failures = failures + 1;
                     end else
@@ -177,14 +177,14 @@ module HawkTB;
                 end
             endcase
         end
-        last_busy <= dut.hawk.busy;
+        last_busy <= dut.machine.hawk.busy;
     end
 
     // Where the image lives in the part: DiskImage's own base, plus the sector.
     localparam IMAGE_BASE = 23'h040000;
     task check_image;
         begin
-            while (dut.image.busy) @(posedge in_clk);
+            while (dut.machine.image.busy) @(posedge in_clk);
             wrong = 0;
             for (i = 0; i < 400; i = i + 1) begin
                 got = die.mem[IMAGE_BASE + SECTOR * 512 + i];
