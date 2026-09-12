@@ -23,6 +23,21 @@ below are run from there.
 | `Verilog/roms/` | the microcode and opcode map read off the real hardware |
 | `tools/` | the assembler, disassembler and the scripts that drive the board |
 
+The RTL is split along one line: what is the machine, and what is the board it
+happens to be on.
+
+| | |
+|---|---|
+| `Centurion.v` | **the machine** - the CPU and everything on its bus, knowing nothing about the board |
+| `CPU6.v` | the CPU6 itself: the microsequencers, the ALU slices, the MMU, the DMA engine |
+| `mux.v`, `HawkDisk.v`, `FinchCard.v`, `DiagBoard.v`, `LEDPanel.v`, `BoardMemory.v` | the peripherals on that bus |
+| `SdSpi.v`, `Fat32.v`, `DiskImage.v` | the storage stack behind the Hawk |
+| `PsramBus.v`, `MemoryArbiter.v` | the machine's side of its external memory |
+| `Instruments.v` | the debugger: the status dump and the watchdog |
+| `tangnano9k.v` | **the board** - pins, crystal, reset, and one instance of the machine |
+| `Psram.v`, `PsramSdr.v` | this board's memory, the HyperRAM in the package, as the one port the machine wants |
+| `ClockEnable.v` | the enable that paces the core to 5 MHz from whatever the board's clock is |
+
 ## Simulation
 
 The [Verilog](https://en.wikipedia.org/wiki/Verilog) implementation is simulated with [Icarus Verilog](http://iverilog.icarus.com/):
@@ -31,13 +46,15 @@ The [Verilog](https://en.wikipedia.org/wiki/Verilog) implementation is simulated
 make test
 ```
 
-That builds and runs the self checking testbenches, about sixty checks in a
-couple of minutes:
+That builds and runs the self checking testbenches, 74 checks in about ten
+minutes:
 
 | testbench | what it covers |
 |---|---|
 | `CPU6TestBench` | small programs against the core |
 | `TopTestBench` | the real synthesis top level, including the UART pin and the Gowin hard blocks |
+| `ParityTB` | the memory's parity bit, and the control bit that stores a wrong one on purpose |
+| `FinchTB` | the Finch controller's mailbox, against the exact handshake the operating system performs |
 | `PsramTB` | the HyperRAM PHY against a behavioural die |
 | `DmaTB` | the DMA path both ways, against a pattern device that stores nothing |
 | `HawkTB` | the Hawk controller: registers, seek, and a sector out and back |
@@ -46,7 +63,7 @@ couple of minutes:
 | `DiskTB` | the whole storage stack: card, filesystem and PSRAM cache together |
 
 Each also runs on its own - `make psramtest`, `make dmatest`, `make hawktest`,
-`make sdtest`, `make fat32test`, `make disktest`. `make dmatest` needs the DMA
+`make sdtest`, `make fat32test`, `make disktest`, `make parity`, `make finch`. `make dmatest` needs the DMA
 pattern device, which it builds in itself.
 
 Three more are too slow to belong in `make test`, because they simulate
@@ -114,7 +131,7 @@ The assembler is [tools/Assemble.py](tools/Assemble.py). Its encodings are
 checked against real code rather than against a reading of the manual:
 `--roundtrip Verilog/programs/diag.txt 8000` disassembles the original
 diagnostic ROM, re-encodes every instruction in the form the ROM actually used
-and compares bytes. All 3812 instructions come back identical.
+and compares bytes. All 3818 instructions come back identical.
 
 ## Synthesis
 
@@ -136,13 +153,15 @@ make load-boot   # boot the operating system off the disk image on the SD card
 
 Each is a normal build, so they can be combined with the options below or taken
 apart - `make load-forth` is just `make PROGRAM=programs/forth.txt load`, and
-`make load-boot` is just `make SENSE=1010 load`.
+`make load-boot` is just `make SENSE=1010 DIAG_ROM=0 load`.
 
 | option | meaning |
 |---|---|
 | `PROGRAM=` | which image the 8K ROM at `0x8000` holds (default `programs/diag.txt`) |
 | `DIP=` | the Diag board's DIP switches, which choose what the machine does out of reset |
 | `SENSE=` | the front panel sense switches, four binary digits (default `0001`) |
+| `DIAG_ROM=0` | take the Diag board's ROMs out of `0x08000`, which the operating system loads code into |
+| `PARITY_CHECK=0` | keep the memory's parity bit but stop reporting faults to the microcode |
 | `PSRAM_SELFTEST=1` | disconnect the memory from the CPU and run the PSRAM's own bring-up test instead |
 | `DMA_TEST=1` | include the DMA pattern device at `0x3f300`, which `make dmatest` needs |
 | `DIAG_TRACE=1` | include the mapping RAM failure instrumentation |
@@ -161,7 +180,7 @@ bits in `1010` are `S2` and `S4`, which is the combination the emulator's
 verified CENTOS procedure calls "sense = 10".
 
 `DMA_TEST` and `DIAG_TRACE` are off because hardware that is switched off still
-takes logic, and the device is now 82% full. `DIAG_TRACE` in particular is the
+takes logic, and the device is now 83% full. `DIAG_TRACE` in particular is the
 instrumentation that found the mapping RAM bug; the bug is fixed, and the 300
 LUT4 it costs is the difference between a design that places and one that does
 not.
@@ -176,6 +195,31 @@ Pin assignments are in `Verilog/tangnano9k.cst`. Everything is clocked from the
 27 MHz input pin as a single clock domain; the core is gated down to the
 original CPU6's 5 MHz by a clock enable rather than by a divided clock, because
 driving a fabric-generated clock onto a global did not work on real hardware.
+
+### Retargeting to another board
+
+`tangnano9k.v` is the only file that knows it is on a Tang Nano 9K, and it is
+short. `Centurion.v` is the machine, and its port list is the whole of what a
+board has to provide:
+
+- a clock, and `CLOCK_HZ` stated once - every baud rate, timeout and blink
+  rate below takes it as a parameter, so nothing else knows the frequency
+- an enable pulsing 5 times a microsecond, from `ClockEnable` with `PERIOD`
+  set to the clock in MHz
+- a reset that stays asserted until the memory can answer
+- the DIP and sense switches, as constants or from real switches
+- a serial line, and the SD card's four SPI pins
+- **one memory port**, speaking the protocol `Centurion.v`'s header spells
+  out: raise `read` or `write` with an address and hold it until `busy` rises,
+  then wait for it to fall. A read returns four consecutive 16-bit words. A
+  memory that answers in a clock is fine; one that takes a microsecond stalls
+  the core for that long through the enable, which to the CPU is just a long
+  bus cycle.
+
+On this board that memory is `Psram.v`, over the HyperRAM in the package. A
+board with SDRAM, SRAM or block RAM writes a module with the same port list,
+and nothing on the machine's side changes. The design needs about 7200 LUT4s
+and 17 block RAMs of 2K.
 
 ## Disks
 
@@ -197,11 +241,30 @@ Copy the file on in one go so it lands contiguously; up to four extents are
 handled and anything more fragmented is refused.
 
 Then `make load-boot`, and at the `D=` prompt type `H1` - the device letter and
-unit 1, no Enter.
+unit 1, no Enter. The operating system reads the pack, prints its banner, asks
+for a date and a time, and gives you its prompt:
+
+```
+D=H1
+LOS 7.1 - E
+WELCOME TO THE CENTURION!
+DOS 7.1 - E
+MAX DISK# (M)= 1, SYSTEM DISK (S)= 1
+PREVIOUS SYSTEM DATE: 08/23/84
+ENTER NEW SYSTEM DATE: 082384
+ENTER SYSTEM TIME: 120000
+CRT0 READY
+```
+
+Enter takes the defaults at the two disk questions. Your terminal will probably
+show `OS 7.1 - E` and `ELCOME`: the operating system prefixes each screen with
+`ESC FS`, which is not a valid ANSI sequence, and the terminal swallows the next
+character while looking for one. The bytes are all there.
 
 Sending a single byte down the serial line asks the board about itself, which is
-how everything above is diagnosed. `0x02` gives the running summary, `0x03` the
-storage stack - card state, whether the image mounted and why not, its size in
+how everything above is diagnosed. `0x02` gives the console and the parity
+faults - the last two characters written and where from, and the first address
+a parity fault was reported at - `0x03` the storage stack - card state, whether the image mounted and why not, its size in
 blocks, the cache's fetch count - `0x04` the CPU's position, which is the one
 to reach for when the LEDs are blinking, because that means the core has stopped
 *completing* instructions and only the microcode address will say why, and `0x05`
@@ -226,12 +289,12 @@ Resource utilisation and timing:
 
 ```
 Info: Device utilisation:
-Info:                 LUT4:    7213/   8640    83%
+Info:                 LUT4:    7217/   8640    83%
 Info:                  DFF:    3386/   6480    52%
 Info:            RAM16SDP4:     152/    270    56%
 Info:                BSRAM:      17/     26    65%
 
-Info: Max frequency for clock 'clock': 72.07 MHz (PASS at 27.00 MHz)
+Info: Max frequency for clock 'clock': 41.19 MHz (PASS at 27.00 MHz)
 ```
 
 **The device is now the binding constraint.** At 84% nextpnr refuses to place,
@@ -537,14 +600,19 @@ check and a program that never touched register 3 could write the medium freely.
 Neither is on the boot path, though: a boot to the `MAX DISK#` prompt issues 301
 reads, 300 seeks and 2 RTZs, and nothing else.
 
-**The operating system does not boot yet.** `make load-boot` runs the real boot
-PROM, which prompts `D=`, takes `H1`, reads the pack, loads code and runs it -
-but the machine then stops completing instructions. The first thing to establish
-is whether it has crashed or *halted*: every byte of memory nothing has written
-reads back `00`, `00` is a `HLT`, and a program counter that wanders into
-emptiness halts one byte in - which the watchdog reports identically to a crash.
-Trigger byte `0x04` gives the opcode, and `0x05` the last five instruction
-fetches, which is what names the code that jumped away.
+**The operating system boots.** `make load-boot` runs the real boot PROM off
+the SD card; `H1` at its prompt reads CENTOS_13 off the pack, and the machine
+prints the banner, takes the date and the time, reaches `CRT0 READY` and
+accepts commands. Getting there needed the serial board to raise an interrupt
+when a character finishes transmitting and to report which channel and why in
+its cause register, the CPU to compare a request's level with the level it is
+already running at, a parity bit on every byte of RAM so the operating system's
+self test can plant a fault and see it caught, and a Finch floppy controller
+at `0x3f800` - which `FinchCard.v` models only as far as the mailbox and the
+identify handshake the startup performs, because the operating system waits on
+it and nothing else is known about its firmware. Every one of those was found
+by driving Meisaka's emulator through the same boot and measuring where the two
+machines parted company.
 
 The embedded HyperRAM is on the CPU's bus and backs everything the block RAM
 does not, so the machine has its full 256K of physical memory: the FORTH's own
