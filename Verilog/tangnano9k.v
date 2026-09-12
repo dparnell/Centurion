@@ -550,8 +550,17 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .dbg_timeout_where(dbg_psram_where), .dbg_state(dbg_bus_state),
         .dbg_need(dbg_bus_need));
 
+    // F11 bit 5 asks for a write with deliberately wrong parity, and the fault
+    // comes straight back out to CPU6's k9 == 6. Only the block RAM regions
+    // carry a parity bit; an address the PSRAM answers never faults, which is
+    // correct as far as anything can tell, because parity is only ever wrong
+    // when the CPU has asked for it to be and the operating system only asks in
+    // low memory. Storing a bit per byte for the whole 256K would mean a second
+    // memory access on every cycle.
+    wire parity_bad;
     BoardMemory #(.PROGRAM(PROGRAM), .DIAG_ROM(DIAG_ROM)) ram(
-        clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data);
+        clock, cpu_en, addressBus, writeEnBus & ram_select, data_c2r, ram_data,
+        dbg_f11[5], parity_bad);
     LEDPanel panel(clock, cpu_en, addressBus, writeEnBus, data_c2r, leds);
     // The Diag board. Its DIP switches choose what diag does out of reset; see
     // DiagBoard.v for the settings. 0x1d is the auxiliary test menu and 0x1a is TOS,
@@ -568,7 +577,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire [7:0] dbg_mux_state, dbg_last_cause;
     wire [15:0] dbg_acks, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx;
 
-    MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select,
+    MUX #(.DEBUG(DIAG_TRACE)) mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select,
              { 1'b0, addressBus[3:0] }, writeEnBus, bus_read_strobe, data_c2r,
              interrupt_ack, mux_data, int_reqn, irq_number,
              dbg_byte_ready, dbg_rx_byte, dbg_mux_state, dbg_last_cause,
@@ -675,7 +684,8 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
               dbg_d2d3, dbg_f11,
               dbg_e7, dbg_data_in, dbg_entry0,
               dbg_e0_write, dbg_e0_value, dbg_e0_via_window,
-              dbg_pt_write, dbg_pt_index, dbg_pt_value, dbg_pt_via_window, interrupt_ack);
+              dbg_pt_write, dbg_pt_index, dbg_pt_value, dbg_pt_via_window, interrupt_ack,
+              parity_bad);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is

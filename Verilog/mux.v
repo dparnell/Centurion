@@ -9,7 +9,13 @@
  * side raise tx_request and the transmitter clear it with a plain flag. Separating them
  * would need a real handshake across the two domains.
  */
-module MUX(
+module MUX #(
+    // The interrupt counters at the bottom are a bring-up instrument, not part
+    // of the card. They cost about 3% of the device's LUT4s, which is the
+    // difference between 81% and 84%, so they are excluded from the netlist
+    // rather than merely left unread. "make DIAG_TRACE=1" puts them back.
+    parameter DEBUG = 0
+) (
     input wire bit_clock, // 27Mhz clock
     input wire cpu_clock,
     input wire cpu_enable,      // one pulse per CPU clock, so a bus write happens once
@@ -464,6 +470,7 @@ assign int_reqn = ~(int_pending & interrupts_enabled);
 // anything sampled at the moment a dump is asked for has byteReady set and the
 // trigger byte in the data register - by construction. Only totals taken over
 // the whole run say anything about what the machine does when nobody is looking.
+generate if (DEBUG) begin : mux_debug
 reg [7:0] last_cause = 0;
 reg [15:0] data_reads = 0, rx_chars = 0, cause_rx = 0, cause_tx = 0;
 always @(posedge cpu_clock) begin
@@ -488,13 +495,21 @@ always @(posedge cpu_clock) begin
         if (byteReady && !byte_ready_d) rx_chars <= rx_chars + 1;
     end
 end
-assign dbg_mux_state = { byteReady, tx_int, mux_cause, int_pending,
-                         interrupts_enabled, overrun, tx_idle, 1'b0 };
 assign dbg_last_cause = last_cause;
 assign dbg_acks = data_reads;
 assign dbg_rx_chars = rx_chars;
 assign dbg_cause_rx = cause_rx;
 assign dbg_cause_tx = cause_tx;
+end else begin : no_mux_debug
+assign dbg_last_cause = 0;
+assign dbg_acks = 0;
+assign dbg_rx_chars = 0;
+assign dbg_cause_rx = 0;
+assign dbg_cause_tx = 0;
+end endgenerate
+// The levels are free: they are registers the card needs anyway.
+assign dbg_mux_state = { byteReady, tx_int, mux_cause, int_pending,
+                         interrupts_enabled, overrun, tx_idle, 1'b0 };
 assign irq_number = interrupt_level;
 assign dbg_byte_ready = byteReady;
 assign dbg_rx_byte = dataIn;
