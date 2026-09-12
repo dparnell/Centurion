@@ -748,13 +748,13 @@ module DipTB;
         end
     end
 
-    // +bannerpath: the reference emits the banner's first character (0x87, a BEL)
-    // from 0xb6ff and its second a few thousand instructions later; this design
-    // emits the first and then emits it again for ever. So the window between
-    // those two writes is exactly where the two machines part company, and this
-    // records our side of it in the same form the emulator's hook records the
-    // reference's - consecutive duplicates collapsed, so a wait loop is one
-    // entry - ready to be diffed line for line.
+    // +bannerpath: record the program counters between the console write of
+    // BANNER_ARM and the next console write, in the same form the emulator's
+    // hook records the reference's - consecutive duplicates collapsed, so a
+    // wait loop is one entry - ready to be diffed line for line. The default is
+    // the line feed that ends "LOS 7.1 - E", which is the last character this
+    // design and the reference agree on.
+    parameter [7:0] BANNER_ARM = 8'h8a;
     reg bp_arm = 0, bp_done = 0, bp_wr = 0;
     integer bp_fd = 0, bp_n = 0;
     reg [15:0] bp_last = 16'hffff;
@@ -762,10 +762,11 @@ module DipTB;
     always @(posedge in_clk) if ($test$plusargs("bannerpath")) begin
         bp_wr <= bp_write;
         if (bp_write && !bp_wr) begin
-            if (!bp_arm && !bp_done && dut.data_c2r == 8'h87) begin
+            if (!bp_arm && !bp_done && dut.data_c2r == BANNER_ARM) begin
                 bp_arm <= 1;
                 bp_fd = $fopen("bannerpath.txt", "w");
-                $display("bannerpath: armed on the first 0x87 at pc %04h", dut.pc_live0);
+                $display("bannerpath: armed on the first %02h at pc %04h",
+                         BANNER_ARM, dut.pc_live0);
             end else if (bp_arm) begin
                 bp_arm <= 0; bp_done <= 1; $fclose(bp_fd);
                 $display("bannerpath: second console write (%02h) after %0d entries",
