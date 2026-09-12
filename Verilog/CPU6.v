@@ -82,7 +82,10 @@ module CPU6 #(
     // The byte now on the read bus disagrees with the parity that was stored
     // beside it. Added at the end of the list on purpose: every instantiation
     // of this module connects its ports positionally.
-    input wire parity_error);
+    input wire parity_error,
+    // This cycle's bus latch is a device READ rather than the CPU latching its
+    // own write data - see bus_read_cycle below.
+    output wire dbg_bus_read_cycle);
 
     /*
      * Rising edge triggered registers
@@ -109,6 +112,15 @@ module CPU6 #(
     // from the read that latched it until the next one - which is what k9 == 6
     // reports.
     reg parity_fault;
+    // e7 == 3 latches whatever is on the bus, but that is only a device read
+    // when h11 == 1 began one; the rest are the CPU latching its own write data,
+    // which is what the emulator's sys_write_latch covers. Measured over the
+    // quick tests: h11 == 1 fires 433 times and e7 == 3 fires 466, so 40 of
+    // those latches are not reads. A device whose read has a side effect - and
+    // on this bus that is every one of them - must not see those 40. The MUX's
+    // data register was seeing them and throwing away a received character each
+    // time, which is input disappearing while the machine is busiest.
+    reg bus_read_cycle;
     // interrupt_level D9 74LS378, only four bits used
     reg [3:0] interrupt_level;
     // Page table base register D11 74LS378
@@ -295,6 +307,7 @@ module CPU6 #(
     initial begin
         f11 = 0;
         parity_fault = 0;
+        bus_read_cycle = 0;
         m13 = 0;
     end
 
@@ -396,6 +409,9 @@ module CPU6 #(
     assign dbg_page_table_out = page_table_out;
     assign dbg_d2d3 = d2d3;
     assign dbg_f11 = f11;
+    // One microcode word can both begin the read and latch it, so take the live
+    // decode as well as the flag.
+    assign dbg_bus_read_cycle = bus_read_cycle | (h11 == 3'd1);
     assign dbg_entry0 = { page_table_hi[{page_table_base, 5'b00000}],
                           page_table_lo[{page_table_base, 5'b00000}] };
     wire pt_uc  = enable && reset == 0 && k11 == 5;
@@ -779,6 +795,7 @@ module CPU6 #(
             interrupt_level <= 0;
             bus_read <= 0;
             parity_fault <= 0;
+            bus_read_cycle <= 0;
             bus_write <= 0;
             page_table_base <= 0;
             f11 <= 0;
@@ -854,6 +871,7 @@ module CPU6 #(
                 3: begin
                     bus_read <= dataInCPU;
                     parity_fault <= f11[6] & parity_error;
+                    bus_read_cycle <= 0;
                    end
             endcase
 
@@ -862,7 +880,7 @@ module CPU6 #(
 
             case (h11)
                 0: ;
-                1: ; // Begin bus read cycle
+                1: bus_read_cycle <= 1;     // Begin bus read cycle
                 2: ; // Begin bus write cycle
                 3: // Load work_address high byte
                     begin

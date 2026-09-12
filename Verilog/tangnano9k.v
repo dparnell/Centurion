@@ -13,6 +13,7 @@
 // ODDR/IDDR, which is exactly what does not work here. Kept in the tree for
 // reference, and because its four implicit declaration warnings are noise.
 `include "BoardMemory.v"
+`include "FinchCard.v"
 `include "LEDPanel.v"
 `include "mux.v"
 
@@ -79,7 +80,8 @@ endmodule
  */
 module AddressDecode #(parameter DIAG_ROM = 1) (input wire [18:0] address,
     output wire mux_select, output wire diag_select, output wire ram_select,
-    output wire dma_select, output wire hawk_select, output wire psram_select);
+    output wire dma_select, output wire hawk_select, output wire finch_select,
+    output wire psram_select);
 
     // MUX serial board, 16 registers. This matches the Diag MUX addresses used by
     // CPU6TestBench.v (status 0x3f200, data 0x3f201) and by programs/hellorld.txt.
@@ -95,6 +97,10 @@ module AddressDecode #(parameter DIAG_ROM = 1) (input wire [18:0] address,
     // Diag board's page but clear of its window at 0x3f100, which is where the
     // real machine puts it too.
     assign hawk_select = (address & 19'h7fff0) == 19'h3f140;
+    // The Finch floppy controller's mailbox, two registers at 0x3f800. The
+    // operating system talks to it during startup because a Finch is in the
+    // configuration on the pack, and sits waiting forever if nothing answers.
+    assign finch_select = (address & 19'h7fffe) == 19'h3f800;
 
     // The block RAM regions, which must go on answering rather than being folded
     // into the PSRAM: they are about fourteen times faster, and everything the
@@ -105,7 +111,8 @@ module AddressDecode #(parameter DIAG_ROM = 1) (input wire [18:0] address,
                          || address[18:12] == 7'h0c;               // 0x0b000
     wire low_ram_region  = address[18:12] == 7'h00;                // 0x00000
     wire boot_region     = address[18:9]  == 10'h1fe;              // 0x3fc00
-    assign ram_select = ~(mux_select | diag_select | dma_select | hawk_select);
+    assign ram_select = ~(mux_select | diag_select | dma_select | hawk_select
+                          | finch_select);
 
     // The PSRAM fills the rest of the machine's 256K of physical memory. The top
     // 4K page is left alone entirely: that is the I/O page, and the boot PROM,
@@ -483,8 +490,9 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // Simulation resolved the undriven outputs as z and let the RAM value through, but
     // yosys reported a driver-driver conflict, resolved it to a constant and dropped
     // ram_cells entirely, so on hardware the CPU only ever read 'x' (decoded as HLT).
-    wire mux_select, diag_select, ram_select, dma_select, hawk_select, psram_select_raw;
-    wire [7:0] ram_data, mux_data, diag_data;
+    wire mux_select, diag_select, ram_select, dma_select, hawk_select, finch_select;
+    wire psram_select_raw;
+    wire [7:0] ram_data, mux_data, diag_data, finch_data;
 
     // The DMA device and the core's side of it. The device stores nothing: it
     // generates or checks a pattern, which is enough to test the path and keeps
@@ -509,7 +517,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     wire test_step = dma_step & test_req & ~hawk_req;
 
     AddressDecode #(.DIAG_ROM(DIAG_ROM)) decode(addressBus, mux_select, diag_select, ram_select,
-                         dma_select, hawk_select, psram_select_raw);
+                         dma_select, hawk_select, finch_select, psram_select_raw);
 
     // With the self test running the CPU must not touch the memory at all, or the
     // two would fight over the controller and the core would stall for ever.
@@ -519,6 +527,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
                       diag_select  ? diag_data :
                       dma_select   ? dma_data :
                       hawk_select  ? hawk_data :
+                      finch_select ? finch_data :
                       psram_select ? psram_data : ram_data;
 
     // M13 bit 7, from the core back to the serial board so it can drop its request.
@@ -571,9 +580,19 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     DiagBoard diag(clock, cpu_en, diag_select, addressBus[4:0], writeEnBus, data_c2r,
                    DIAG_DIP_SWITCHES, diag_data, diag_hex, diag_points, diag_blank);
 
-    // e7 == 3 is the only cycle in which CPU6 latches the bus, so it is this
-    // design's read strobe. Peripherals whose read has a side effect need it.
-    wire bus_read_strobe = (dbg_e7 == 2'd3);
+    // e7 == 3 latches the bus, but that is only a device read when h11 == 1
+    // began one - the rest are the CPU latching its own write data. Peripherals
+    // whose read has a side effect need both, or they lose state to a latch that
+    // was never a read: the MUX's data register was discarding a received
+    // character on roughly one bus latch in twelve.
+    wire dbg_bus_read_cycle;
+    wire bus_read_strobe = (dbg_e7 == 2'd3) && dbg_bus_read_cycle;
+
+    // The Finch floppy controller's mailbox. Only the host interface is here;
+    // see FinchCard.v for what that does and does not model.
+    FinchCard finch(clock, cpu_en, reset, finch_select, addressBus[0], writeEnBus,
+                    bus_read_strobe, data_c2r, finch_data);
+
     wire [7:0] dbg_mux_state, dbg_last_cause;
     wire [15:0] dbg_acks, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx;
 
@@ -685,7 +704,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
               dbg_e7, dbg_data_in, dbg_entry0,
               dbg_e0_write, dbg_e0_value, dbg_e0_via_window,
               dbg_pt_write, dbg_pt_index, dbg_pt_value, dbg_pt_via_window, interrupt_ack,
-              parity_bad);
+              parity_bad, dbg_bus_read_cycle);
 
     // Holding btn2 prints the CPU's position over the serial line, repeatedly. See
     // StatusDump.v. It takes the UART pin over, which is safe because the machine is

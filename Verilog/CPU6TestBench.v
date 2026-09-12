@@ -98,12 +98,25 @@ module CPU6TestBench;
     // k11 == 7 and leaves h11 == 2 a stub.
     integer n_k11_7 = 0, n_h11_2 = 0, n_h11_2_after = 0;
     reg prev_k11_7 = 0;
+    // The same question for the READ strobe. This design treats every e7 == 3 as
+    // a bus read, but the emulator only reads a device if h11 == 1 began a read
+    // cycle - the rest are the CPU latching its own write data. A device whose
+    // read has a side effect, which is every one of them on this bus, sees the
+    // difference: the MUX's data register loses a received character to it.
+    integer n_h11_1 = 0, n_e7_3 = 0, n_e7_3_after_read = 0;
+    reg pending_read = 0;
     always @(posedge clock) if (cpu_en) begin
         prev_k11_7 <= (cpu.k11 == 3'd7);
         if (cpu.k11 == 3'd7) n_k11_7 = n_k11_7 + 1;
         if (cpu.h11 == 3'd2) begin
             n_h11_2 = n_h11_2 + 1;
             if (prev_k11_7) n_h11_2_after = n_h11_2_after + 1;
+        end
+        if (cpu.h11 == 3'd1) begin n_h11_1 = n_h11_1 + 1; pending_read <= 1; end
+        if (cpu.e7 == 2'd3) begin
+            n_e7_3 = n_e7_3 + 1;
+            if (pending_read) n_e7_3_after_read = n_e7_3_after_read + 1;
+            pending_read <= 0;
         end
     end
 
@@ -114,7 +127,7 @@ module CPU6TestBench;
              // float makes jsr_ x in the interrupt condition and the machine
              // stops on the first instruction with no clue why.
              1'b0, 1'b0, 8'h00, , , , 1'b0, 1'b0,
-             , , , , , , , , , , , , , , , , , 1'b0);
+             , , , , , , , , , , , , , , , , , 1'b0, );
     reg sim_end;
     wire [7:0] cc = data_c2r & 8'h7f;
 
@@ -168,6 +181,8 @@ module CPU6TestBench;
 
         $display("write strobes: k11==7 fired %0d times, h11==2 fired %0d times, %0d of those right after a k11==7",
                  n_k11_7, n_h11_2, n_h11_2_after);
+        $display("read strobes: h11==1 fired %0d times, e7==3 fired %0d times, %0d of those after an h11==1",
+                 n_h11_1, n_e7_3, n_e7_3_after_read);
         $display("All done!");
         $finish;
     end
