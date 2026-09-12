@@ -34,7 +34,17 @@ module MUX(
     output wire [3:0] irq_number,
     // For the board level status dump: is a byte waiting, and what was it
     output wire dbg_byte_ready,
-    output wire [7:0] dbg_rx_byte
+    output wire [7:0] dbg_rx_byte,
+    // The card's interrupt state, for the board level dump. The operating
+    // system's console is interrupt driven and none of this is visible from
+    // outside: a machine whose cause register keeps answering "channel 0,
+    // receive" behaves exactly like one that really is being typed at.
+    output wire [7:0] dbg_mux_state,
+    output wire [7:0] dbg_last_cause,
+    output wire [15:0] dbg_data_reads,
+    output wire [15:0] dbg_rx_chars,
+    output wire [15:0] dbg_cause_rx,
+    output wire [15:0] dbg_cause_tx
 );
 
 // common stuff - default to 9600 7E1
@@ -450,6 +460,33 @@ end
 // the card does: software can turn interrupts off without losing what happened
 // while they were off.
 assign int_reqn = ~(int_pending & interrupts_enabled);
+// Counters, not levels. The dump is edge triggered on a character arriving, so
+// anything sampled at the moment a dump is asked for has byteReady set and the
+// trigger byte in the data register - by construction. Only totals taken over
+// the whole run say anything about what the machine does when nobody is looking.
+reg [7:0] last_cause = 0;
+reg [15:0] data_reads = 0, rx_chars = 0, cause_rx = 0, cause_tx = 0;
+always @(posedge cpu_clock) begin
+    if (reset) begin
+        last_cause <= 0; data_reads <= 0; rx_chars <= 0;
+        cause_rx <= 0; cause_tx <= 0;
+    end else begin
+        if (read_cause_register) begin
+            last_cause <= data_out;
+            if (mux_cause && data_out == 8'h00) cause_rx <= cause_rx + 1;
+            if (mux_cause && data_out == 8'h01) cause_tx <= cause_tx + 1;
+        end
+        if (read_data_register) data_reads <= data_reads + 1;
+        if (byteReady && !byte_ready_d) rx_chars <= rx_chars + 1;
+    end
+end
+assign dbg_mux_state = { byteReady, tx_int, mux_cause, int_pending,
+                         interrupts_enabled, overrun, tx_idle, 1'b0 };
+assign dbg_last_cause = last_cause;
+assign dbg_data_reads = data_reads;
+assign dbg_rx_chars = rx_chars;
+assign dbg_cause_rx = cause_rx;
+assign dbg_cause_tx = cause_tx;
 assign irq_number = interrupt_level;
 assign dbg_byte_ready = byteReady;
 assign dbg_rx_byte = dataIn;

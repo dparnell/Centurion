@@ -565,11 +565,14 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // e7 == 3 is the only cycle in which CPU6 latches the bus, so it is this
     // design's read strobe. Peripherals whose read has a side effect need it.
     wire bus_read_strobe = (dbg_e7 == 2'd3);
+    wire [7:0] dbg_mux_state, dbg_last_cause;
+    wire [15:0] dbg_data_reads, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx;
 
     MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select,
              { 1'b0, addressBus[3:0] }, writeEnBus, bus_read_strobe, data_c2r,
              interrupt_ack, mux_data, int_reqn, irq_number,
-             dbg_byte_ready, dbg_rx_byte);
+             dbg_byte_ready, dbg_rx_byte, dbg_mux_state, dbg_last_cause,
+             dbg_data_reads, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx);
 
     // The DMA test device: a pattern generator and checker with no storage.
     generate if (DMA_TEST) begin : dma_test_device
@@ -1467,8 +1470,13 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         end else if (!(cpu_en && writeEnBus && addressBus == 19'h3f201))
             tx_seen <= 0;
     end
+    // The console dump now carries the MUX card's interrupt state as well as
+    // the last two characters, because the two questions turned out to be the
+    // same one: which cause the card reported, and what the CPU did about it.
+    //   byteReady tx_int mux_cause int_pending int_en overrun tx_idle .
     wire [79:0] console_payload =
-        { tx_pc0, tx_pc1, pc_live0, dbg_uc_address, 5'b0, tx_ch0, tx_ch1 };
+        { dbg_rx_chars, dbg_cause_rx, dbg_cause_tx, dbg_data_reads,
+          dbg_mux_state, dbg_rx_byte };
 
     wire [79:0] dump_payload =
         { sdr_state, 4'b0, psram_select, busy, read, write,
