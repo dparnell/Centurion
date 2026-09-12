@@ -5,6 +5,7 @@
 `include "PsramSdr.v"
 `include "PsramBus.v"
 `include "Psram.v"
+`include "MemoryArbiter.v"
 `include "DmaTest.v"
 `include "HawkDisk.v"
 `include "SdSpi.v"
@@ -292,13 +293,12 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     localparam integer CLOCK_HZ = 27_000_000;
 
     // The memory. Everything HyperBus-specific - the PLL, the PHY and its pads,
-    // the die's 600us wake up, the arbitration between the CPU's bridge and the
-    // disk's cache, and the bring-up self test - is inside Psram. Out here
-    // there are two ports, each speaking the same protocol: hold read or write
-    // until busy rises, then wait for it to fall.
+    // the die's 600us wake up and the bring-up self test - is inside Psram.
+    // Out here there is one port and a protocol: hold read or write until busy
+    // rises, then wait for it to fall.
     wire [63:0] dout;          // four words: see PsramSdr's BURST
     wire psram_ready;
-    // The disk image's side of the memory, arbitrated with the CPU's inside.
+    // The disk image's side of the memory, arbitrated with the CPU's below.
     wire disk_read, disk_write, disk_byte_write;
     wire [22:0] disk_addr;
     wire [15:0] disk_din;
@@ -391,14 +391,18 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // core sees a long bus cycle rather than a stall it has to understand.
     ClockEnable #(.TICKS(5), .PERIOD(CLOCK_HZ / 1_000_000)) cpu_clock_enable(clock, cpu_en_free);
 
+    // The board's memory, one port. The machine's two clients - the CPU's
+    // bridge and the disk's cache - share it through the arbiter below, which
+    // is the machine's business and not the memory's.
+    wire mem_read, mem_write, mem_byte_write, mem_busy;
+    wire [22:0] mem_addr;
+    wire [15:0] mem_din;
     Psram #(.PSRAM_MULT(PSRAM_MULT), .PSRAM_PHASE(PSRAM_PHASE), .PSRAM_LATE(PSRAM_LATE),
             .PSRAM_TAP(PSRAM_TAP), .PSRAM_LATENCY(PSRAM_LATENCY),
             .PSRAM_SELFTEST(PSRAM_SELFTEST)) psram(
-        .clock(clock), .button_n(reset_btn_sync[2]), .reset(reset),
-        .a_read(bus_read), .a_write(bus_write), .a_byte_write(bus_byte_write),
-        .a_addr(bus_addr), .a_din(bus_din), .a_busy(bus_busy_view),
-        .b_read(disk_read), .b_write(disk_write), .b_byte_write(disk_byte_write),
-        .b_addr(disk_addr), .b_din(disk_din), .b_busy(disk_busy_view),
+        .clock(clock), .button_n(reset_btn_sync[2]),
+        .mem_read(mem_read), .mem_write(mem_write), .mem_byte_write(mem_byte_write),
+        .mem_addr(mem_addr), .mem_din(mem_din), .mem_busy(mem_busy),
         .dout(dout), .ready(psram_ready),
         .O_psram_ck(O_psram_ck), .O_psram_ck_n(O_psram_ck_n),
         .O_psram_cs_n(O_psram_cs_n), .O_psram_reset_n(O_psram_reset_n),
@@ -409,6 +413,15 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
         .dbg_test_done(psram_done), .dbg_test_pass(psram_pass),
         .dbg_test_stage(psram_stage),
         .dbg_test_read0(psram_read0), .dbg_test_read1(psram_read1));
+
+    MemoryArbiter arbiter(
+        .clock(clock), .reset(reset),
+        .a_read(bus_read), .a_write(bus_write), .a_byte_write(bus_byte_write),
+        .a_addr(bus_addr), .a_din(bus_din), .a_busy(bus_busy_view),
+        .b_read(disk_read), .b_write(disk_write), .b_byte_write(disk_byte_write),
+        .b_addr(disk_addr), .b_din(disk_din), .b_busy(disk_busy_view),
+        .mem_read(mem_read), .mem_write(mem_write), .mem_byte_write(mem_byte_write),
+        .mem_addr(mem_addr), .mem_din(mem_din), .mem_busy(mem_busy));
 
     PsramBus #(.ENFORCE_SPACING(SPACING)) psram_bus(
         .clock(clock), .reset(reset), .cpu_en(cpu_en_free), .select(psram_select),

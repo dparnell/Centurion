@@ -1,33 +1,20 @@
 /**
- * The board's PSRAM, as the machine sees it: two ports over one die.
+ * The board's PSRAM, as the machine sees it: one memory port over the die.
  *
  * Everything HyperBus-specific lives here and nowhere else - the PLL that
  * multiplies the board clock up for the PHY, the PHY itself and its dedicated
  * pads, the synchroniser that brings busy back across, the latch that says the
- * die has come out of its own 600us reset, the arbiter that shares one die
- * between two clients, and the bring-up self test that can take the die over
- * instead. The machine side sees two identical ports and a protocol:
+ * die has come out of its own 600us reset, and the bring-up self test that can
+ * take the die over instead. The machine sees one port and a protocol:
  *
  *     hold read or write until busy rises, then wait for it to fall;
- *     dout is valid when it has fallen, for whoever owned the access.
+ *     dout is valid when it has fallen.
  *
- * That is exactly what PsramBus and DiskImage have always spoken, so neither
- * knows this module exists - and a testbench could put a plain block RAM
- * behind the same two ports.
- *
- * The arbitration is a grant that lasts a whole access, and a per client VIEW
- * of busy - which is the part that matters and the part that is easy to get
- * wrong. A loser that saw the real busy would watch the winner's access rise
- * and fall and conclude that its own request had been served, and take the
- * winner's data. So a client that does not hold the grant sees busy low, which
- * leaves it holding its request exactly where it was - which is also how the
- * arbiter knows it still wants one. Getting this wrong lost four bytes of a
- * sector, at the two places where the CPU and the disk happened to collide,
- * and looked like a memory fault rather than an arbiter fault.
- *
- * Port A is served first when both ask at once, because stalling the CPU costs
- * a bus cycle and the disk is standing in for a drive that takes a millisecond
- * a sector - but the two alternate when both want it, so neither starves.
+ * That protocol is the whole of the contract between the machine and whatever
+ * memory a board provides. Retargeting to a board with a different memory
+ * means writing a module with this port list and nothing else changes: the
+ * machine's own arbitration between its two memory clients happens on its
+ * side of the port, in MemoryArbiter.
  */
 module Psram #(
     // How much faster than the board clock the PSRAM runs. The PHY builds CK
@@ -69,20 +56,15 @@ module Psram #(
 ) (
     input wire clock,
     // The board's reset button, synchronised. It resets the die as well as the
-    // machine, which is why it is a separate input from the core's reset.
+    // machine, which is why it is the button and not the core's reset.
     input wire button_n,
-    input wire reset,
 
-    // Port A: the CPU's memory bridge.
-    input wire a_read, input wire a_write, input wire a_byte_write,
-    input wire [22:0] a_addr, input wire [15:0] a_din,
-    output wire a_busy,
-    // Port B: the disk image's cache.
-    input wire b_read, input wire b_write, input wire b_byte_write,
-    input wire [22:0] b_addr, input wire [15:0] b_din,
-    output wire b_busy,
-    // The data read, shared: valid once busy has fallen, for the port that
-    // owned the access. Four words - see PsramSdr's BURST.
+    // The one port.
+    input wire mem_read, input wire mem_write, input wire mem_byte_write,
+    input wire [22:0] mem_addr, input wire [15:0] mem_din,
+    output wire mem_busy,
+    // The data read: valid once busy has fallen. Four words - see PsramSdr's
+    // BURST - because the CPU's bridge caches a line of four.
     output wire [63:0] dout,
     // The die has answered at least once since the button was released. The
     // part needs 600us to come out of its own reset and the core's power on
@@ -200,43 +182,14 @@ module Psram #(
         assign dbg_test_read0 = 0; assign dbg_test_read1 = 0;
     end endgenerate
 
-    // ----------------------------------------------------------- the arbiter
-    localparam OWNER_A = 1'b0, OWNER_B = 1'b1;
-    reg grant_held, grant_owner, grant_seen, last_owner;
-    wire a_wants = a_read | a_write;
-    wire b_wants = b_read | b_write;
-    initial begin grant_held = 0; grant_owner = 0; grant_seen = 0; last_owner = 1; end
-    always @(posedge clock) begin
-        if (reset) begin
-            grant_held <= 0; grant_seen <= 0; last_owner <= OWNER_B;
-        end else if (!grant_held) begin
-            if (!busy && (a_wants || b_wants)) begin
-                grant_owner <= (a_wants && b_wants) ? ~last_owner :
-                               a_wants ? OWNER_A : OWNER_B;
-                last_owner  <= (a_wants && b_wants) ? ~last_owner :
-                               a_wants ? OWNER_A : OWNER_B;
-                grant_held <= 1;
-                grant_seen <= 0;
-            end
-        end else if (busy) grant_seen <= 1;
-        else if (grant_seen) begin
-            grant_held <= 0;
-            grant_seen <= 0;
-        end
-    end
-
-    wire a_owns = grant_held && grant_owner == OWNER_A;
-    wire b_owns = grant_held && grant_owner == OWNER_B;
-    assign a_busy = a_owns ? busy : 1'b0;
-    assign b_busy = b_owns ? busy : 1'b0;
-
-    // With the self test running the ports must not reach the die at all, or
+    // With the self test running the port must not reach the die at all, or
     // the two would fight over it and the core would stall for ever.
-    assign read       = PSRAM_SELFTEST ? tst_read       : b_owns ? b_read       : a_owns ? a_read  : 1'b0;
-    assign write      = PSRAM_SELFTEST ? tst_write      : b_owns ? b_write      : a_owns ? a_write : 1'b0;
-    assign byte_write = PSRAM_SELFTEST ? tst_byte_write : b_owns ? b_byte_write : a_byte_write;
-    assign address    = PSRAM_SELFTEST ? tst_addr       : b_owns ? b_addr       : a_addr;
-    assign din        = PSRAM_SELFTEST ? tst_din        : b_owns ? b_din        : a_din;
+    assign read       = PSRAM_SELFTEST ? tst_read       : mem_read;
+    assign write      = PSRAM_SELFTEST ? tst_write      : mem_write;
+    assign byte_write = PSRAM_SELFTEST ? tst_byte_write : mem_byte_write;
+    assign address    = PSRAM_SELFTEST ? tst_addr       : mem_addr;
+    assign din        = PSRAM_SELFTEST ? tst_din        : mem_din;
+    assign mem_busy   = busy;
 
     assign dbg_busy = busy;
     assign dbg_read = read;
