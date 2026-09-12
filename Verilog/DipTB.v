@@ -217,6 +217,97 @@ module DipTB;
         end
     end
 
+    // How far across the staging page the DMA actually writes. The reference
+    // reads list records at 0x0ed55, 0x0edd2, 0x0ee4f and 0x0eecc, so its
+    // staging area spans most of the page; if this design's sector writes only
+    // ever cover the first 400 bytes then every read is landing on top of the
+    // last one and the destination is not advancing.
+    reg [18:0] dma_lo_e8 = 19'h7ffff, dma_hi_e8 = 0;
+    integer dma_e8 = 0;
+    always @(posedge in_clk)
+        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on &&
+            dut.addressBus[18:11] == 8'h1d) begin
+            dma_e8 = dma_e8 + 1;
+            if (dut.addressBus < dma_lo_e8) dma_lo_e8 = dut.addressBus;
+            if (dut.addressBus > dma_hi_e8) dma_hi_e8 = dut.addressBus;
+        end
+
+    // Every access to the one byte the walk reads wrongly, writes and reads
+    // alike, in order. It sits inside the DMA's span so it is written at some
+    // point; reading ff from it means either the write had not happened yet or
+    // the read did not see it - a posted write buffer or a stale cache line -
+    // and the ordering here tells the two apart.
+    integer e55_n = 0;
+    always @(posedge in_clk)
+        if ($test$plusargs("e55") && dut.cpu_en && dut.addressBus == 19'h0ed55 &&
+            e55_n < 60) begin
+            if (dut.writeEnBus) begin
+                e55_n = e55_n + 1;
+                $display("E55 WRITE <= %02h  (%0d disk commands) dma_on=%b",
+                         dut.data_c2r, hawk_cmds, dut.cpu.dma_on);
+            end else if (dut.bus_read_strobe) begin
+                e55_n = e55_n + 1;
+                $display("E55 READ  => %02h  (%0d disk commands) pc=%04h",
+                         dut.data_r2c, hawk_cmds, dut.pc_live0);
+            end
+        end
+
+    // Per read command: did the image layer actually fetch the block from the
+    // card, or did it report a cache hit? A hit on a block that was never
+    // fetched hands back uninitialised PSRAM, which reads 0xff - and 0xff is
+    // exactly what the failing sectors deliver, where the image file holds 00.
+    integer prev_fetch = 0, prev_hit = 0, ic_n = 0;
+    always @(posedge in_clk)
+        if ($test$plusargs("imgcache") && dut.cpu_en && dut.writeEnBus &&
+            dut.addressBus == 19'h3f148 && dut.data_c2r[2:0] == 3'd0 &&
+            hawk_cmds >= 148 && ic_n < 30) begin
+            ic_n = ic_n + 1;
+            $display("IMG read sector %04h at cmd %0d: fetches=%0d (+%0d) hits=%0d (+%0d)",
+                     dut.hawk.sector_addr, hawk_cmds,
+                     dut.image.dbg_fetches, dut.image.dbg_fetches - prev_fetch,
+                     dut.image.dbg_hits, dut.image.dbg_hits - prev_hit);
+            prev_fetch = dut.image.dbg_fetches;
+            prev_hit = dut.image.dbg_hits;
+        end
+
+    // Each DMA transfer as a destination range. The staging area is two 400 byte
+    // buffers at 0x0ebc5 and 0x0ed55, and the list walk reads a flag byte from
+    // the second one; if this design's transfers are a different length, or land
+    // in the other buffer, the walk reads the wrong sector's record. That is the
+    // surviving explanation for reading ff where the image holds 00.
+    reg [18:0] dr_lo = 0, dr_last = 0;
+    integer dr_n = 0, dr_printed = 0;
+    reg dr_in = 0;
+    always @(posedge in_clk) begin
+        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on) begin
+            if (dr_in && dut.addressBus == dr_last + 1) begin
+                dr_last <= dut.addressBus; dr_n = dr_n + 1;
+            end else begin
+                if (dr_in && dr_printed < 40 && hawk_cmds >= 146) begin
+                    dr_printed = dr_printed + 1;
+                    $display("DMAXFER %05h..%05h  %0d bytes  (sector %04h, %0d disk commands)",
+                             dr_lo, dr_last, dr_n, dut.hawk.sector_addr, hawk_cmds);
+                end
+                dr_lo <= dut.addressBus; dr_last <= dut.addressBus; dr_n = 1;
+                dr_in <= 1;
+            end
+        end
+    end
+
+    // The first bytes of one sector's DMA, against what the image file holds.
+    // Sector 0x4b8 begins 00 15 ce 9e 7b 06 91 01 in CENTOS_13.IMG. If this
+    // design writes ff followed by those bytes, the transfer is shifted by one
+    // and the first byte is a stale buffer output - the same one-clock block RAM
+    // mistake that produced three bugs in DiskImage.
+    integer fb_n = 0;
+    always @(posedge in_clk)
+        if (dut.cpu_en && dut.writeEnBus && dut.cpu.dma_on &&
+            dut.hawk.sector_addr == 16'h04b8 && fb_n < 10) begin
+            fb_n = fb_n + 1;
+            $display("SECBYTE %0d: %05h <= %02h  (buf_index=%0d)",
+                     fb_n - 1, dut.addressBus, dut.data_c2r, dut.hawk.buf_index);
+        end
+
     // And a count of writes anywhere in the 0x0c000 page, so "nothing writes the
     // page at all" is told apart from "the page is written but not this part".
     integer page_c_writes = 0;
@@ -279,6 +370,8 @@ module DipTB;
             $display("     writes into physical 0x0c000-0x0cfff so far: %0d", page_c_writes);
             $display("     writes into 0x0cf40-0x0cf4f: %0d   |  writes in page 0x0c800 span %05h to %05h",
                      cf40_writes, mvf_lo_c8, mvf_hi_c8);
+            $display("     %0d DMA writes into the staging page span %05h to %05h",
+                     dma_e8, dma_lo_e8, dma_hi_e8);
             $write("     %0d CPU writes, by 2K physical page:", cpu_writes);
             for (dpi = 0; dpi < 128; dpi = dpi + 1)
                 if (cpu_page[dpi] != 0) $write(" %05h:%0d", dpi * 2048, cpu_page[dpi]);
@@ -331,8 +424,9 @@ module DipTB;
         beat = beat + 1;
         if (beat == 2_700_000) begin        // 100ms at 27MHz
             beat = 0;
-            $display("[%0t] pc=%04h uc=%03h instructions=%0d disk commands=%0d",
-                     $time, dut.pc_live0, dut.dbg_uc_address, beat_instr, hawk_cmds);
+            $display("[%0t] pc=%04h uc=%03h instructions=%0d disk commands=%0d timeouts=%0d",
+                     $time, dut.pc_live0, dut.dbg_uc_address, beat_instr, hawk_cmds,
+                     dut.dbg_psram_timeouts);
         end
     end
 
@@ -402,10 +496,11 @@ module DipTB;
     integer lw_n = 0;
     always @(posedge in_clk)
         if ($test$plusargs("listwalk") && dut.cpu_en && dut.bus_read_strobe &&
-            dut.pc_live0 == 16'hef39 && lw_n < 80) begin
+            dut.pc_live0 == 16'hef39 && hawk_cmds >= 150 && lw_n < 80) begin
             lw_n = lw_n + 1;
-            $display("LIST %05h => %02h   (%0d disk commands)",
-                     dut.addressBus, dut.data_r2c, hawk_cmds);
+            $display("LIST %05h => %02h   (%0d disk commands)  cc=%04b flags=%08b",
+                     dut.addressBus, dut.data_r2c, hawk_cmds,
+                     dut.cpu.condition_codes, dut.cpu.flags_register);
         end
 
     // +busytrace: how long the controller actually holds busy for each command,
@@ -625,6 +720,12 @@ module DipTB;
             $display("  register writes aimed at another level: %0d", other_level_writes);
             $display("  page table: %0d entries written, %0d of them with the write-tracked bit set; the bit read set on %0d cycles",
                      pt_writes, pt_writes_bit7, pt_read_bit7);
+            // The bridge gives up after 4095 clocks and, when it does, fills the
+            // cache line with ff and marks it valid - so a timed-out read
+            // returns ff and so does every later read of the same line. That is
+            // exactly what the failing list walk sees, so the count matters.
+            $display("  bridge timeouts: %0d (last where: %0h)",
+                     dut.dbg_psram_timeouts, dut.psram_bus.dbg_timeout_where);
             $display("  bridge: need=%b state=%0d   instructions so far %0d",
                      dut.psram_bus.dbg_need, dut.psram_bus.dbg_state, at_101);
             // Both instruments, side by side. They are built from the same
