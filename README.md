@@ -29,8 +29,14 @@ make test
 
 **2. Put the operating system on the card.** Format it as a partitioned FAT32
 volume and copy `CENTOS_13.IMG` from the Nakazoto archive's `Software/Data
-Packs` into its root, in one go. Details, and why each step matters, under
-[Preparing a card](#preparing-a-card).
+Packs` into its root **as `HAWK0.IMG`** - that is the name the machine looks
+for, and it has to be exactly that:
+
+```
+sudo cp CENTOS_13.IMG /mnt/HAWK0.IMG
+```
+
+Details, and why each step matters, under [Preparing a card](#preparing-a-card).
 
 **3. Build, and program the board:**
 
@@ -322,7 +328,7 @@ formatted card and flush before pulling it:
 
 ```
 sudo mount /dev/sdX1 /mnt
-sudo cp CENTOS_13.IMG /mnt/
+sudo cp CENTOS_13.IMG /mnt/HAWK0.IMG
 sudo umount /mnt
 ```
 
@@ -335,12 +341,14 @@ place - the cache writes dirty blocks back - so the copy on the card is a
 working pack, not an archive. Booting the operating system writes nothing, but
 whatever you do at its prompt might.
 
-**The name.** The file is found by name at power up - `HAWK0.IMG` by default,
-and `DISK_IMAGE` in `Verilog/tangnano9k.v` changes it - but a real image's
-name is usually not an 8.3 name, and only the generated alias is visible to
-the parser. So if the configured name is not there, the first regular file in
-the root directory is used instead, which means a card holding one image just
-works. One image per card is the simplest arrangement.
+**The name.** Call the file **`HAWK0.IMG`**. The machine finds its image by
+name at power up, and that is the name it looks for - `DISK_IMAGE` in
+`Verilog/tangnano9k.v` is where it is set. It has to be a plain 8.3 name: a
+name like `CENTOS_13.IMG` is stored as a long-name entry plus a generated
+alias such as `CENTOS~1.IMG`, and only the alias is visible to the parser,
+which is not the name it wants. There is a fallback to the first regular file
+in the root when the configured name is absent, but do not lean on it - name
+the file correctly and there is nothing to go wrong. One image per card.
 
 **Checking it.** Sending `0x03` down the serial line gives the storage dump:
 
