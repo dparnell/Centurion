@@ -134,6 +134,16 @@ module HawkDisk #(
     // let a device stall the machine in a way it cannot recover from.
     reg [23:0] stuck;
     localparam integer STUCK_LIMIT = 27_000_000 / 4;   // a quarter of a second
+    // One clock between the buffer being addressed and the transfer starting.
+    // buf_q is the sector buffer's *registered* output, so it does not hold
+    // sector_buf[buf_index] until the clock after buf_read_addr selects it.
+    // Starting the DMA in the same cycle that sets buf_index to 0 handed it
+    // whatever buf_q was left holding by the fill, so the first byte of every
+    // sector was stale - the image file's 00 arrived as ff and the operating
+    // system's list walk read that as an end-of-list marker. Every byte after
+    // the first was correct, which is why this looked like anything but an
+    // off-by-one in the buffer's read timing.
+    reg priming;
     reg verify_fail;
     reg [1:0] wait_kind;
     localparam [1:0] W_PREP = 0, W_MID = 1, W_FINAL = 2;
@@ -176,7 +186,7 @@ module HawkDisk #(
         bytes_left = 0; buf_index = 0; transferring = 0;
         waiting = 0; saw_busy = 0; media_error = 0;
         cur_sector = 0; boundary = 0; wait_kind = 0; stuck = 0;
-        verify_fail = 0;
+        verify_fail = 0; priming = 0;
         img_req = 0; img_store = 0; img_block = 0;
         buf_q = 0; data_out = 0;
         for (j = 0; j < STRIDE; j = j + 1) sector_buf[j] = 8'h00;
@@ -207,8 +217,8 @@ module HawkDisk #(
     //
     // W_FINAL is deliberately not included: by then dma_end has been seen and
     // the transfer really is over, so the request must fall.
-    assign dma_req = transferring || (waiting && wait_kind == W_PREP);
-    assign dma_hold = waiting;
+    assign dma_req = transferring || priming || (waiting && wait_kind == W_PREP);
+    assign dma_hold = waiting || priming;
     assign dma_write = (command == CMD_READ);   // read from disk = write to memory
     assign dma_wdata = buf_q;
     assign dma_int = int_pending;
@@ -225,7 +235,7 @@ module HawkDisk #(
             int_enabled <= 0; int_pending <= 0;
             bytes_left <= 0; buf_index <= 0; transferring <= 0;
             waiting <= 0; saw_busy <= 0; media_error <= 0;
-            verify_fail <= 0;
+            verify_fail <= 0; priming <= 0;
             boundary <= 0;
             stuck <= 0;
             img_req <= 0; img_store <= 0;
@@ -305,13 +315,24 @@ module HawkDisk #(
                     if (img_failed) media_error <= 1;
                     case (wait_kind)
                         W_PREP: begin
-                            transferring <= 1;
-                            bytes_left <= SECTOR;
+                            priming <= 1;
                             buf_index <= 0;
                         end
                         W_FINAL: busy_time <= T_TRANSFER;
-                        default: ;      // mid transfer: just carry on
+                        // Mid transfer the DMA is already running and buf_index
+                        // was reset at the boundary, so its first byte after the
+                        // wait needs the same clock of settling.
+                        default: priming <= 1;
                     endcase
+                end
+            end
+
+            // The buffer output has settled: start, or resume, moving bytes.
+            if (priming) begin
+                priming <= 0;
+                if (!transferring) begin
+                    transferring <= 1;
+                    bytes_left <= SECTOR;
                 end
             end
 
