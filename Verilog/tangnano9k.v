@@ -3,9 +3,6 @@
 `include "Psram.v"
 `include "PsramSdr.v"
 `include "PsramTest.v"
-// psram_controller.v is no longer built: it drives the bus through apicula's
-// ODDR/IDDR, which is exactly what does not work here. Kept in the tree for
-// reference, and because its four implicit declaration warnings are noise.
 
 /**
  * The Centurion on a Tang Nano 9K.

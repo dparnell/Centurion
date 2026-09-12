@@ -4,9 +4,10 @@
  * The Tang Nano 9K's embedded HyperRAM cannot be driven through apicula's
  * ODDR/IDDR primitives: they carry roughly 2.5 cycles of data path delay, so
  * the data never lines up with the clock however the protocol is configured.
- * That is why the vendor controller in psram_controller.v fails here, and why
- * its author's own test fails too when built with this toolchain - both use
- * IOLOGIC. The approach below is the one sabas0ba/hello_veryl documents and has
+ * That is why zf3's vendor controller - psram_controller.v, which this tree
+ * carried until the split of the board from the machine and which git history
+ * still holds - fails here, and why its author's own test fails too when built
+ * with this toolchain: both use IOLOGIC. The approach below is the one sabas0ba/hello_veryl documents and has
  * working on this board with these tools: drive everything from ordinary fabric
  * flops and run the bus slowly enough that plain flip flops have ample margin.
  *
