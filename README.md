@@ -227,18 +227,74 @@ The machine's Hawk disk controller is at `0x3f140` and its medium is a disk
 image on the microSD card, cached in the PSRAM above the CPU's own memory. Only
 four of the card's pins are brought out on this board, so the interface is SPI.
 
-To use it, format a card **FAT32** and copy a Hawk image onto it. The images in
-the Nakazoto archive under `Software/Data Packs` need no conversion: they are
-flat files of 512 byte records with 400 bytes of sector data used, which is
-exactly the stride this design uses. `CENTOS_13.IMG` is the operating system.
+### Preparing a card
 
-The file is found by name at power up - `HAWK0.IMG` by default, and
-`DISK_IMAGE` in `Verilog/tangnano9k.v` changes it - but a real image's name is
-usually not an 8.3 name, and only the generated alias is visible to the parser.
-So if the configured name is not there, the first regular file in the root
-directory is used instead, which means a card holding one image just works.
-Copy the file on in one go so it lands contiguously; up to four extents are
-handled and anything more fragmented is refused.
+You need three things: a card the SPI layer can talk to, a FAT32 volume on it,
+and a disk image copied on in one piece.
+
+**The card.** Any microSD of the SDHC generation or later - 4 GB to 32 GB is
+the safe range. The initialisation sends `CMD8`, which a pre-SDHC card rejects,
+and those are not supported. Cards above 32 GB work too, but they ship
+formatted exFAT and have to be reformatted, because the parser reads FAT32 and
+nothing else.
+
+**The volume.** It has to be a *partitioned* FAT32 volume - an MBR with one
+partition, which is what every card and every formatting tool produces by
+default. A card formatted as a "superfloppy", with the filesystem starting at
+sector zero and no partition table, is reported as `NO_MBR` and refused. On
+Linux, with the card at `/dev/sdX` (check with `lsblk`; this erases it):
+
+```
+sudo parted /dev/sdX --script mklabel msdos mkpart primary fat32 1MiB 100%
+sudo mkfs.vfat -F 32 /dev/sdX1
+```
+
+Any other tool that produces the same thing is fine - the simulation's own
+test volumes are built with exactly `mkfs.vfat`, so that is the layout the
+parser is judged against.
+
+**The image.** `CENTOS_13.IMG` from the Nakazoto archive, under
+`Software/Data Packs`, is the operating system. It and its siblings need no
+conversion: they are flat files of 512 byte records with 400 bytes of sector
+data used, which is exactly the stride this design uses, and `CENTOS_13.IMG`
+is 6651904 bytes, 12992 sectors. Copy it into the root of the freshly
+formatted card and flush before pulling it:
+
+```
+sudo mount /dev/sdX1 /mnt
+sudo cp CENTOS_13.IMG /mnt/
+sudo umount /mnt
+```
+
+Copy it on in one go onto a fresh volume so it lands contiguously - up to four
+extents are handled and anything more fragmented is refused. Deleting and
+recopying files can fragment a volume; if in doubt, reformat and copy once.
+
+Keep your original somewhere else. The machine can write to the image in
+place - the cache writes dirty blocks back - so the copy on the card is a
+working pack, not an archive. Booting the operating system writes nothing, but
+whatever you do at its prompt might.
+
+**The name.** The file is found by name at power up - `HAWK0.IMG` by default,
+and `DISK_IMAGE` in `Verilog/tangnano9k.v` changes it - but a real image's
+name is usually not an 8.3 name, and only the generated alias is visible to
+the parser. So if the configured name is not there, the first regular file in
+the root directory is used instead, which means a card holding one image just
+works. One image per card is the simplest arrangement.
+
+**Checking it.** Sending `0x03` down the serial line gives the storage dump:
+
+```
+D 0900 0b80 0001 32c0 0100
+```
+
+`0900` is the card's state machine idle with an `R1` of `00`; `0b80` is the
+flags - ready, block addressed, mounted, no failure; `0001` is the mounter's
+state and one extent; `32c0` is 12992 blocks, which is `CENTOS_13.IMG` exactly;
+and the low byte of the last word is how many blocks the cache has fetched. If
+the image did not mount, the flags word carries a `failed` bit and a reason in
+its low nibble - 1 no MBR, 2 no partition, 3 not FAT32, 5 no file, 6 too fragmented, 7 card error; the full
+decode is in the comment above `disk_payload` in `Verilog/Instruments.v`.
 
 Then `make load-boot`, and at the `D=` prompt type `H1` - the device letter and
 unit 1, no Enter. The operating system reads the pack, prints its banner, asks
