@@ -8,7 +8,31 @@
 // reference, and because its four implicit declaration warnings are noise.
 
 /**
- * This file contains the top level Centurion CPU synthesizable on an Tang Nano 9K FGPA board.
+ * The Centurion on a Tang Nano 9K.
+ *
+ * This file is the board and only the board: the pins and their polarities,
+ * the 27MHz crystal, the power-on reset and the button, the HyperRAM that
+ * shares the package, and one instance of the machine. Nothing about the
+ * Centurion itself is in here - that is Centurion.v, and it does not know what
+ * board it is on.
+ *
+ * TO RETARGET THIS DESIGN to another FPGA board, write a file like this one
+ * that gives Centurion what its port list asks for:
+ *
+ *   - a clock, and CLOCK_HZ stated once; everything that counts time takes
+ *     it as a parameter
+ *   - an enable pulsing 5 times a microsecond, from ClockEnable with PERIOD
+ *     set to the clock in MHz
+ *   - a reset held until the memory can answer (see psram_ready below: reaching
+ *     the memory before it exists is not a slow start but a hang)
+ *   - the DIP and sense switches, as constants or from real switches
+ *   - a serial line, and the SD card's four SPI pins
+ *   - ONE memory port with the protocol Centurion.v's header describes, which
+ *     is Psram.v's port list. A board with SDRAM, SRAM or block RAM writes a
+ *     module with that port list, and nothing on the machine's side changes.
+ *
+ * What is Gowin-specific in here: the rPLL primitive inside Psram, and the
+ * PSRAM pad names, which nextpnr matches to the dedicated pads by name.
  */
 
 module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
