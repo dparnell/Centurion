@@ -460,7 +460,8 @@ that earlier target:
 
 ## The built-in FORTH
 
-[Verilog/asm/forth.s](Verilog/asm/forth.s) is an interactive FORTH written for
+[Verilog/asm/forth.s](Verilog/asm/forth.s) is an interactive
+[FORTH](https://en.wikipedia.org/wiki/Forth_(programming_language)) written for
 this machine, in about 3.3K of the 8K ROM. It is an indirect threaded
 interpreter in the traditional style, and it uses the whole of the machine's
 memory rather than just the part that is directly addressable.
@@ -578,6 +579,41 @@ HEX FF . DECIMAL      FF  ok
 Numbers are 16 bits. `.` prints signed in base ten and unsigned in any other
 base, so an address above `8000` reads as a negative number in decimal and as
 itself in hex.
+
+### Memory
+
+`@` (fetch) and `!` (store) read and write a 16-bit word at an address, and
+`C@` and `C!` do the same for a single byte. Fetch takes an address and leaves
+the value; store takes the value *then* the address, so the address is always
+on top when either runs:
+
+```
+HEX
+1234 7000 !                    \ put 1234 at 7000
+7000 @ .                       1234  ok
+7000 C@ .                      12  ok        the high byte is at the lower address
+7001 C@ .                      34  ok
+AB 7001 C!                     \ change one byte
+7000 @ .                       12AB  ok
+DECIMAL
+```
+
+Two things about the machine show through. Words are stored **big endian** -
+the high byte at the lower address - because that is how the CPU6 lays them
+out, so `C@` on a word's address gives its high byte. And addresses are plain
+byte addresses with no alignment rule: a word can start on an odd address, and
+`@` will read it.
+
+`C@` leaves a clean 16-bit value - the byte in the low half and zero above it -
+so a byte fetched can go straight into arithmetic. `C!` stores the low byte of
+whatever is on the stack and ignores the rest.
+
+The addresses are virtual, through the MMU, so `7000` here is the window page
+that `BANK!` maps onto physical memory - see [the Centurion-specific
+part](#the-centurion-specific-part) below. `HERE` gives the next free address
+in the dictionary, `,` stores a word there and moves it on, and `ALLOT`
+reserves a number of bytes, which is what `VARIABLE` and `ARRAY` are built
+from in the next section.
 
 ### Defining your own defining words
 
