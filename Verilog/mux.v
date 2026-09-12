@@ -41,7 +41,7 @@ module MUX(
     // receive" behaves exactly like one that really is being typed at.
     output wire [7:0] dbg_mux_state,
     output wire [7:0] dbg_last_cause,
-    output wire [15:0] dbg_data_reads,
+    output wire [15:0] dbg_acks,
     output wire [15:0] dbg_rx_chars,
     output wire [15:0] dbg_cause_rx,
     output wire [15:0] dbg_cause_tx
@@ -473,17 +473,25 @@ always @(posedge cpu_clock) begin
     end else begin
         if (read_cause_register) begin
             last_cause <= data_out;
-            if (mux_cause && data_out == 8'h00) cause_rx <= cause_rx + 1;
-            if (mux_cause && data_out == 8'h01) cause_tx <= cause_tx + 1;
+            // Every cause read, not only the ones with a cause pending: a read
+            // that answers 00 because nothing is pending is indistinguishable
+            // to software from "channel 0 has a character", and counting only
+            // the pending ones hid exactly that.
+            if (data_out == 8'h00) cause_rx <= cause_rx + 1;
+            if (data_out == 8'h01) cause_tx <= cause_tx + 1;
         end
-        if (read_data_register) data_reads <= data_reads + 1;
+        // Does the CPU ever acknowledge? int_pending is dropped by the
+        // acknowledge and by a read of the data register, and by nothing else,
+        // so if the microcode never raises M13 bit 7 the request stands for
+        // ever and the handler is re-entered the instant it returns.
+        if (interrupt_ack && !interrupt_ack_d) data_reads <= data_reads + 1;
         if (byteReady && !byte_ready_d) rx_chars <= rx_chars + 1;
     end
 end
 assign dbg_mux_state = { byteReady, tx_int, mux_cause, int_pending,
                          interrupts_enabled, overrun, tx_idle, 1'b0 };
 assign dbg_last_cause = last_cause;
-assign dbg_data_reads = data_reads;
+assign dbg_acks = data_reads;
 assign dbg_rx_chars = rx_chars;
 assign dbg_cause_rx = cause_rx;
 assign dbg_cause_tx = cause_tx;

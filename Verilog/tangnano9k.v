@@ -566,13 +566,13 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // design's read strobe. Peripherals whose read has a side effect need it.
     wire bus_read_strobe = (dbg_e7 == 2'd3);
     wire [7:0] dbg_mux_state, dbg_last_cause;
-    wire [15:0] dbg_data_reads, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx;
+    wire [15:0] dbg_acks, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx;
 
     MUX mux0(in_clk, clock, cpu_en, reset, uart_rx, mux_uart_tx, mux_select,
              { 1'b0, addressBus[3:0] }, writeEnBus, bus_read_strobe, data_c2r,
              interrupt_ack, mux_data, int_reqn, irq_number,
              dbg_byte_ready, dbg_rx_byte, dbg_mux_state, dbg_last_cause,
-             dbg_data_reads, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx);
+             dbg_acks, dbg_rx_chars, dbg_cause_rx, dbg_cause_tx);
 
     // The DMA test device: a pattern generator and checker with no storage.
     generate if (DMA_TEST) begin : dma_test_device
@@ -1475,7 +1475,7 @@ module tangnano9k #(parameter [7:0] DIAG_DIP_SWITCHES = 8'h1d,
     // same one: which cause the card reported, and what the CPU did about it.
     //   byteReady tx_int mux_cause int_pending int_en overrun tx_idle .
     wire [79:0] console_payload =
-        { dbg_rx_chars, dbg_cause_rx, dbg_cause_tx, dbg_data_reads,
+        { dbg_rx_chars, dbg_cause_rx, dbg_cause_tx, dbg_acks,
           dbg_mux_state, dbg_rx_byte };
 
     wire [79:0] dump_payload =
