@@ -258,11 +258,15 @@ module PsramBus #(
             dbg_timeout_where <= { busy, state };
             read <= 0;
             write <= 0;
-            // Satisfy the cycle from the live request rather than the registered
-            // one: the timeout can fire before anything was ever latched.
-            cache_data[idx] <= {64{1'b1}};
-            cache_tag[idx] <= tag;
-            cache_valid[idx] <= want_read;
+            // Do NOT validate the line. data_out is combinational from the
+            // cache line as it stands, so writing all-ones here cannot reach the
+            // core on this cycle anyway - the only thing it achieves is to leave
+            // the line holding 0xff and marked valid, so every later read of the
+            // same eight bytes is answered 0xff out of the cache without ever
+            // going to memory. That turns one transient stall into permanent
+            // corruption of a cache line. Invalidating instead means the next
+            // access retries, which is the whole point of giving up.
+            cache_valid[idx] <= 0;
             wr_done <= want_write;
             // Drop whatever was in flight, or the same access is retried for
             // ever and the buffer never empties.
